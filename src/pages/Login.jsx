@@ -10,8 +10,29 @@ export default function Login() {
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [endereco, setEndereco] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estado, setEstado] = useState('');
+  const [cep, setCep] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  const resetSignupFields = () => {
+    setFullName('');
+    setCpf('');
+    setWhatsapp('');
+    setEndereco('');
+    setCidade('');
+    setEstado('');
+    setCep('');
+  };
+
+  const toggleMode = () => {
+    setMode((currentMode) => (currentMode === 'signin' ? 'signup' : 'signin'));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,45 +43,198 @@ export default function Login() {
         if (error) throw error;
         window.location.assign('/');
       } else {
-        const { error } = await supabase.auth.signUp({
+        const signupProfile = {
+          nome_completo: fullName.trim(),
+          cpf: cpf.trim(),
+          whatsapp: whatsapp.trim(),
+          endereco: endereco.trim(),
+          cidade: cidade.trim(),
+          estado: estado.trim().toUpperCase(),
+          cep: cep.trim(),
+          papel: 'solicitante',
+        };
+
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/` },
+          options: {
+            emailRedirectTo: `${window.location.origin}/`,
+            data: signupProfile,
+          },
         });
         if (error) throw error;
-        toast({ title: 'Cadastro criado', description: 'Verifique seu e-mail para confirmar.' });
+
+        let profileSyncFailed = false;
+        const userId = data.user?.id || data.session?.user?.id;
+        if (userId) {
+          const { error: profileError } = await supabase.from('usuarios').upsert(
+            {
+              id: userId,
+              email: email.trim().toLowerCase(),
+              ...signupProfile,
+              is_inadimplente: false,
+            },
+            { onConflict: 'id' }
+          );
+
+          if (profileError) {
+            profileSyncFailed = true;
+            // eslint-disable-next-line no-console
+            console.warn('[login] perfil do usuário não pôde ser sincronizado:', profileError.message);
+          }
+        }
+
+        toast({
+          title: 'Cadastro criado',
+          description: profileSyncFailed
+            ? 'A conta foi criada, mas o perfil ainda não pôde ser sincronizado com a tabela usuarios.'
+            : 'Verifique seu e-mail para confirmar.',
+        });
+        resetSignupFields();
+        setMode('signin');
       }
     } catch (err) {
-      toast({ variant: 'destructive', title: 'Erro', description: err.message });
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: err?.message || 'Não foi possível concluir a operação.',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 via-white to-slate-100 p-4">
+      <Card className="w-full max-w-md shadow-xl border-slate-200/70">
         <CardHeader>
           <CardTitle>{mode === 'signin' ? 'Entrar' : 'Criar conta'}</CardTitle>
           <CardDescription>Clube da Bengala</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'signup' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nome completo</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Seu nome completo"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="cpf">CPF</Label>
+                    <Input
+                      id="cpf"
+                      type="text"
+                      required
+                      value={cpf}
+                      onChange={(e) => setCpf(e.target.value)}
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="whatsapp">WhatsApp</Label>
+                    <Input
+                      id="whatsapp"
+                      type="tel"
+                      required
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endereco">Endereço</Label>
+                  <Input
+                    id="endereco"
+                    type="text"
+                    required
+                    value={endereco}
+                    onChange={(e) => setEndereco(e.target.value)}
+                    placeholder="Rua, número, bairro"
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="cidade">Cidade</Label>
+                    <Input
+                      id="cidade"
+                      type="text"
+                      required
+                      value={cidade}
+                      onChange={(e) => setCidade(e.target.value)}
+                      placeholder="Cidade"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="estado">UF</Label>
+                    <Input
+                      id="estado"
+                      type="text"
+                      required
+                      maxLength={2}
+                      value={estado}
+                      onChange={(e) => setEstado(e.target.value)}
+                      placeholder="SP"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cep">CEP</Label>
+                  <Input
+                    id="cep"
+                    type="text"
+                    required
+                    value={cep}
+                    onChange={(e) => setCep(e.target.value)}
+                    placeholder="00000-000"
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
-              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seuemail@exemplo.com"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+              <Input
+                id="password"
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo de 6 caracteres"
+              />
             </div>
+            {mode === 'signup' && (
+              <p className="text-xs text-slate-500 leading-relaxed">
+                O cadastro será criado como solicitante e os dados informados serão usados para completar seu perfil.
+              </p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? '...' : mode === 'signin' ? 'Entrar' : 'Cadastrar'}
             </Button>
             <button
               type="button"
               className="w-full text-sm text-slate-600 hover:underline"
-              onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+              onClick={toggleMode}
+              disabled={loading}
             >
               {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
             </button>

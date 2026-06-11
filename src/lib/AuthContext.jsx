@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
       setProfile(null);
       return;
     }
+    const { data: authUser } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('usuarios')
       .select('*')
@@ -23,7 +24,30 @@ export const AuthProvider = ({ children }) => {
       // eslint-disable-next-line no-console
       console.warn('[auth] erro carregando perfil:', error.message);
     }
-    setProfile(data || null);
+    if (data) {
+      setProfile(data);
+      return;
+    }
+
+    const metadata = authUser?.user?.user_metadata || {};
+    if (Object.keys(metadata).length > 0) {
+      setProfile({
+        id: userId,
+        email: authUser?.user?.email || '',
+        nome_completo: metadata.nome_completo || metadata.full_name || '',
+        nome: metadata.nome || metadata.full_name || metadata.nome_completo || '',
+        papel: metadata.papel || 'solicitante',
+        cpf: metadata.cpf || '',
+        whatsapp: metadata.whatsapp || '',
+        endereco: metadata.endereco || '',
+        cidade: metadata.cidade || '',
+        estado: metadata.estado || '',
+        cep: metadata.cep || '',
+      });
+      return;
+    }
+
+    setProfile(null);
   }, []);
 
   useEffect(() => {
