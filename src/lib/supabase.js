@@ -1,4 +1,19 @@
-// Placeholder. The real Supabase client will be wired here in a later step.
-// Intentionally empty to avoid leaking credentials or initializing a client
-// before the backend connection is set up.
-export const supabase = null;
+import { createClient } from '@supabase/supabase-js';
+
+const url = import.meta.env.VITE_SUPABASE_URL;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!url || !anonKey) {
+  // eslint-disable-next-line no-console
+  console.warn('[supabase] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY ausentes.');
+}
+
+export const supabase = createClient(url, anonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
+
+export default supabase;

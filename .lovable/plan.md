@@ -1,57 +1,64 @@
 ## Objetivo
 
-Fazer o front-end importado (base44) rodar no Lovable usando **somente Vite + React**, sem o SDK proprietário `@base44/*`. Toda a parte de dados/auth fica com um **stub local** que devolve listas vazias e usuário fake, para o preview renderizar. A conexão real com Supabase fica para uma etapa futura.
+Substituir o stub local de dados pelo cliente real do Supabase usando a URL e a anon key fornecidas, mantendo as telas atuais funcionando.
 
-## O que muda
+## Passos
 
-### 1. Build / Vite
-- `vite.config.js`: remover o plugin `@base44/vite-plugin`. Manter apenas `@vitejs/plugin-react` e o alias `@ -> src`.
-- `package.json`: remover `@base44/sdk` e `@base44/vite-plugin` das dependências (já não estão instalados e travam o dev server).
-- `src/lib/app-params.js`: remover (não é mais necessário) ou simplificar para um stub sem chamadas a `import.meta.env.VITE_BASE44_*`.
+1. **Variáveis de ambiente**
+   - Criar `.env` na raiz com:
+     - `VITE_SUPABASE_URL=https://aarrzsgqahbzbbkzwqve.supabase.co`
+     - `VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...` (a chave fornecida — é publishable/anon, ok no front)
+   - Garantir que `.env` está no `.gitignore`.
 
-### 2. Camada de API (stub)
-Reescrever `src/api/base44Client.js` para exportar um objeto `base44` compatível com a interface usada pelas páginas, mas 100% local:
+2. **Cliente Supabase**
+   - Instalar `@supabase/supabase-js`.
+   - Reescrever `src/lib/supabase.js` para exportar `supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)` com `auth: { persistSession: true, autoRefreshToken: true }`.
 
-```text
-base44 = {
-  auth: { me(), logout(), redirectToLogin() },        // usuário fake
-  entities: {
-    Pessoa, Equipamento, Solicitacao, Emprestimo,
-    TipoEquipamento, Clube, Notificacao, LogAuditoria,
-    Doacao, Manutencao
-  },                                                   // cada um: list/filter/get/create/update/delete
-  appLogs: { logUserInApp() }                          // no-op
-}
-```
+3. **Adapter `base44` → Supabase**
+   - Reescrever `src/api/base44Client.js` mantendo a mesma interface usada pelas páginas (`entities.X.list/filter/get/create/update/delete`, `auth.me/logout`, `appLogs.logUserInApp`), mas agora cada método chama o Supabase.
+   - Mapa entidade → tabela (nome plural snake_case, conforme `.github/copilot-instructions.md`):
+     - `Pessoa` → `pessoas` (ou `usuarios`/`beneficiarios` quando o schema real existir; nesta etapa usaremos `pessoas` como nome único)
+     - `Equipamento` → `equipamentos`
+     - `Solicitacao` → `solicitacoes`
+     - `Emprestimo` → `emprestimos`
+     - `TipoEquipamento` → `tipos_equipamento`
+     - `Clube` → `clubes`
+     - `Notificacao` → `notificacoes`
+     - `LogAuditoria` → `logs_auditoria`
+     - `Doacao` → `doacoes`
+     - `Manutencao` → `manutencoes`
+   - Implementação genérica:
+     - `list(orderBy?, limit?)` → `select('*').order().limit()`
+     - `filter(where, orderBy?, limit?)` → `select('*').match(where)`
+     - `get(id)` → `select('*').eq('id', id).maybeSingle()`
+     - `create(data)` → `insert(data).select().single()`
+     - `update(id, data)` → `update(data).eq('id', id).select().single()`
+     - `delete(id)` → `delete().eq('id', id)`
+     - `bulkCreate(items)` → `insert(items).select()`
+   - Erros logados via `console.error`; retorno sempre seguro (array vazio em listas) para não quebrar a UI se a tabela ainda não existir.
+   - `appLogs.logUserInApp(page)` → `insert` em `logs_auditoria` (best-effort, ignora erro).
 
-Cada `entity.*` retorna `Promise<[]>` ou `Promise<{}>` para que as telas carreguem sem erro. Dados podem opcionalmente vir de um arquivo `src/api/mockData.js` com alguns exemplos para a UI não ficar vazia (Dashboard, cards, gráficos).
+4. **Auth real**
+   - Atualizar `src/lib/AuthContext.jsx`:
+     - Carregar sessão com `supabase.auth.getSession()` + `onAuthStateChange`.
+     - Buscar perfil em `pessoas`/`usuarios` por `auth.uid()` para obter `papel`.
+     - Expor `user`, `isAuthenticated`, `isLoadingAuth`, `logout()` (chama `supabase.auth.signOut()`), `navigateToLogin()` → redireciona para `/login`.
+   - Manter `isAuthenticated: true` como **fallback dev** apenas se não houver tabela `usuarios` ainda? Não — vamos respeitar a sessão real. Se não houver sessão, `ProtectedRoute` redireciona para `/login`.
 
-### 3. Auth
-- `src/lib/AuthContext.jsx`: remover dependência de `@base44/sdk` e `app-params`. Versão simplificada que entrega `isAuthenticated: true`, `user: { full_name: 'Usuário Demo', email: 'demo@demo.com', role: 'admin' }`, `isLoadingAuth: false`, `isLoadingPublicSettings: false`, sem chamadas de rede.
-- `src/components/UserNotRegisteredError.jsx` e `src/components/ProtectedRoute.jsx`: manter, mas sem efeito porque o auth stub sempre autentica.
+5. **Tela de login mínima**
+   - Criar `src/pages/Login.jsx` com email/senha usando `supabase.auth.signInWithPassword` e link de cadastro com `signUp`.
+   - Registrar rota `/login` em `src/App.jsx` (fora do `ProtectedRoute`).
 
-### 4. Páginas e Layout
-- **Nenhuma** página é reescrita visualmente. Apenas continuam importando `base44` do client stub.
-- `src/Layout.jsx`: continua igual; o `base44.auth.me()` agora resolve com o usuário fake.
-- `NavigationTracker`: continua chamando `base44.appLogs.logUserInApp()`, que é no-op.
+6. **Limpeza**
+   - Remover usuário fake do `base44Client.js`.
+   - Manter `app-params.js` como stub vazio.
 
-### 5. Roteamento / Página inicial
-- A página inicial atual é o **Dashboard** (definido em `src/pages.config.js` como `mainPage: "Dashboard"`). Vamos **manter** esse comportamento para que o usuário visualize o app no preview imediatamente.
-- Observação: a instrução antiga de "página inicial em branco" não faz mais sentido junto com "recriar o front-end inteiro". Se você quiser que `/` continue em branco e o Dashboard fique em `/Dashboard`, é só dizer.
+## Fora deste plano (próximos passos)
 
-### 6. Limpeza
-- Remover/limpar `src/lib/supabase.js` (deixar arquivo placeholder vazio, pronto para receber o client real depois).
-- Remover `src/lib/app-params.js` se não for mais referenciado.
-- Manter os JSONs em `entities/` como referência de schema para a futura modelagem Supabase.
+- Criar/migrar as tabelas no Supabase espelhando `entities/*.json` + RLS (o usuário fará no painel ou em uma etapa futura).
+- Mapear campos JSONB (`atributos`, `caracteristicas`, `schema_especificacoes`) nas telas.
+- Sincronizar `auth.users` ↔ `usuarios` via trigger.
 
-## Resultado esperado
+## Pergunta
 
-- `npm run dev` sobe sem erros.
-- Preview do Lovable abre o Dashboard com layout, sidebar, navegação entre as 12 páginas (Pessoas, Solicitações, Equipamentos, Empréstimos, Fila, Doações, Manutenção, Notificações, Atendimento, Relatórios, Configurações, Dashboard).
-- Todas as telas carregam (com estado vazio / placeholders) sem crash.
-- Nenhuma chamada de rede para base44 ou supabase.
-- Próximo passo (fora deste plano): substituir o stub `src/api/base44Client.js` por um adapter que fala com Supabase, e criar as tabelas espelhando `entities/*.json`.
-
-## Pergunta antes de implementar
-
-A rota `/` deve abrir o **Dashboard** (recomendado, para ver o app rodando) ou continuar **em branco** com o Dashboard acessível só via `/Dashboard`?
+A chave anon é segura no front-end, mas a URL+anon ficam visíveis no bundle. Confirma que esse projeto Supabase tem **RLS habilitado** em todas as tabelas? Sem RLS, qualquer visitante com a anon key pode ler/escrever tudo.
