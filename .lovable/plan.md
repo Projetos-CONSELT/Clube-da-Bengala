@@ -1,64 +1,61 @@
-## Objetivo
+# Etapa 1 — Autenticação e Sessão Global
 
-Substituir o stub local de dados pelo cliente real do Supabase usando a URL e a anon key fornecidas, mantendo as telas atuais funcionando.
+Foco exclusivo desta etapa: login/cadastro reais via Supabase, contexto global com o perfil da tabela `usuarios` (incluindo `papel`) e proteção de rotas por papel. As etapas 2 e 3 ficam para depois da aprovação.
 
-## Passos
+## Premissa de schema (`usuarios`)
+Conforme `copilot-instructions.md`, a tabela `public.usuarios`:
+- `id uuid` PK = `auth.users.id`
+- `papel` ENUM: `gerente | coordenador | atendente | solicitante`
+- `nome_completo, cpf, whatsapp, email, endereco, cidade, estado, cep, is_inadimplente`
+- RLS: solicitante lê/atualiza só a própria linha; back-office lê todos.
 
-1. **Variáveis de ambiente**
-   - Criar `.env` na raiz com:
-     - `VITE_SUPABASE_URL=https://aarrzsgqahbzbbkzwqve.supabase.co`
-     - `VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...` (a chave fornecida — é publishable/anon, ok no front)
-   - Garantir que `.env` está no `.gitignore`.
+Assumo que existe (ou existirá) trigger `on_auth_user_created` que cria a linha em `usuarios` no signup. Se não existir, o fluxo de cadastro abaixo também tenta um `upsert` como fallback (já presente hoje em `Login.jsx`) — apenas garantiremos que erros de RLS sejam tratados sem quebrar o cadastro.
 
-2. **Cliente Supabase**
-   - Instalar `@supabase/supabase-js`.
-   - Reescrever `src/lib/supabase.js` para exportar `supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)` com `auth: { persistSession: true, autoRefreshToken: true }`.
+## 1. `src/pages/Login.jsx`
+- Mantém o layout/shadcn atual.
+- Sign-in: `supabase.auth.signInWithPassword({ email, password })` → on success, `navigate('/')`.
+- Sign-up: `supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin + '/', data: { nome_completo, cpf, whatsapp, endereco, cidade, estado, cep, papel: 'solicitante' } } })`.
+  - Após signup, se houver sessão imediata (auto-confirm), tenta `upsert` em `usuarios` (fallback ao trigger).
+  - Caso o projeto exija confirmação por e-mail, mostra toast informando e volta para modo signin.
+- Toasts de sucesso/erro via `useToast` (shadcn já configurado em `App.jsx` com `<Toaster />`).
+- Estado `loading` desabilita o botão e troca o label.
 
-3. **Adapter `base44` → Supabase**
-   - Reescrever `src/api/base44Client.js` mantendo a mesma interface usada pelas páginas (`entities.X.list/filter/get/create/update/delete`, `auth.me/logout`, `appLogs.logUserInApp`), mas agora cada método chama o Supabase.
-   - Mapa entidade → tabela (nome plural snake_case, conforme `.github/copilot-instructions.md`):
-     - `Pessoa` → `pessoas` (ou `usuarios`/`beneficiarios` quando o schema real existir; nesta etapa usaremos `pessoas` como nome único)
-     - `Equipamento` → `equipamentos`
-     - `Solicitacao` → `solicitacoes`
-     - `Emprestimo` → `emprestimos`
-     - `TipoEquipamento` → `tipos_equipamento`
-     - `Clube` → `clubes`
-     - `Notificacao` → `notificacoes`
-     - `LogAuditoria` → `logs_auditoria`
-     - `Doacao` → `doacoes`
-     - `Manutencao` → `manutencoes`
-   - Implementação genérica:
-     - `list(orderBy?, limit?)` → `select('*').order().limit()`
-     - `filter(where, orderBy?, limit?)` → `select('*').match(where)`
-     - `get(id)` → `select('*').eq('id', id).maybeSingle()`
-     - `create(data)` → `insert(data).select().single()`
-     - `update(id, data)` → `update(data).eq('id', id).select().single()`
-     - `delete(id)` → `delete().eq('id', id)`
-     - `bulkCreate(items)` → `insert(items).select()`
-   - Erros logados via `console.error`; retorno sempre seguro (array vazio em listas) para não quebrar a UI se a tabela ainda não existir.
-   - `appLogs.logUserInApp(page)` → `insert` em `logs_auditoria` (best-effort, ignora erro).
+## 2. `src/lib/AuthContext.jsx`
+Refatorar para expor uma API consistente para o resto do app:
+- Inicializa com `supabase.auth.getSession()` e assina `supabase.auth.onAuthStateChange`.
+- Sempre que houver sessão, busca o perfil em `usuarios` por `id = session.user.id` (com `.maybeSingle()`).
+- Estados expostos:
+  - `session`, `user` (objeto do `auth.users`), `profile` (linha da `usuarios`)
+  - `role` (atalho para `profile?.papel`)
+  - `isAuthenticated` (sessão válida **e** profile carregado, ou sessão sem profile com `authError = user_not_registered`)
+  - `isLoadingAuth`, `authChecked`, `authError`
+  - `logout()`, `navigateToLogin()`, `checkUserAuth()` (recarrega sessão+perfil) e `refreshProfile()`
+- Tratamento: se sessão existe mas `usuarios` retorna `null`, define `authError = { type: 'user_not_registered' }` (já consumido por `UserNotRegisteredError`).
+- Não armazena papel em localStorage — fonte de verdade é sempre a tabela.
 
-4. **Auth real**
-   - Atualizar `src/lib/AuthContext.jsx`:
-     - Carregar sessão com `supabase.auth.getSession()` + `onAuthStateChange`.
-     - Buscar perfil em `pessoas`/`usuarios` por `auth.uid()` para obter `papel`.
-     - Expor `user`, `isAuthenticated`, `isLoadingAuth`, `logout()` (chama `supabase.auth.signOut()`), `navigateToLogin()` → redireciona para `/login`.
-   - Manter `isAuthenticated: true` como **fallback dev** apenas se não houver tabela `usuarios` ainda? Não — vamos respeitar a sessão real. Se não houver sessão, `ProtectedRoute` redireciona para `/login`.
+## 3. `src/components/ProtectedRoute.jsx` + controle por papel
+- Mantém comportamento atual (loading, fallback de não-autenticado, erro user_not_registered).
+- Adiciona prop `allowedRoles?: string[]`. Quando definida e o `role` do usuário não está na lista, renderiza uma tela `AccessDenied` (componente novo simples, alinhado ao estilo do `UserNotRegisteredError`).
+- Em `src/App.jsx`, envolver as rotas em grupos por papel:
+  - **Back-office** (`gerente | coordenador | atendente`): `/atendimento`, `/fila`, `/equipamentos`, `/emprestimos`, `/manutencao`, `/doacoes`, `/relatorios`, `/configuracoes`, `/pessoas`, `/notificacoes`.
+  - **Solicitante + back-office**: `/`, `/dashboard`, `/solicitacoes`.
+  - **Somente gerente**: `/configuracoes` (sobrescreve a anterior).
+- A geração automática de rotas a partir de `pages.config.js` permanece, mas será envelopada manualmente em `App.jsx` com `<Route element={<ProtectedRoute allowedRoles={[...]} />}>` por grupo (mapa explícito `path → roles`).
 
-5. **Tela de login mínima**
-   - Criar `src/pages/Login.jsx` com email/senha usando `supabase.auth.signInWithPassword` e link de cadastro com `signUp`.
-   - Registrar rota `/login` em `src/App.jsx` (fora do `ProtectedRoute`).
+## 4. UX / Tratamento de erro
+- Todos os `try/catch` de auth disparam `toast({ variant: 'destructive' })`.
+- Estados de loading usam o spinner já presente no `ProtectedRoute`/`AuthenticatedApp`.
+- Sem alteração visual nos componentes shadcn — apenas injeção de lógica.
 
-6. **Limpeza**
-   - Remover usuário fake do `base44Client.js`.
-   - Manter `app-params.js` como stub vazio.
+## Arquivos tocados
+- `src/pages/Login.jsx` (refatorar fluxo + toasts)
+- `src/lib/AuthContext.jsx` (expor `profile`, `role`, `checkUserAuth`, `refreshProfile`)
+- `src/components/ProtectedRoute.jsx` (suporte a `allowedRoles`)
+- `src/components/AccessDenied.jsx` (novo)
+- `src/App.jsx` (agrupar rotas por papel)
 
-## Fora deste plano (próximos passos)
+## Fora do escopo desta etapa
+- Mudanças em páginas de Solicitações, Fila, Equipamentos (Etapas 2 e 3).
+- Migrations SQL — assume schema/trigger já aplicados no Supabase do usuário.
 
-- Criar/migrar as tabelas no Supabase espelhando `entities/*.json` + RLS (o usuário fará no painel ou em uma etapa futura).
-- Mapear campos JSONB (`atributos`, `caracteristicas`, `schema_especificacoes`) nas telas.
-- Sincronizar `auth.users` ↔ `usuarios` via trigger.
-
-## Pergunta
-
-A chave anon é segura no front-end, mas a URL+anon ficam visíveis no bundle. Confirma que esse projeto Supabase tem **RLS habilitado** em todas as tabelas? Sem RLS, qualquer visitante com a anon key pode ler/escrever tudo.
+Aprova para eu implementar a Etapa 1?
