@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function Login() {
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
@@ -19,20 +21,15 @@ export default function Login() {
   const [cep, setCep] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { checkUserAuth } = useAuth();
 
   const resetSignupFields = () => {
-    setFullName('');
-    setCpf('');
-    setWhatsapp('');
-    setEndereco('');
-    setCidade('');
-    setEstado('');
-    setCep('');
+    setFullName(''); setCpf(''); setWhatsapp('');
+    setEndereco(''); setCidade(''); setEstado(''); setCep('');
   };
 
-  const toggleMode = () => {
-    setMode((currentMode) => (currentMode === 'signin' ? 'signup' : 'signin'));
-  };
+  const toggleMode = () => setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,7 +38,9 @@ export default function Login() {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        window.location.assign('/');
+        toast({ title: 'Bem-vindo de volta!' });
+        await checkUserAuth();
+        navigate('/', { replace: true });
       } else {
         const signupProfile = {
           nome_completo: fullName.trim(),
@@ -64,9 +63,10 @@ export default function Login() {
         });
         if (error) throw error;
 
-        let profileSyncFailed = false;
         const userId = data.user?.id || data.session?.user?.id;
-        if (userId) {
+        let profileSyncFailed = false;
+        if (userId && data.session) {
+          // Há sessão imediata (auto-confirm). Garantimos a linha na tabela usuarios.
           const { error: profileError } = await supabase.from('usuarios').upsert(
             {
               id: userId,
@@ -76,22 +76,30 @@ export default function Login() {
             },
             { onConflict: 'id' }
           );
-
           if (profileError) {
             profileSyncFailed = true;
             // eslint-disable-next-line no-console
-            console.warn('[login] perfil do usuário não pôde ser sincronizado:', profileError.message);
+            console.warn('[login] perfil não pôde ser sincronizado:', profileError.message);
           }
         }
 
-        toast({
-          title: 'Cadastro criado',
-          description: profileSyncFailed
-            ? 'A conta foi criada, mas o perfil ainda não pôde ser sincronizado com a tabela usuarios.'
-            : 'Verifique seu e-mail para confirmar.',
-        });
-        resetSignupFields();
-        setMode('signin');
+        if (data.session) {
+          toast({
+            title: 'Cadastro concluído',
+            description: profileSyncFailed
+              ? 'Conta criada, mas o perfil ainda precisa ser sincronizado.'
+              : 'Bem-vindo ao Clube da Bengala!',
+          });
+          await checkUserAuth();
+          navigate('/', { replace: true });
+        } else {
+          toast({
+            title: 'Cadastro criado',
+            description: 'Verifique seu e-mail para confirmar a conta antes de entrar.',
+          });
+          resetSignupFields();
+          setMode('signin');
+        }
       }
     } catch (err) {
       toast({
@@ -117,110 +125,45 @@ export default function Login() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Nome completo</Label>
-                  <Input
-                    id="fullName"
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Seu nome completo"
-                  />
+                  <Input id="fullName" type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome completo" />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF</Label>
-                    <Input
-                      id="cpf"
-                      type="text"
-                      required
-                      value={cpf}
-                      onChange={(e) => setCpf(e.target.value)}
-                      placeholder="000.000.000-00"
-                    />
+                    <Input id="cpf" type="text" required value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="whatsapp">WhatsApp</Label>
-                    <Input
-                      id="whatsapp"
-                      type="tel"
-                      required
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="(00) 00000-0000"
-                    />
+                    <Input id="whatsapp" type="tel" required value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(00) 00000-0000" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="endereco">Endereço</Label>
-                  <Input
-                    id="endereco"
-                    type="text"
-                    required
-                    value={endereco}
-                    onChange={(e) => setEndereco(e.target.value)}
-                    placeholder="Rua, número, bairro"
-                  />
+                  <Input id="endereco" type="text" required value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número, bairro" />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="cidade">Cidade</Label>
-                    <Input
-                      id="cidade"
-                      type="text"
-                      required
-                      value={cidade}
-                      onChange={(e) => setCidade(e.target.value)}
-                      placeholder="Cidade"
-                    />
+                    <Input id="cidade" type="text" required value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="estado">UF</Label>
-                    <Input
-                      id="estado"
-                      type="text"
-                      required
-                      maxLength={2}
-                      value={estado}
-                      onChange={(e) => setEstado(e.target.value)}
-                      placeholder="SP"
-                    />
+                    <Input id="estado" type="text" required maxLength={2} value={estado} onChange={(e) => setEstado(e.target.value)} placeholder="SP" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cep">CEP</Label>
-                  <Input
-                    id="cep"
-                    type="text"
-                    required
-                    value={cep}
-                    onChange={(e) => setCep(e.target.value)}
-                    placeholder="00000-000"
-                  />
+                  <Input id="cep" type="text" required value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" />
                 </div>
               </>
             )}
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seuemail@exemplo.com"
-              />
+              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seuemail@exemplo.com" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo de 6 caracteres"
-              />
+              <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo de 6 caracteres" />
             </div>
             {mode === 'signup' && (
               <p className="text-xs text-slate-500 leading-relaxed">

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const AuthContext = createContext(null);
@@ -7,73 +7,78 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const mountedRef = useRef(true);
 
-  const loadProfile = useCallback(async (userId) => {
+  const loadProfile = useCallback(async (userId, userEmail) => {
     if (!userId) {
       setProfile(null);
+      setAuthError(null);
       return;
     }
-    const { data: authUser } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
+
     if (error) {
       // eslint-disable-next-line no-console
       console.warn('[auth] erro carregando perfil:', error.message);
-    }
-    if (data) {
-      setProfile(data);
+      setAuthError({ type: 'profile_error', message: error.message });
+      setProfile(null);
       return;
     }
 
-    const metadata = authUser?.user?.user_metadata || {};
-    if (Object.keys(metadata).length > 0) {
-      setProfile({
-        id: userId,
-        email: authUser?.user?.email || '',
-        nome_completo: metadata.nome_completo || metadata.full_name || '',
-        nome: metadata.nome || metadata.full_name || metadata.nome_completo || '',
-        papel: metadata.papel || 'solicitante',
-        cpf: metadata.cpf || '',
-        whatsapp: metadata.whatsapp || '',
-        endereco: metadata.endereco || '',
-        cidade: metadata.cidade || '',
-        estado: metadata.estado || '',
-        cep: metadata.cep || '',
-      });
+    if (!data) {
+      setProfile(null);
+      setAuthError({ type: 'user_not_registered', email: userEmail });
       return;
     }
 
-    setProfile(null);
+    setProfile(data);
+    setAuthError(null);
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
+  const checkUserAuth = useCallback(async () => {
+    setIsLoadingAuth(true);
+    const { data: { session: s } } = await supabase.auth.getSession();
+    setSession(s);
+    await loadProfile(s?.user?.id, s?.user?.email);
+    if (mountedRef.current) {
+      setIsLoadingAuth(false);
+      setAuthChecked(true);
+    }
+  }, [loadProfile]);
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!mounted) return;
-      setSession(s);
-      loadProfile(s?.user?.id).finally(() => mounted && setIsLoadingAuth(false));
-    });
+  const refreshProfile = useCallback(async () => {
+    if (!session?.user?.id) return;
+    await loadProfile(session.user.id, session.user.email);
+  }, [loadProfile, session]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    checkUserAuth();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      loadProfile(s?.user?.id);
+      loadProfile(s?.user?.id, s?.user?.email);
     });
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       sub.subscription.unsubscribe();
     };
-  }, [loadProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
+    setAuthError(null);
   }, []);
 
   const navigateToLogin = useCallback(() => {
@@ -82,26 +87,33 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const role = profile?.papel || null;
+
   const user = session?.user
     ? {
         id: session.user.id,
         email: session.user.email,
         full_name: profile?.nome_completo || profile?.nome || session.user.email,
-        role: profile?.papel || 'solicitante',
+        role,
         ...profile,
       }
     : null;
 
   const value = {
-    user,
     session,
-    isAuthenticated: !!session,
+    user,
+    profile,
+    role,
+    isAuthenticated: !!session && !!profile,
     isLoadingAuth,
     isLoadingPublicSettings: false,
+    authChecked,
     authError,
     appPublicSettings: null,
     logout,
     navigateToLogin,
+    checkUserAuth,
+    refreshProfile,
     checkAppState: () => {},
     setAuthError,
   };
