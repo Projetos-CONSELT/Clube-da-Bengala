@@ -106,3 +106,97 @@ export function useUpdateSolicitacao() {
     },
   });
 }
+
+export function useBeneficiariosQuery() {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
+    queryKey: ['beneficiarios'],
+    enabled: isAuthenticated,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('beneficiarios')
+        .select('*')
+        .order('nome', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+function generateProtocolo() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const r = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `SOL-${y}${m}${d}-${r}`;
+}
+
+export function useCreateSolicitacao() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async ({ beneficiario_id, tipo_equipamento_id, observacoes }) => {
+      if (!user?.id) throw new Error('Usuário não autenticado.');
+      const payload = {
+        protocolo: generateProtocolo(),
+        solicitante_id: user.id,
+        beneficiario_id: beneficiario_id || null,
+        tipo_equipamento_id,
+        observacoes: observacoes || null,
+        status: 'nova',
+      };
+      const { data, error } = await supabase
+        .from('solicitacoes')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: SOLICITACOES_KEY }),
+  });
+}
+
+export function useDeleteSolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase.from('solicitacoes').delete().eq('id', id);
+      if (error) throw error;
+      return id;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: SOLICITACOES_KEY }),
+  });
+}
+
+export function useReservarEquipamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ solicitacaoId, equipamentoId }) => {
+      const agora = new Date();
+      const limite = new Date(agora.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const { error: e1 } = await supabase
+        .from('solicitacoes')
+        .update({
+          status: 'reservado',
+          equipamento_reservado_id: equipamentoId,
+          data_reserva: agora.toISOString(),
+          data_limite_retirada: limite.toISOString(),
+        })
+        .eq('id', solicitacaoId);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from('equipamentos')
+        .update({ status: 'reservado' })
+        .eq('id', equipamentoId);
+      if (e2) throw e2;
+      return true;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: SOLICITACOES_KEY });
+      qc.invalidateQueries({ queryKey: ['equipamentos'] });
+    },
+  });
+}
+

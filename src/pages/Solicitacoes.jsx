@@ -1,377 +1,244 @@
-import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
-import { 
-  Search, 
-  Plus, 
-  Filter,
-  MoreVertical,
-  FileText,
-  User,
-  Package,
-  Calendar,
-  Loader2,
-  Eye,
-  Edit,
-  Trash2,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  XCircle,
-  ArrowRight,
-  ChevronDown,
-  RefreshCw
+import React, { useMemo, useState } from 'react';
+import {
+  Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
+  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/lib/AuthContext';
+import {
+  useSolicitacoesQuery,
+  useTiposEquipamentoQuery,
+  useEquipamentosQuery,
+  useBeneficiariosQuery,
+  useCreateSolicitacao,
+  useUpdateSolicitacao,
+  useDeleteSolicitacao,
+  useReservarEquipamento,
+} from '@/hooks/useSolicitacoes';
 import moment from 'moment';
 import 'moment/locale/pt-br';
 
 moment.locale('pt-br');
 
+const BACK_OFFICE = ['gerente', 'coordenador', 'atendente'];
+
+const STATUS_CONFIG = {
+  nova: { label: 'Nova', className: 'bg-blue-100 text-blue-700' },
+  em_triagem: { label: 'Em Triagem', className: 'bg-yellow-100 text-yellow-700' },
+  pendente_documentos: { label: 'Pendente', className: 'bg-orange-100 text-orange-700' },
+  em_fila: { label: 'Em Fila', className: 'bg-purple-100 text-purple-700' },
+  reservado: { label: 'Reservado', className: 'bg-cyan-100 text-cyan-700' },
+  liberado_retirada: { label: 'Liberado', className: 'bg-green-100 text-green-700' },
+  concluida: { label: 'Concluída', className: 'bg-emerald-100 text-emerald-700' },
+  cancelada: { label: 'Cancelada', className: 'bg-red-100 text-red-700' },
+};
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || { label: status, className: 'bg-gray-100 text-gray-700' };
+  return <Badge className={cfg.className}>{cfg.label}</Badge>;
+}
+
+const solicitanteName = (s) =>
+  s?.solicitante?.nome_completo || s?.solicitante?.nome || s?.solicitante?.email || '—';
+const beneficiarioName = (s) => s?.beneficiario?.nome || 'Mesmo responsável';
+const tipoName = (s) => s?.tipo?.nome || '—';
+
 export default function Solicitacoes() {
-  const [loading, setLoading] = useState(true);
-  const [solicitacoes, setSolicitacoes] = useState([]);
-  const [filteredSolicitacoes, setFilteredSolicitacoes] = useState([]);
-  const [pessoas, setPessoas] = useState([]);
-  const [tiposEquipamento, setTiposEquipamento] = useState([]);
-  const [equipamentos, setEquipamentos] = useState([]);
-  
+  const { toast } = useToast();
+  const { role, user } = useAuth();
+  const isBackOffice = BACK_OFFICE.includes(role);
+
+  const solicitacoesQuery = useSolicitacoesQuery();
+  const tiposQuery = useTiposEquipamentoQuery();
+  const equipamentosQuery = useEquipamentosQuery();
+  const beneficiariosQuery = useBeneficiariosQuery();
+
+  const createMutation = useCreateSolicitacao();
+  const updateMutation = useUpdateSolicitacao();
+  const deleteMutation = useDeleteSolicitacao();
+  const reservarMutation = useReservarEquipamento();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
-  
+
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [triageModalOpen, setTriageModalOpen] = useState(false);
   const [reserveModalOpen, setReserveModalOpen] = useState(false);
-  
-  const [selectedSolicitacao, setSelectedSolicitacao] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
 
+  const [selected, setSelected] = useState(null);
   const [formData, setFormData] = useState({
-    responsavel_id: '',
     beneficiario_id: '',
     tipo_equipamento_id: '',
     observacoes: '',
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const solicitacoes = solicitacoesQuery.data ?? [];
+  const tipos = tiposQuery.data ?? [];
+  const equipamentos = equipamentosQuery.data ?? [];
+  const beneficiarios = beneficiariosQuery.data ?? [];
 
-  useEffect(() => {
-    filterSolicitacoes();
-  }, [solicitacoes, searchTerm, statusFilter, tipoFilter]);
-
-  const loadData = async () => {
-    try {
-      const [solicitacoesData, pessoasData, tiposData, equipamentosData] = await Promise.all([
-        base44.entities.Solicitacao.list('-created_date'),
-        base44.entities.Pessoa.list(),
-        base44.entities.TipoEquipamento.list(),
-        base44.entities.Equipamento.list(),
-      ]);
-      setSolicitacoes(solicitacoesData);
-      setPessoas(pessoasData);
-      setTiposEquipamento(tiposData);
-      setEquipamentos(equipamentosData);
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterSolicitacoes = () => {
-    let filtered = [...solicitacoes];
-
+  const filtered = useMemo(() => {
+    let list = [...solicitacoes];
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(s => 
-        s.protocolo?.toLowerCase().includes(term) ||
-        s.responsavel_nome?.toLowerCase().includes(term) ||
-        s.beneficiario_nome?.toLowerCase().includes(term)
+      const t = searchTerm.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.protocolo?.toLowerCase().includes(t) ||
+          solicitanteName(s).toLowerCase().includes(t) ||
+          beneficiarioName(s).toLowerCase().includes(t)
       );
     }
+    if (statusFilter !== 'todos') list = list.filter((s) => s.status === statusFilter);
+    if (tipoFilter !== 'todos') list = list.filter((s) => s.tipo_equipamento_id === tipoFilter);
+    return list;
+  }, [solicitacoes, searchTerm, statusFilter, tipoFilter]);
 
-    if (statusFilter !== 'todos') {
-      filtered = filtered.filter(s => s.status === statusFilter);
-    }
-
-    if (tipoFilter !== 'todos') {
-      filtered = filtered.filter(s => s.tipo_equipamento_id === tipoFilter);
-    }
-
-    setFilteredSolicitacoes(filtered);
-  };
-
-  const generateProtocolo = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `SOL-${year}${month}${day}-${random}`;
-  };
+  const counts = useMemo(
+    () => ({
+      nova: solicitacoes.filter((s) => s.status === 'nova').length,
+      em_triagem: solicitacoes.filter((s) => s.status === 'em_triagem').length,
+      em_fila: solicitacoes.filter((s) => s.status === 'em_fila').length,
+      reservado: solicitacoes.filter((s) => s.status === 'reservado').length,
+    }),
+    [solicitacoes]
+  );
 
   const openNewModal = () => {
-    setFormData({
-      responsavel_id: '',
-      beneficiario_id: '',
-      tipo_equipamento_id: '',
-      observacoes: '',
-    });
-    setIsEditing(false);
-    setSelectedSolicitacao(null);
+    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', observacoes: '' });
     setModalOpen(true);
   };
 
-  const openDetailModal = (solicitacao) => {
-    setSelectedSolicitacao(solicitacao);
-    setDetailModalOpen(true);
+  const handleCreate = () => {
+    if (!formData.tipo_equipamento_id) return;
+    createMutation.mutate(formData, {
+      onSuccess: () => {
+        toast({ title: 'Solicitação criada' });
+        setModalOpen(false);
+      },
+      onError: (err) =>
+        toast({ variant: 'destructive', title: 'Erro ao criar', description: err.message }),
+    });
   };
 
-  const openTriageModal = (solicitacao) => {
-    setSelectedSolicitacao(solicitacao);
-    setTriageModalOpen(true);
+  const updateStatus = (sol, newStatus, motivo) => {
+    updateMutation.mutate(
+      { id: sol.id, patch: { status: newStatus, ...(motivo ? { motivo_status: motivo } : {}) } },
+      {
+        onSuccess: () => {
+          toast({ title: `Status atualizado: ${STATUS_CONFIG[newStatus]?.label || newStatus}` });
+          setTriageModalOpen(false);
+        },
+        onError: (err) =>
+          toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+      }
+    );
   };
 
-  const openReserveModal = (solicitacao) => {
-    setSelectedSolicitacao(solicitacao);
-    setReserveModalOpen(true);
+  const handleReserve = (equipamentoId) => {
+    if (!selected) return;
+    reservarMutation.mutate(
+      { solicitacaoId: selected.id, equipamentoId },
+      {
+        onSuccess: () => {
+          toast({ title: 'Equipamento reservado' });
+          setReserveModalOpen(false);
+        },
+        onError: (err) =>
+          toast({ variant: 'destructive', title: 'Erro ao reservar', description: err.message }),
+      }
+    );
   };
 
-  const handleSave = async () => {
-    if (!formData.responsavel_id || !formData.tipo_equipamento_id) return;
-    
-    setSaving(true);
-    try {
-      const responsavel = pessoas.find(p => p.id === formData.responsavel_id);
-      const beneficiario = formData.beneficiario_id ? pessoas.find(p => p.id === formData.beneficiario_id) : null;
-      const tipo = tiposEquipamento.find(t => t.id === formData.tipo_equipamento_id);
-
-      const data = {
-        ...formData,
-        protocolo: generateProtocolo(),
-        responsavel_nome: responsavel?.nome,
-        beneficiario_nome: beneficiario?.nome,
-        tipo_equipamento_nome: tipo?.nome,
-        status: 'nova',
-        historico: [{
-          acao: 'Solicitação criada',
-          data: new Date().toISOString(),
-          usuario: 'Sistema',
-        }]
-      };
-
-      await base44.entities.Solicitacao.create(data);
-      await loadData();
-      setModalOpen(false);
-    } catch (error) {
-      console.error('Erro ao salvar solicitação:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const updateStatus = async (solicitacao, newStatus, motivo = '') => {
-    setSaving(true);
-    try {
-      const historico = solicitacao.historico || [];
-      historico.push({
-        acao: `Status alterado para: ${newStatus}`,
-        data: new Date().toISOString(),
-        usuario: 'Atendente',
-        detalhes: motivo,
-      });
-
-      await base44.entities.Solicitacao.update(solicitacao.id, {
-        status: newStatus,
-        motivo_status: motivo,
-        historico,
-      });
-      
-      await loadData();
-      setTriageModalOpen(false);
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReserve = async (equipamentoId) => {
-    if (!selectedSolicitacao) return;
-    
-    setSaving(true);
-    try {
-      const equipamento = equipamentos.find(e => e.id === equipamentoId);
-      const dataLimite = moment().add(7, 'days').toISOString();
-
-      // Atualizar solicitação
-      const historico = selectedSolicitacao.historico || [];
-      historico.push({
-        acao: 'Equipamento reservado',
-        data: new Date().toISOString(),
-        usuario: 'Atendente',
-        detalhes: `Equipamento: ${equipamento?.codigo}`,
-      });
-
-      await base44.entities.Solicitacao.update(selectedSolicitacao.id, {
-        status: 'reservado',
-        equipamento_reservado_id: equipamentoId,
-        data_reserva: new Date().toISOString(),
-        data_limite_retirada: dataLimite,
-        historico,
-      });
-
-      // Atualizar equipamento
-      await base44.entities.Equipamento.update(equipamentoId, {
-        status: 'reservado',
-      });
-
-      await loadData();
-      setReserveModalOpen(false);
-    } catch (error) {
-      console.error('Erro ao reservar equipamento:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (solicitacao) => {
+  const handleDelete = (sol) => {
     if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
-    
-    try {
-      await base44.entities.Solicitacao.delete(solicitacao.id);
-      await loadData();
-    } catch (error) {
-      console.error('Erro ao excluir solicitação:', error);
-    }
+    deleteMutation.mutate(sol.id, {
+      onSuccess: () => toast({ title: 'Solicitação excluída' }),
+      onError: (err) =>
+        toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message }),
+    });
   };
 
-  const getStatusConfig = (status) => {
-    const config = {
-      nova: { label: 'Nova', className: 'bg-blue-100 text-blue-700', icon: Plus },
-      em_triagem: { label: 'Em Triagem', className: 'bg-yellow-100 text-yellow-700', icon: Clock },
-      pendente_documentos: { label: 'Pendente', className: 'bg-orange-100 text-orange-700', icon: AlertCircle },
-      em_fila: { label: 'Em Fila', className: 'bg-purple-100 text-purple-700', icon: Clock },
-      reservado: { label: 'Reservado', className: 'bg-cyan-100 text-cyan-700', icon: Package },
-      liberado_retirada: { label: 'Liberado', className: 'bg-green-100 text-green-700', icon: CheckCircle },
-      concluida: { label: 'Concluída', className: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-      cancelada: { label: 'Cancelada', className: 'bg-red-100 text-red-700', icon: XCircle },
-    };
-    return config[status] || { label: status, className: 'bg-gray-100 text-gray-700', icon: FileText };
+  const handleRefresh = () => {
+    solicitacoesQuery.refetch();
+    equipamentosQuery.refetch();
   };
 
-  const getStatusBadge = (status) => {
-    const config = getStatusConfig(status);
-    return <Badge className={config.className}>{config.label}</Badge>;
-  };
-
-  // Contadores por status
-  const statusCounts = {
-    nova: solicitacoes.filter(s => s.status === 'nova').length,
-    em_triagem: solicitacoes.filter(s => s.status === 'em_triagem').length,
-    em_fila: solicitacoes.filter(s => s.status === 'em_fila').length,
-    reservado: solicitacoes.filter(s => s.status === 'reservado').length,
-  };
-
-  if (loading) {
+  if (solicitacoesQuery.isLoading || tiposQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+        <Skeleton className="h-96" />
       </div>
     );
   }
 
+  if (solicitacoesQuery.isError) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="w-10 h-10 mx-auto mb-3 text-red-500" />
+          <p className="text-slate-700 font-medium">Não foi possível carregar as solicitações.</p>
+          <p className="text-sm text-slate-500 mb-4">{solicitacoesQuery.error?.message}</p>
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="w-4 h-4 mr-2" /> Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const kpiCards = [
+    { key: 'nova', label: 'Novas', value: counts.nova, color: 'blue', icon: Plus },
+    { key: 'em_triagem', label: 'Em Triagem', value: counts.em_triagem, color: 'yellow', icon: Clock },
+    { key: 'em_fila', label: 'Em Fila', value: counts.em_fila, color: 'purple', icon: Clock },
+    { key: 'reservado', label: 'Reservados', value: counts.reservado, color: 'cyan', icon: Package },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* KPIs de Status */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter('nova')}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Novas</p>
-                <p className="text-2xl font-bold text-blue-600">{statusCounts.nova}</p>
+        {kpiCards.map(({ key, label, value, color, icon: Icon }) => (
+          <Card
+            key={key}
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => setStatusFilter(key)}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">{label}</p>
+                  <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
+                </div>
+                <div className={`w-10 h-10 rounded-lg bg-${color}-100 flex items-center justify-center`}>
+                  <Icon className={`w-5 h-5 text-${color}-600`} />
+                </div>
               </div>
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Plus className="w-5 h-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter('em_triagem')}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Em Triagem</p>
-                <p className="text-2xl font-bold text-yellow-600">{statusCounts.em_triagem}</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter('em_fila')}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Em Fila</p>
-                <p className="text-2xl font-bold text-purple-600">{statusCounts.em_fila}</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setStatusFilter('reservado')}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Reservados</p>
-                <p className="text-2xl font-bold text-cyan-600">{statusCounts.reservado}</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-cyan-100 flex items-center justify-center">
-                <Package className="w-5 h-5 text-cyan-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Filtros e Ações */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -382,54 +249,46 @@ export default function Solicitacoes() {
             className="pl-10"
           />
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="nova">Nova</SelectItem>
-              <SelectItem value="em_triagem">Em Triagem</SelectItem>
-              <SelectItem value="pendente_documentos">Pendente</SelectItem>
-              <SelectItem value="em_fila">Em Fila</SelectItem>
-              <SelectItem value="reservado">Reservado</SelectItem>
-              <SelectItem value="liberado_retirada">Liberado</SelectItem>
-              <SelectItem value="concluida">Concluída</SelectItem>
-              <SelectItem value="cancelada">Cancelada</SelectItem>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={tipoFilter} onValueChange={setTipoFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Tipo" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os tipos</SelectItem>
-              {tiposEquipamento.map(tipo => (
+              {tipos.map((tipo) => (
                 <SelectItem key={tipo.id} value={tipo.id}>{tipo.nome}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={handleRefresh} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${solicitacoesQuery.isFetching ? 'animate-spin' : ''}`} />
+          </Button>
           <Button onClick={openNewModal} className="gap-2 bg-blue-600 hover:bg-blue-700">
-            <Plus className="w-4 h-4" />
-            Nova Solicitação
+            <Plus className="w-4 h-4" /> Nova Solicitação
           </Button>
         </div>
       </div>
 
-      {/* Lista */}
       <Card>
         <CardContent className="p-0">
-          {filteredSolicitacoes.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>Nenhuma solicitação encontrada</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {filteredSolicitacoes.map((solicitacao) => (
-                <div 
-                  key={solicitacao.id} 
+              {filtered.map((s) => (
+                <div
+                  key={s.id}
                   className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
@@ -438,40 +297,42 @@ export default function Solicitacoes() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-slate-900">#{solicitacao.protocolo}</p>
-                        {getStatusBadge(solicitacao.status)}
+                        <p className="font-semibold text-slate-900">
+                          #{s.protocolo || s.id.slice(0, 8)}
+                        </p>
+                        <StatusBadge status={s.status} />
                       </div>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <User className="w-3 h-3" />
-                          {solicitacao.responsavel_nome || 'Responsável'}
+                          {solicitanteName(s)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Package className="w-3 h-3" />
-                          {solicitacao.tipo_equipamento_nome || 'Equipamento'}
+                          {tipoName(s)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {moment(solicitacao.created_date).format('DD/MM/YYYY')}
+                          {moment(s.created_at || s.created_date).format('DD/MM/YYYY')}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {solicitacao.status === 'nova' && (
-                      <Button 
-                        variant="outline" 
+                    {isBackOffice && s.status === 'nova' && (
+                      <Button
+                        variant="outline"
                         size="sm"
-                        onClick={() => openTriageModal(solicitacao)}
+                        onClick={() => { setSelected(s); setTriageModalOpen(true); }}
                       >
                         Iniciar Triagem
                       </Button>
                     )}
-                    {solicitacao.status === 'em_fila' && (
-                      <Button 
-                        variant="outline" 
+                    {isBackOffice && s.status === 'em_fila' && (
+                      <Button
+                        variant="outline"
                         size="sm"
-                        onClick={() => openReserveModal(solicitacao)}
+                        onClick={() => { setSelected(s); setReserveModalOpen(true); }}
                       >
                         Reservar
                       </Button>
@@ -483,22 +344,25 @@ export default function Solicitacoes() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openDetailModal(solicitacao)}>
-                          <Eye className="w-4 h-4 mr-2" />
-                          Visualizar
+                        <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
+                          <Eye className="w-4 h-4 mr-2" /> Visualizar
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openTriageModal(solicitacao)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Triar
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(solicitacao)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
+                        {isBackOffice && (
+                          <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
+                            <Edit className="w-4 h-4 mr-2" /> Triar
+                          </DropdownMenuItem>
+                        )}
+                        {(isBackOffice || s.solicitante_id === user?.id) && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(s)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -509,155 +373,141 @@ export default function Solicitacoes() {
         </CardContent>
       </Card>
 
-      {/* Modal Nova Solicitação */}
+      {/* Nova Solicitação */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Nova Solicitação</DialogTitle>
-            <DialogDescription>
-              Preencha os dados para criar uma nova solicitação
-            </DialogDescription>
+            <DialogDescription>Preencha os dados para criar uma solicitação</DialogDescription>
           </DialogHeader>
-          
           <div className="space-y-4 py-4">
             <div>
-              <Label>Responsável *</Label>
-              <Select 
-                value={formData.responsavel_id} 
-                onValueChange={(v) => setFormData({ ...formData, responsavel_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o responsável" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pessoas.filter(p => p.papeis?.includes('responsavel')).map(pessoa => (
-                    <SelectItem key={pessoa.id} value={pessoa.id}>{pessoa.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
               <Label>Beneficiário (opcional)</Label>
-              <Select 
-                value={formData.beneficiario_id} 
-                onValueChange={(v) => setFormData({ ...formData, beneficiario_id: v })}
+              <Select
+                value={formData.beneficiario_id || 'none'}
+                onValueChange={(v) =>
+                  setFormData({ ...formData, beneficiario_id: v === 'none' ? '' : v })
+                }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione o beneficiário" />
+                  <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={null}>Nenhum (mesmo responsável)</SelectItem>
-                  {pessoas.filter(p => p.papeis?.includes('beneficiario')).map(pessoa => (
-                    <SelectItem key={pessoa.id} value={pessoa.id}>{pessoa.nome}</SelectItem>
+                  <SelectItem value="none">Nenhum (mesmo responsável)</SelectItem>
+                  {beneficiarios.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div>
               <Label>Tipo de Equipamento *</Label>
-              <Select 
-                value={formData.tipo_equipamento_id} 
+              <Select
+                value={formData.tipo_equipamento_id}
                 onValueChange={(v) => setFormData({ ...formData, tipo_equipamento_id: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o tipo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {tiposEquipamento.map(tipo => (
-                    <SelectItem key={tipo.id} value={tipo.id}>{tipo.nome}</SelectItem>
+                  {tipos.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div>
               <Label>Observações</Label>
               <Textarea
                 value={formData.observacoes}
                 onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                placeholder="Observações sobre a solicitação..."
+                placeholder="Observações..."
               />
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleSave} 
-              disabled={saving || !formData.responsavel_id || !formData.tipo_equipamento_id}
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending || !formData.tipo_equipamento_id}
             >
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Criar Solicitação
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Detalhes */}
+      {/* Detalhes */}
       <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              Solicitação #{selectedSolicitacao?.protocolo}
-              {selectedSolicitacao && getStatusBadge(selectedSolicitacao.status)}
+              Solicitação #{selected?.protocolo || selected?.id?.slice(0, 8)}
+              {selected && <StatusBadge status={selected.status} />}
             </DialogTitle>
           </DialogHeader>
-          
-          {selectedSolicitacao && (
+          {selected && (
             <Tabs defaultValue="dados" className="mt-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
                 <TabsTrigger value="historico">Histórico</TabsTrigger>
               </TabsList>
-              
               <TabsContent value="dados" className="space-y-4 mt-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-slate-500">Responsável</p>
-                    <p className="font-medium">{selectedSolicitacao.responsavel_nome || '-'}</p>
+                    <p className="text-sm text-slate-500">Solicitante</p>
+                    <p className="font-medium">{solicitanteName(selected)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Beneficiário</p>
-                    <p className="font-medium">{selectedSolicitacao.beneficiario_nome || 'Mesmo responsável'}</p>
+                    <p className="font-medium">{beneficiarioName(selected)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Tipo de Equipamento</p>
-                    <p className="font-medium">{selectedSolicitacao.tipo_equipamento_nome || '-'}</p>
+                    <p className="font-medium">{tipoName(selected)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Data da Solicitação</p>
-                    <p className="font-medium">{moment(selectedSolicitacao.created_date).format('DD/MM/YYYY HH:mm')}</p>
+                    <p className="font-medium">
+                      {moment(selected.created_at || selected.created_date).format('DD/MM/YYYY HH:mm')}
+                    </p>
                   </div>
-                  {selectedSolicitacao.data_reserva && (
+                  {selected.data_reserva && (
                     <>
                       <div>
                         <p className="text-sm text-slate-500">Data da Reserva</p>
-                        <p className="font-medium">{moment(selectedSolicitacao.data_reserva).format('DD/MM/YYYY')}</p>
+                        <p className="font-medium">
+                          {moment(selected.data_reserva).format('DD/MM/YYYY')}
+                        </p>
                       </div>
                       <div>
                         <p className="text-sm text-slate-500">Limite para Retirada</p>
-                        <p className="font-medium">{moment(selectedSolicitacao.data_limite_retirada).format('DD/MM/YYYY')}</p>
+                        <p className="font-medium">
+                          {moment(selected.data_limite_retirada).format('DD/MM/YYYY')}
+                        </p>
                       </div>
                     </>
                   )}
-                  {selectedSolicitacao.observacoes && (
+                  {selected.observacoes && (
                     <div className="col-span-2">
                       <p className="text-sm text-slate-500">Observações</p>
-                      <p className="font-medium">{selectedSolicitacao.observacoes}</p>
+                      <p className="font-medium">{selected.observacoes}</p>
+                    </div>
+                  )}
+                  {selected.motivo_status && (
+                    <div className="col-span-2">
+                      <p className="text-sm text-slate-500">Motivo do Status</p>
+                      <p className="font-medium">{selected.motivo_status}</p>
                     </div>
                   )}
                 </div>
               </TabsContent>
-              
               <TabsContent value="historico" className="mt-4">
-                {selectedSolicitacao.historico && selectedSolicitacao.historico.length > 0 ? (
+                {selected.historico && selected.historico.length > 0 ? (
                   <div className="space-y-3">
-                    {selectedSolicitacao.historico.map((item, index) => (
-                      <div key={index} className="flex gap-3 p-3 bg-slate-50 rounded-lg">
+                    {selected.historico.map((item, i) => (
+                      <div key={i} className="flex gap-3 p-3 bg-slate-50 rounded-lg">
                         <div className="w-2 h-2 rounded-full bg-blue-500 mt-2" />
                         <div>
                           <p className="font-medium text-sm">{item.acao}</p>
@@ -677,114 +527,105 @@ export default function Solicitacoes() {
               </TabsContent>
             </Tabs>
           )}
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailModalOpen(false)}>
-              Fechar
-            </Button>
+            <Button variant="outline" onClick={() => setDetailModalOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Triagem */}
+      {/* Triagem */}
       <Dialog open={triageModalOpen} onOpenChange={setTriageModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Triagem da Solicitação</DialogTitle>
-            <DialogDescription>
-              #{selectedSolicitacao?.protocolo}
-            </DialogDescription>
+            <DialogDescription>#{selected?.protocolo || selected?.id?.slice(0, 8)}</DialogDescription>
           </DialogHeader>
-          
           <div className="space-y-4 py-4">
-            <p className="text-sm text-slate-600">
-              Selecione a ação para esta solicitação:
-            </p>
+            <p className="text-sm text-slate-600">Selecione a ação para esta solicitação:</p>
             <div className="space-y-2">
-              <Button 
-                className="w-full justify-start gap-3" 
+              <Button
+                className="w-full justify-start gap-3"
                 variant="outline"
-                onClick={() => updateStatus(selectedSolicitacao, 'em_triagem')}
+                disabled={updateMutation.isPending}
+                onClick={() => updateStatus(selected, 'em_triagem')}
               >
-                <Clock className="w-4 h-4 text-yellow-600" />
-                Manter em Triagem
+                <Clock className="w-4 h-4 text-yellow-600" /> Manter em Triagem
               </Button>
-              <Button 
-                className="w-full justify-start gap-3" 
+              <Button
+                className="w-full justify-start gap-3"
                 variant="outline"
-                onClick={() => updateStatus(selectedSolicitacao, 'pendente_documentos', 'Aguardando documentos')}
+                disabled={updateMutation.isPending}
+                onClick={() => updateStatus(selected, 'pendente_documentos', 'Aguardando documentos')}
               >
-                <AlertCircle className="w-4 h-4 text-orange-600" />
-                Solicitar Documentos
+                <AlertCircle className="w-4 h-4 text-orange-600" /> Solicitar Documentos
               </Button>
-              <Button 
-                className="w-full justify-start gap-3" 
+              <Button
+                className="w-full justify-start gap-3"
                 variant="outline"
-                onClick={() => updateStatus(selectedSolicitacao, 'em_fila')}
+                disabled={updateMutation.isPending}
+                onClick={() => updateStatus(selected, 'em_fila')}
               >
-                <ArrowRight className="w-4 h-4 text-purple-600" />
-                Enviar para Fila
+                <ArrowRight className="w-4 h-4 text-purple-600" /> Enviar para Fila
               </Button>
-              <Button 
-                className="w-full justify-start gap-3 text-red-600" 
+              <Button
+                className="w-full justify-start gap-3 text-red-600"
                 variant="outline"
-                onClick={() => updateStatus(selectedSolicitacao, 'cancelada', 'Cancelado na triagem')}
+                disabled={updateMutation.isPending}
+                onClick={() => updateStatus(selected, 'cancelada', 'Cancelado na triagem')}
               >
-                <XCircle className="w-4 h-4" />
-                Cancelar Solicitação
+                <XCircle className="w-4 h-4" /> Cancelar Solicitação
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Reserva */}
+      {/* Reserva */}
       <Dialog open={reserveModalOpen} onOpenChange={setReserveModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Reservar Equipamento</DialogTitle>
-            <DialogDescription>
-              Selecione um equipamento disponível para reservar
-            </DialogDescription>
+            <DialogDescription>Selecione um equipamento disponível</DialogDescription>
           </DialogHeader>
-          
           <div className="py-4">
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {equipamentos
-                .filter(e => 
-                  e.status === 'disponivel' && 
-                  e.tipo_id === selectedSolicitacao?.tipo_equipamento_id
-                )
-                .map(equipamento => (
-                  <div 
-                    key={equipamento.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer"
-                    onClick={() => handleReserve(equipamento.id)}
+              {(() => {
+                const disp = equipamentos.filter(
+                  (e) =>
+                    e.status === 'disponivel' &&
+                    (e.tipo_id || e.tipo_equipamento_id) === selected?.tipo_equipamento_id
+                );
+                if (disp.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-slate-500">
+                      <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p>Nenhum equipamento disponível deste tipo</p>
+                    </div>
+                  );
+                }
+                return disp.map((eq) => (
+                  <div
+                    key={eq.id}
+                    className={`flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer ${
+                      reservarMutation.isPending ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                    onClick={() => handleReserve(eq.id)}
                   >
                     <div className="flex items-center gap-3">
                       <Package className="w-8 h-8 text-blue-600" />
                       <div>
-                        <p className="font-medium">{equipamento.codigo}</p>
-                        <p className="text-sm text-slate-500">{equipamento.tipo_nome}</p>
+                        <p className="font-medium">{eq.codigo}</p>
+                        <p className="text-sm text-slate-500">{eq.tipo?.nome || eq.tipo_nome || '—'}</p>
                       </div>
                     </div>
                     <Badge className="bg-emerald-100 text-emerald-700">Disponível</Badge>
                   </div>
-                ))
-              }
-              {equipamentos.filter(e => e.status === 'disponivel' && e.tipo_id === selectedSolicitacao?.tipo_equipamento_id).length === 0 && (
-                <div className="text-center py-8 text-slate-500">
-                  <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>Nenhum equipamento disponível deste tipo</p>
-                </div>
-              )}
+                ));
+              })()}
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReserveModalOpen(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setReserveModalOpen(false)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
