@@ -23,6 +23,7 @@ export type Database = {
           cep: string | null;
           is_inadimplente: boolean;
           created_at: string | null;
+          solicitacao_papel: string | null;
         };
         Insert: {
           id: string;
@@ -37,6 +38,7 @@ export type Database = {
           cep?: string | null;
           is_inadimplente?: boolean;
           created_at?: string | null;
+          solicitacao_papel?: string | null;
         };
         Update: {
           id?: string;
@@ -51,6 +53,7 @@ export type Database = {
           cep?: string | null;
           is_inadimplente?: boolean;
           created_at?: string | null;
+          solicitacao_papel?: string | null;
         };
         Relationships: [];
       };

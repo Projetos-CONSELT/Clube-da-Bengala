@@ -26,7 +26,9 @@ export default function Login() {
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
-  const [endereco, setEndereco] = useState('');
+  const [logradouro, setLogradouro] = useState('');
+  const [numero, setNumero] = useState('');
+  const [bairro, setBairro] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
@@ -39,13 +41,79 @@ export default function Login() {
     setFullName('');
     setCpf('');
     setWhatsapp('');
-    setEndereco('');
+    setLogradouro('');
+    setNumero('');
+    setBairro('');
     setCidade('');
     setEstado('');
     setCep('');
   };
 
   const toggleMode = () => setMode((current) => (current === 'signin' ? 'signup' : 'signin'));
+
+  const handleCpfChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    const formatted = digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    setCpf(formatted);
+  };
+
+  const handleWhatsappChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    let formatted = '';
+    if (digits.length <= 2) {
+      formatted = digits;
+    } else if (digits.length <= 6) {
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    } else if (digits.length <= 10) {
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    } else {
+      formatted = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+    }
+    setWhatsapp(formatted);
+  };
+
+  const fetchAddressFromCep = async (cleanCep: string) => {
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.erro) {
+        toast({
+          variant: 'destructive',
+          title: 'CEP não encontrado',
+          description: 'Por favor, preencha o endereço manualmente.',
+        });
+        return;
+      }
+      setLogradouro(data.logradouro || '');
+      setBairro(data.bairro || '');
+      setCidade(data.localidade || '');
+      setEstado(data.uf || '');
+      
+      // Auto focus the street number field
+      setTimeout(() => {
+        document.getElementById('numero')?.focus();
+      }, 50);
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+    }
+  };
+
+  const handleCepChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    const formatted = digits.replace(/(\d{5})(\d)/, '$1-$2');
+    setCep(formatted);
+
+    if (digits.length === 8) {
+      fetchAddressFromCep(digits);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -65,7 +133,7 @@ export default function Login() {
         nome_completo: fullName.trim(),
         cpf: cpf.trim(),
         whatsapp: whatsapp.trim(),
-        endereco: endereco.trim(),
+        endereco: `${logradouro.trim()}, ${numero.trim()} - ${bairro.trim()}`,
         cidade: cidade.trim(),
         estado: estado.trim().toUpperCase(),
         cep: cep.trim(),
@@ -166,8 +234,9 @@ export default function Login() {
                       type="text"
                       required
                       value={cpf}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => setCpf(event.target.value)}
+                      onChange={handleCpfChange}
                       placeholder="000.000.000-00"
+                      maxLength={14}
                     />
                   </div>
                   <div className="space-y-2">
@@ -177,20 +246,57 @@ export default function Login() {
                       type="tel"
                       required
                       value={whatsapp}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => setWhatsapp(event.target.value)}
+                      onChange={handleWhatsappChange}
                       placeholder="(00) 00000-0000"
+                      maxLength={15}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endereco">Endereço</Label>
+                  <Label htmlFor="cep">CEP</Label>
                   <Input
-                    id="endereco"
+                    id="cep"
                     type="text"
                     required
-                    value={endereco}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => setEndereco(event.target.value)}
-                    placeholder="Rua, número, bairro"
+                    value={cep}
+                    onChange={handleCepChange}
+                    placeholder="00000-000"
+                    maxLength={9}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-4">
+                  <div className="space-y-2 sm:col-span-3">
+                    <Label htmlFor="logradouro">Rua</Label>
+                    <Input
+                      id="logradouro"
+                      type="text"
+                      required
+                      value={logradouro}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => setLogradouro(event.target.value)}
+                      placeholder="Nome da rua"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="numero">Número</Label>
+                    <Input
+                      id="numero"
+                      type="text"
+                      required
+                      value={numero}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => setNumero(event.target.value)}
+                      placeholder="Nº"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bairro">Bairro</Label>
+                  <Input
+                    id="bairro"
+                    type="text"
+                    required
+                    value={bairro}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setBairro(event.target.value)}
+                    placeholder="Bairro"
                   />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
@@ -217,17 +323,6 @@ export default function Login() {
                       placeholder="SP"
                     />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cep">CEP</Label>
-                  <Input
-                    id="cep"
-                    type="text"
-                    required
-                    value={cep}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) => setCep(event.target.value)}
-                    placeholder="00000-000"
-                  />
                 </div>
               </>
             )}

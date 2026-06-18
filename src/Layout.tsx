@@ -32,6 +32,11 @@ import {
 import { isBackOfficeRole } from '@/types/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/lib/supabase';
 
 interface LayoutProps {
   children: ReactNode;
@@ -61,9 +66,63 @@ const navigation: NavItem[] = [
   { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true },
 ];
 
+const roleBadgeStyles: Record<string, string> = {
+  gerente: 'bg-purple-50 text-purple-700 border-purple-200',
+  coordenador: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  atendente: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  solicitante: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+const getRoleLabel = (r: string | undefined | null) => {
+  switch (r) {
+    case 'gerente':
+      return 'Gerente';
+    case 'coordenador':
+      return 'Coordenador';
+    case 'atendente':
+      return 'Atendente';
+    case 'solicitante':
+      return 'Solicitante';
+    default:
+      return 'Usuário';
+  }
+};
+
 export default function Layout({ children, currentPageName }: LayoutProps) {
-  const { user, profile, isLoadingAuth, logout, role } = useAuth();
+  const { user, profile, isLoadingAuth, logout, role, refreshProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [roleRequestModalOpen, setRoleRequestModalOpen] = useState(false);
+  const [requestedRole, setRequestedRole] = useState<string>('atendente');
+  const [submittingRoleRequest, setSubmittingRoleRequest] = useState(false);
+  const { toast } = useToast();
+
+  const handleRequestRole = async () => {
+    if (!user?.id) return;
+    setSubmittingRoleRequest(true);
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({ solicitacao_papel: requestedRole })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: 'Solicitação enviada',
+        description: `Sua solicitação para o cargo de ${getRoleLabel(requestedRole)} foi enviada para análise.`,
+      });
+      setRoleRequestModalOpen(false);
+      void refreshProfile();
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao enviar solicitação',
+        description: err.message || 'Houve um erro desconhecido.',
+      });
+    } finally {
+      setSubmittingRoleRequest(false);
+    }
+  };
 
   const visibleNav = navigation.filter((item) => !item.backOfficeOnly || isBackOfficeRole(role));
 
@@ -194,9 +253,12 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-2 py-2">
+                  <div className="px-2 py-2 flex flex-col gap-1">
                     <p className="text-sm font-medium">{displayName}</p>
                     <p className="text-xs text-slate-500">{displayEmail}</p>
+                    <span className={`inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold border ${roleBadgeStyles[role || ''] || 'bg-slate-100 text-slate-700 border-slate-200'} mt-1`}>
+                      {getRoleLabel(role)}
+                    </span>
                   </div>
                   <DropdownMenuSeparator />
                   {role === 'gerente' && (
@@ -206,6 +268,15 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                           <Settings className="w-4 h-4 mr-2" />
                           Configurações
                         </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {role !== 'gerente' && (
+                    <>
+                      <DropdownMenuItem onClick={() => setRoleRequestModalOpen(true)} className="cursor-pointer">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Solicitar novo cargo
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                     </>
@@ -222,6 +293,55 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
 
         <main className="p-4 lg:p-8">{children}</main>
       </div>
+
+      <Dialog open={roleRequestModalOpen} onOpenChange={setRoleRequestModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Solicitar Alteração de Cargo</DialogTitle>
+            <DialogDescription>
+              Selecione o cargo que deseja solicitar. A alteração será enviada para análise de um administrador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="requested-role">Cargo solicitado</Label>
+              <Select
+                value={requestedRole}
+                onValueChange={setRequestedRole}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="coordenador">Coordenador</SelectItem>
+                  <SelectItem value="atendente">Atendente</SelectItem>
+                  <SelectItem value="solicitante">Solicitante</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {profile?.solicitacao_papel && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 p-2 rounded">
+                Você já possui uma solicitação pendente para: <span className="font-semibold capitalize">{getRoleLabel(profile.solicitacao_papel)}</span>. Enviar uma nova substituirá a anterior.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRoleRequestModalOpen(false)}
+              disabled={submittingRoleRequest}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleRequestRole}
+              disabled={submittingRoleRequest}
+            >
+              {submittingRoleRequest ? 'Enviando...' : 'Solicitar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

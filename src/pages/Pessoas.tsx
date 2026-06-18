@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUsuariosQuery, useUpdateUsuarioPapel } from '@/hooks/useUsuarios';
+import { useUsuariosQuery, useUpdateUsuarioPapel, useUpdateUsuario } from '@/hooks/useUsuarios';
 import {
   useBeneficiariosQuery,
   useCreateBeneficiario,
@@ -22,7 +22,9 @@ export default function Pessoas() {
   const usuariosQuery = useUsuariosQuery();
   const beneficiariosQuery = useBeneficiariosQuery();
   const updatePapel = useUpdateUsuarioPapel();
+  const updateUsuario = useUpdateUsuario();
   const createBenef = useCreateBeneficiario();
+  const [searchTerm, setSearchTerm] = useState('');
   const updateBenef = useUpdateBeneficiario();
   const deleteBenef = useDeleteBeneficiario();
 
@@ -69,36 +71,126 @@ export default function Pessoas() {
           <TabsTrigger value="beneficiarios">Beneficiários</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="usuarios" className="mt-4">
+        <TabsContent value="usuarios" className="mt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Pesquisar por nome, e-mail ou CPF..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-md"
+            />
+          </div>
+
+          {/* Seção de solicitações de cargo */}
+          {(() => {
+            const solicitacoesCargo = (usuariosQuery.data ?? []).filter((u) => u.solicitacao_papel);
+            if (solicitacoesCargo.length === 0) return null;
+            return (
+              <Card className="border-amber-200 bg-amber-50/50">
+                <div className="p-4 border-b border-amber-100">
+                  <h3 className="font-semibold text-amber-900 flex items-center gap-2">
+                    <span>Solicitações de Mudança de Cargo</span>
+                    <span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                      {solicitacoesCargo.length}
+                    </span>
+                  </h3>
+                </div>
+                <CardContent className="p-0 divide-y divide-amber-100/60">
+                  {solicitacoesCargo.map((u) => (
+                    <div key={u.id} className="p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-slate-900">{u.nome_completo}</p>
+                        <p className="text-sm text-slate-500">
+                          {u.email} • Cargo atual: <span className="font-semibold capitalize text-slate-700">{u.papel}</span>
+                        </p>
+                        <p className="text-xs text-amber-800 mt-1 font-medium bg-amber-100/60 px-2 py-0.5 rounded w-fit">
+                          Solicitou alteração para: <span className="capitalize">{u.solicitacao_papel}</span>
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() =>
+                            updateUsuario.mutate(
+                              { id: u.id, patch: { papel: u.solicitacao_papel as UserRole, solicitacao_papel: null } },
+                              { onSuccess: () => toast({ title: `Solicitação de ${u.nome_completo} aceita!` }) }
+                            )
+                          }
+                          disabled={updateUsuario.isPending}
+                        >
+                          Aceitar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() =>
+                            updateUsuario.mutate(
+                              { id: u.id, patch: { solicitacao_papel: null } },
+                              { onSuccess: () => toast({ title: `Solicitação de ${u.nome_completo} recusada.` }) }
+                            )
+                          }
+                          disabled={updateUsuario.isPending}
+                        >
+                          Recusar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
           {usuariosQuery.isLoading ? (
             <Loader2 className="animate-spin" />
           ) : (
             <Card>
               <CardContent className="p-0 divide-y">
-                {(usuariosQuery.data ?? []).map((u) => (
-                  <div key={u.id} className="p-4 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{u.nome_completo}</p>
-                      <p className="text-sm text-slate-500">{u.email} • {u.cpf}</p>
+                {(() => {
+                  const filteredUsuarios = (usuariosQuery.data ?? []).filter((u) => {
+                    const term = searchTerm.toLowerCase();
+                    return (
+                      u.nome_completo?.toLowerCase().includes(term) ||
+                      (u.email ?? '').toLowerCase().includes(term) ||
+                      (u.cpf ?? '').toLowerCase().includes(term)
+                    );
+                  });
+
+                  if (filteredUsuarios.length === 0) {
+                    return (
+                      <div className="p-8 text-center text-slate-500">
+                        Nenhum usuário encontrado.
+                      </div>
+                    );
+                  }
+
+                  return filteredUsuarios.map((u) => (
+                    <div key={u.id} className="p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium">{u.nome_completo}</p>
+                        <p className="text-sm text-slate-500">{u.email} • {u.cpf}</p>
+                      </div>
+                      <Select
+                        value={u.papel}
+                        onValueChange={(v) =>
+                          updatePapel.mutate(
+                            { id: u.id, papel: v as UserRole },
+                            { onSuccess: () => toast({ title: 'Papel atualizado' }) }
+                          )
+                        }
+                      >
+                        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Select
-                      value={u.papel}
-                      onValueChange={(v) =>
-                        updatePapel.mutate(
-                          { id: u.id, papel: v as UserRole },
-                          { onSuccess: () => toast({ title: 'Papel atualizado' }) }
-                        )
-                      }
-                    >
-                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
-                          <SelectItem key={p} value={p}>{p}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
+                  ));
+                })()}
               </CardContent>
             </Card>
           )}
