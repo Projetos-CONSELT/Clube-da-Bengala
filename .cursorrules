@@ -1,0 +1,69 @@
+# Instruções de Contexto - Projeto Clube da Bengala
+
+Este arquivo serve como contexto global para assistentes de IA (Copilot/Cursor) trabalharem na base de código. Ao gerar, refatorar ou analisar código, siga rigorosamente as definições de arquitetura, stack e regras de negócio descritas aqui.
+
+## 1. Visão Geral do Projeto
+O "Clube da Bengala" é um sistema web para gerenciar o fluxo de atendimento e empréstimo de equipamentos de apoio médico (cadeiras de rodas, muletas, andadores, etc.) em uma ONG. [cite_start]O sistema substitui o controle manual (planilhas/WhatsApp) por uma plataforma centralizada e acessível[cite: 307, 308, 314].
+
+[cite_start]O sistema é dividido em dois ambientes principais[cite: 65]:
+* [cite_start]Front-office (Público): Onde o cidadão (Solicitante) se cadastra, solicita equipamentos, envia documentos e acompanha o status dos pedidos[cite: 67].
+* [cite_start]Back-office (Interno): Onde Atendentes, Coordenadores e o Gerente fazem a triagem, gestão de estoque, aprovação de empréstimos, cobranças e devoluções[cite: 66].
+
+## 2. Stack Tecnológico
+* Frontend: React com Vite.
+* Roteamento e Estado: React Router (presumido pela estrutura de /pages).
+* Estilização: Tailwind CSS + Componentes do shadcn/ui (localizados em src/components/ui/).
+* Backend / Banco de Dados: Supabase (PostgreSQL, Auth e Storage). A comunicação com o banco é feita via @supabase/supabase-js instanciado em src/lib/supabase.js.
+
+## 3. Atores e Controle de Acesso (Roles)
+[cite_start]A plataforma possui regras rígidas baseadas no papel (role) do usuário logado[cite: 6, 20]:
+* solicitante: Usuário final. [cite_start]Só pode ver e editar seus próprios dados, beneficiários e solicitações[cite: 64].
+* atendente: Voluntário do back-office. [cite_start]Tem acesso às telas de triagem, fila, aprovação de documentos e gestão de empréstimos[cite: 8].
+* [cite_start]coordenador: Acesso similar ao atendente, com algumas permissões extras de gestão, mas sem poder de exclusão estrutural[cite: 13].
+* gerente: Acesso administrativo total. [cite_start]Modifica termos, customiza recibos, deleta cadastros e cadastra novos tipos de equipamentos[cite: 13, 48].
+
+## 4. Estrutura do Banco de Dados (PostgreSQL / Supabase)
+O banco de dados utiliza a extensão uuid-ossp e possui Row Level Security (RLS) habilitado em todas as tabelas. Ao escrever queries Supabase (supabase.from(...)), considere o contexto do RLS.
+
+Abaixo está o esquema atual das entidades principais:
+
+### usuarios
+Estende a tabela auth.users do Supabase.
+* Colunas: id (UUID FK auth.users), papel (ENUM: gerente, coordenador, atendente, solicitante), nome_completo, cpf (UNIQUE), whatsapp, email, endereço (rua, cep, etc.), is_inadimplente.
+* RLS: Solicitantes só acessam a própria linha. Back-office lê e atualiza todos.
+
+### beneficiarios
+[cite_start]Quem efetivamente usa o equipamento (relação 1:N com solicitantes)[cite: 101, 102].
+* Colunas: id, solicitante_id (FK usuarios), nome_completo, cpf (UNIQUE), altura_cm, peso_kg, tamanho_calcado.
+* RLS: Solicitante vê/edita os próprios beneficiários. Back-office tem acesso total.
+
+### tipos_equipamento
+[cite_start]Catálogo de modelos[cite: 119].
+* Colunas: id, nome, descricao, schema_especificacoes (JSONB - define as características exigidas, ex: reclinável, suporta até 100kg), limite_renovacoes.
+
+### equipamentos
+O estoque físico real.
+* Colunas: id, codigo_patrimonio, tipo_id (FK), status (disponível, emprestado, manutenção, etc.), atributos_especificos (JSONB com os dados reais baseados no schema do tipo), doador_id.
+
+### solicitacoes
+[cite_start]A fila central de pedidos e máquina de estados[cite: 176, 183].
+* Colunas: id, protocolo, solicitante_id (FK), beneficiario_id (FK), tipo_equipamento_id (FK), equipamento_reservado_id (FK), status (ENUM: triagem, aguardando_documentacao, aguardando_retirada, em_cobranca, encerrada, etc.), tempo_estimado_meses, motivo_solicitacao, prazo_limite_retirada.
+
+### documentos_solicitacao
+[cite_start]Fotos e comprovantes exigidos[cite: 84, 194].
+* Colunas: id, solicitacao_id (FK), tipo_documento (RG_FRENTE, COMPROVANTE_RESIDENCIA), url_arquivo, status (pendente, aprovado, reprovado), motivo_rejeicao.
+
+### emprestimos
+[cite_start]Registro da retirada física e controle de devolução[cite: 217, 218].
+* Colunas: id, solicitacao_id (FK), equipamento_id (FK), data_retirada, data_prevista_devolucao, renovacoes_realizadas, recibo_texto_customizado.
+
+## 5. Regras de Negócio Importantes
+1.  [cite_start]JSONB para Especificações: Ao renderizar formulários de cadastro de equipamentos ou exibição de detalhes, lembre-se que os atributos são dinâmicos e estão armazenados nas colunas JSONB (schema_especificacoes e atributos_especificos)[cite: 121, 151].
+2.  [cite_start]Separação Solicitante x Beneficiário: O Solicitante cadastra o pedido logado com sua conta, mas DEVE selecionar um Beneficiário[cite: 96, 100]. [cite_start]O CPF do Beneficiário é único no sistema para evitar fraudes ou duplicações em várias contas[cite: 104].
+3.  [cite_start]Inadimplência: Se um equipamento não for devolvido no prazo, a solicitação muda de estado, o usuário final recebe flag is_inadimplente = true e é bloqueado para novos pedidos até regularização via devolução ou pagamento de boleto manual[cite: 256, 257, 267, 287].
+
+## 6. Diretrizes de Código (Boas Práticas)
+* Componentes UI: Priorize sempre o uso dos componentes existentes em src/components/ui/ (ex: Button, Input, Dialog, Table) gerados pelo shadcn/ui.
+* Supabase Fetching: Em componentes React, utilize chamadas assíncronas padrão para o Supabase. [cite_start]Trate erros de forma amigável com os componentes de use-toast ou sonner[cite: 42].
+* Estilização: Utilize classes utilitárias do Tailwind (className="..."). Evite criar arquivos .css isolados a menos que estritamente necessário.
+* [cite_start]Responsividade: O front-office (área do solicitante) deve ter prioridade máxima para visualização *mobile-first*[cite: 26]. O back-office prioriza interfaces *desktop* para gestão ágil.
