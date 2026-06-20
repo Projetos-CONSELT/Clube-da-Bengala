@@ -37,7 +37,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Pessoas: BACK_OFFICE_ROLES,
   Equipamentos: BACK_OFFICE_ROLES,
   Emprestimos: BACK_OFFICE_ROLES,
-  Relatorios: BACK_OFFICE_ROLES,
+  Relatorios: ['gerente', 'coordenador'],
   Fila: BACK_OFFICE_ROLES,
   Doacoes: BACK_OFFICE_ROLES,
   Manutencao: BACK_OFFICE_ROLES,

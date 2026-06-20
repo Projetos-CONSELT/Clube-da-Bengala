@@ -80,6 +80,8 @@ export default function Solicitacoes() {
   const [reserveModalOpen, setReserveModalOpen] = useState(false);
 
   const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
+  const [triageDecision, setTriageDecision] = useState<'aprovado' | 'recusado' | null>(null);
+  const [triageMotivo, setTriageMotivo] = useState('');
   const [formData, setFormData] = useState({
     beneficiario_id: '',
     tipo_equipamento_id: '',
@@ -500,50 +502,89 @@ export default function Solicitacoes() {
         </DialogContent>
       </Dialog>
 
-      {/* Triagem */}
-      <Dialog open={triageModalOpen} onOpenChange={setTriageModalOpen}>
+      {/* Triagem - Aprovação/Recusa */}
+      <Dialog 
+        open={triageModalOpen} 
+        onOpenChange={(open) => {
+          setTriageModalOpen(open);
+          if (!open) {
+            setTriageDecision(null);
+            setTriageMotivo('');
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Triagem da Solicitação</DialogTitle>
+            <DialogTitle>Aprovação de Solicitação</DialogTitle>
             <DialogDescription>#{selected?.protocolo || selected?.id?.slice(0, 8)}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <p className="text-sm text-slate-600">Selecione a ação para esta solicitação:</p>
-            <div className="space-y-2">
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                disabled={updateMutation.isPending}
-                onClick={() => selected && updateStatus(selected, 'triagem')}
-              >
-                <Clock className="w-4 h-4 text-yellow-600" /> Manter em Triagem
-              </Button>
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                disabled={updateMutation.isPending}
-                onClick={() => selected && updateStatus(selected, 'aguardando_documentacao', 'Aguardando documentos')}
-              >
-                <AlertCircle className="w-4 h-4 text-orange-600" /> Solicitar Documentos
-              </Button>
-              <Button
-                className="w-full justify-start gap-3"
-                variant="outline"
-                disabled={updateMutation.isPending}
-                onClick={() => selected && updateStatus(selected, 'aguardando_retirada')}
-              >
-                <ArrowRight className="w-4 h-4 text-purple-600" /> Enviar para Fila
-              </Button>
-              <Button
-                className="w-full justify-start gap-3 text-red-600"
-                variant="outline"
-                disabled={updateMutation.isPending}
-                onClick={() => selected && updateStatus(selected, 'encerrada', 'Encerrada na triagem')}
-              >
-                <XCircle className="w-4 h-4" /> Cancelar Solicitação
-              </Button>
+            <div>
+              <Label>Decisão *</Label>
+              <Select value={triageDecision || 'none'} onValueChange={(v) => {
+                setTriageDecision(v === 'none' ? null : (v as 'aprovado' | 'recusado'));
+                if (v === 'aprovado') setTriageMotivo('');
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma opção" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aprovado">
+                    <span className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" /> Aprovado
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="recusado">
+                    <span className="flex items-center gap-2">
+                      <XCircle className="w-4 h-4 text-red-600" /> Recusado
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {triageDecision === 'recusado' && (
+              <div>
+                <Label>Motivo da Recusa *</Label>
+                <Textarea
+                  placeholder="Informe o motivo da recusa..."
+                  value={triageMotivo}
+                  onChange={(e) => setTriageMotivo(e.target.value)}
+                  className="min-h-24"
+                />
+              </div>
+            )}
+
+            {triageDecision === 'aprovado' && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                <p className="text-sm text-emerald-700">
+                  <CheckCircle className="w-4 h-4 inline mr-2" />
+                  Solicitação será enviada para próxima etapa (aguardando documentação)
+                </p>
+              </div>
+            )}
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTriageModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!selected || !triageDecision) return;
+                if (triageDecision === 'recusado' && !triageMotivo.trim()) {
+                  toast({ variant: 'destructive', title: 'Informe o motivo da recusa' });
+                  return;
+                }
+                updateStatus(
+                  selected,
+                  triageDecision === 'aprovado' ? 'aguardando_documentacao' : 'encerrada',
+                  triageDecision === 'recusado' ? triageMotivo : undefined
+                );
+              }}
+              disabled={updateMutation.isPending || !triageDecision || (triageDecision === 'recusado' && !triageMotivo.trim())}
+            >
+              {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Decisão
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

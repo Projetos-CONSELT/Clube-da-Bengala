@@ -49,6 +49,7 @@ interface NavItem {
   icon: LucideIcon;
   group: string | null;
   backOfficeOnly?: boolean;
+  managerOnly?: boolean;
 }
 
 const navigation: NavItem[] = [
@@ -62,8 +63,8 @@ const navigation: NavItem[] = [
   { name: 'Doações', href: 'Doacoes', icon: Heart, group: 'Estoque', backOfficeOnly: true },
   { name: 'Manutenção', href: 'Manutencao', icon: Wrench, group: 'Estoque', backOfficeOnly: true },
   { name: 'Notificações', href: 'Notificacoes', icon: Send, group: 'Comunicação' },
-  { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true },
-  { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true },
+  { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
+  { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
 ];
 
 const roleBadgeStyles: Record<string, string> = {
@@ -124,7 +125,11 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
     }
   };
 
-  const visibleNav = navigation.filter((item) => !item.backOfficeOnly || isBackOfficeRole(role));
+  const visibleNav = navigation.filter(
+    (item) =>
+      (!item.backOfficeOnly || isBackOfficeRole(role)) &&
+      (!item.managerOnly || role === 'gerente' || role === 'coordenador')
+  );
 
   const handleLogout = async () => {
     await logout();
