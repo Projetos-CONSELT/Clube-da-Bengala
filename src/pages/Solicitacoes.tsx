@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
-  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw,
+  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,18 @@ import {
   useReservarEquipamento,
 } from '@/hooks/useSolicitacoes';
 import { useBeneficiariosQuery } from '@/hooks/useBeneficiarios';
+import { useImagensRetiradaQuery, useUploadImagemRetirada, useDeleteImagemRetirada } from '@/hooks/useImagensRetirada';
+import {
+  useImagensDevolucaoQuery, useUploadImagemDevolucao, useDeleteImagemDevolucao
+} from '@/hooks/useImagensDevolucao';
+import {
+  useRegistrarPrazoRetirada,
+  useRegistrarRetirada,
+  useRegistrarDevolucao,
+  useRegistrarBoletoRessarcimento,
+  useRegistrarPagamentoRessarcimento,
+  useReciboQuery,
+} from '@/hooks/useFluxoRetiradaDevolucao';
 import {
   getStatusSolicitacaoUi,
   isBackOfficeRole,
@@ -55,6 +67,184 @@ const beneficiarioName = (s: SolicitacaoComRelacoes) =>
   s?.beneficiario?.nome_completo || 'Mesmo responsável';
 const tipoName = (s: SolicitacaoComRelacoes) => s?.tipo?.nome || '—';
 
+function ImagensRetiradaTab({ solicitacaoId, isBackOffice }: ImagensRetiradaTabProps) {
+  const { data: imagens = [], isLoading } = useImagensRetiradaQuery(solicitacaoId);
+  const deleteImagemMutation = useDeleteImagemRetirada();
+  const { toast } = useToast();
+
+  if (isLoading) {
+    return <Skeleton className="h-48" />;
+  }
+
+  if (imagens.length === 0) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p>Nenhuma imagem anexada</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      {imagens.map((imagem: any) => (
+        <div key={imagem.id} className="relative group">
+          <img
+            src={imagem.url_imagem}
+            alt="retirada"
+            className="w-full h-32 object-cover rounded-lg"
+          />
+          {isBackOffice && (
+            <button
+              onClick={() => {
+                deleteImagemMutation.mutate(
+                  { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
+                  {
+                    onSuccess: () => toast({ title: 'Imagem removida' }),
+                    onError: (err: any) =>
+                      toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
+                  }
+                );
+              }}
+              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+          {imagem.descricao && (
+            <p className="text-xs text-slate-500 mt-1 truncate">{imagem.descricao}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ImagensDevolucaoTabProps {
+  solicitacaoId: string;
+  isBackOffice: boolean;
+}
+
+function ImagensDevolucaoTab({ solicitacaoId, isBackOffice }: ImagensDevolucaoTabProps) {
+  const { data: imagens = [], isLoading } = useImagensDevolucaoQuery(solicitacaoId);
+  const deleteImagemMutation = useDeleteImagemDevolucao();
+  const { toast } = useToast();
+
+  if (isLoading) {
+    return <Skeleton className="h-48" />;
+  }
+
+  if (imagens.length === 0) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p>Nenhuma imagem de devolução anexada</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        {imagens.map((imagem: any) => (
+          <div key={imagem.id} className="relative group">
+            <img
+              src={imagem.url_imagem}
+              alt="devolucao"
+              className="w-full h-32 object-cover rounded-lg"
+            />
+            {isBackOffice && (
+              <button
+                onClick={() => {
+                  deleteImagemMutation.mutate(
+                    { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
+                    {
+                      onSuccess: () => toast({ title: 'Imagem removida' }),
+                      onError: (err: any) =>
+                        toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
+                    }
+                  );
+                }}
+                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {imagem.estado_conservacao && (
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 rounded-b-lg">
+                {imagem.estado_conservacao}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface RecibosTabProps {
+  solicitacaoId: string;
+}
+
+function RecibosTab({ solicitacaoId }: RecibosTabProps) {
+  const { data: recibo, isLoading } = useReciboQuery(solicitacaoId);
+  const { toast } = useToast();
+
+  if (isLoading) {
+    return <Skeleton className="h-48" />;
+  }
+
+  if (!recibo) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p>Nenhum recibo de pagamento registrado</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 bg-slate-50 p-4 rounded-lg">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-sm text-slate-500">Nome Completo</p>
+          <p className="font-medium">{recibo.nome_completo}</p>
+        </div>
+        <div>
+          <p className="text-sm text-slate-500">CPF</p>
+          <p className="font-medium">{recibo.cpf}</p>
+        </div>
+        <div>
+          <p className="text-sm text-slate-500">Equipamento</p>
+          <p className="font-medium">{recibo.descricao_equipamento}</p>
+        </div>
+        <div>
+          <p className="text-sm text-slate-500">Valor Pago</p>
+          <p className="font-medium text-emerald-600">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(recibo.valor_pago || 0)}
+          </p>
+        </div>
+        <div className="col-span-2">
+          <p className="text-sm text-slate-500">Data de Emissão</p>
+          <p className="font-medium">{moment(recibo.created_at).format('DD/MM/YYYY HH:mm')}</p>
+        </div>
+      </div>
+      {recibo.texto_customizado && (
+        <div className="border-t pt-4">
+          <p className="text-sm text-slate-500 mb-2">Observações</p>
+          <p className="text-slate-700">{recibo.texto_customizado}</p>
+        </div>
+      )}
+      <Button 
+        onClick={() => toast({ title: 'PDF será implementado em versão futura' })} 
+        className="w-full"
+      >
+        <FileText className="w-4 h-4 mr-2" /> Gerar PDF (em breve)
+      </Button>
+    </div>
+  );
+}
+
 export default function Solicitacoes() {
   const { toast } = useToast();
   const { role, user } = useAuth();
@@ -69,6 +259,14 @@ export default function Solicitacoes() {
   const updateMutation = useUpdateSolicitacao();
   const deleteMutation = useDeleteSolicitacao();
   const reservarMutation = useReservarEquipamento();
+  const uploadImagemMutation = useUploadImagemRetirada();
+
+  const registrarPrazoMutation = useRegistrarPrazoRetirada();
+  const registrarRetiradaMutation = useRegistrarRetirada();
+  const registrarDevolucaoMutation = useRegistrarDevolucao();
+  const registrarBoletoMutation = useRegistrarBoletoRessarcimento();
+  const registrarPagamentoMutation = useRegistrarPagamentoRessarcimento();
+  const uploadImagemDevolucaoMutation = useUploadImagemDevolucao();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -78,10 +276,28 @@ export default function Solicitacoes() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [triageModalOpen, setTriageModalOpen] = useState(false);
   const [reserveModalOpen, setReserveModalOpen] = useState(false);
+  const [uploadImagesModalOpen, setUploadImagesModalOpen] = useState(false);
+  const [prazoModalOpen, setPrazoModalOpen] = useState(false);
+  const [retiradaModalOpen, setRetiradaModalOpen] = useState(false);
+  const [devolucaoModalOpen, setDevolucaoModalOpen] = useState(false);
+  const [boletoModalOpen, setBoletoModalOpen] = useState(false);
+  const [pagamentoModalOpen, setPagamentoModalOpen] = useState(false);
 
   const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
   const [triageDecision, setTriageDecision] = useState<'aprovado' | 'recusado' | null>(null);
   const [triageMotivo, setTriageMotivo] = useState('');
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [prazoData, setPrazoData] = useState('');
+  const [retiradaData, setRetiradaData] = useState('');
+  const [retiradaEquipamento, setRetiradaEquipamento] = useState('');
+  const [devolucaoFiles, setDevolucaoFiles] = useState<File[]>([]);
+  const [devolucaoEstado, setDevolucaoEstado] = useState('bom');
+  const [boletoLink, setBoletoLink] = useState('');
+  const [boletoValor, setBoletoValor] = useState('');
+  const [boloPrazo, setBoloPrazo] = useState('');
+  const [boletoTexto, setBoletoTexto] = useState('');
+  const [uploadingDevolucao, setUploadingDevolucao] = useState(false);
   const [formData, setFormData] = useState({
     beneficiario_id: '',
     tipo_equipamento_id: '',
@@ -149,6 +365,11 @@ export default function Solicitacoes() {
         onSuccess: () => {
           toast({ title: `Status atualizado: ${getStatusSolicitacaoUi(newStatus).label}` });
           setTriageModalOpen(false);
+          // Abre modal de upload se foi aprovado
+          if (newStatus === 'aguardando_retirada') {
+            setSelected(sol);
+            setUploadImagesModalOpen(true);
+          }
         },
         onError: (err) =>
           toast({ variant: 'destructive', title: 'Erro', description: err.message }),
@@ -340,6 +561,50 @@ export default function Solicitacoes() {
                         Reservar
                       </Button>
                     )}
+                    {isBackOffice && s.status === 'aguardando_retirada' && !s.prazo_retirada && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setSelected(s); setPrazoModalOpen(true); }}
+                        className="text-orange-600 border-orange-200"
+                      >
+                        <Calendar className="w-4 h-4 mr-2" />
+                        Definir Prazo
+                      </Button>
+                    )}
+                    {isBackOffice && s.status === 'aguardando_retirada' && s.prazo_retirada && !s.data_retirada_realizada && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setSelected(s); setRetiradaModalOpen(true); }}
+                        className="text-blue-600 border-blue-200"
+                      >
+                        <Package className="w-4 h-4 mr-2" />
+                        Registrar Retirada
+                      </Button>
+                    )}
+                    {isBackOffice && s.status === 'equipamento_emprestado' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setSelected(s); setDevolucaoModalOpen(true); }}
+                        className="text-green-600 border-green-200"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Registrar Devolução
+                      </Button>
+                    )}
+                    {isBackOffice && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setSelected(s); setPagamentoModalOpen(true); }}
+                        className="text-emerald-600 border-emerald-200"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Recebimento
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
@@ -350,6 +615,11 @@ export default function Solicitacoes() {
                         <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
                           <Eye className="w-4 h-4 mr-2" /> Visualizar
                         </DropdownMenuItem>
+                        {isBackOffice && s.status === 'aguardando_retirada' && (
+                          <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
+                            <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
+                          </DropdownMenuItem>
+                        )}
                         {isBackOffice && (
                           <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
                             <Edit className="w-4 h-4 mr-2" /> Triar
@@ -451,8 +721,11 @@ export default function Solicitacoes() {
           </DialogHeader>
           {selected && (
             <Tabs defaultValue="dados" className="mt-4">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
+                <TabsTrigger value="imagens">Retirada</TabsTrigger>
+                <TabsTrigger value="devolucao">Devolução</TabsTrigger>
+                <TabsTrigger value="recibo">Recibo</TabsTrigger>
                 <TabsTrigger value="historico">Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="dados" className="space-y-4 mt-4">
@@ -483,6 +756,14 @@ export default function Solicitacoes() {
                       </p>
                     </div>
                   )}
+                  {selected.prazo_retirada && (
+                    <div>
+                      <p className="text-sm text-slate-500">Prazo Definido</p>
+                      <p className="font-medium">
+                        {moment(selected.prazo_retirada).format('DD/MM/YYYY')}
+                      </p>
+                    </div>
+                  )}
                   {selected.motivo_solicitacao && (
                     <div className="col-span-2">
                       <p className="text-sm text-slate-500">Motivo da solicitação</p>
@@ -490,6 +771,15 @@ export default function Solicitacoes() {
                     </div>
                   )}
                 </div>
+              </TabsContent>
+              <TabsContent value="imagens" className="mt-4">
+                <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} />
+              </TabsContent>
+              <TabsContent value="devolucao" className="mt-4">
+                <ImagensDevolucaoTab solicitacaoId={selected.id} isBackOffice={isBackOffice} />
+              </TabsContent>
+              <TabsContent value="recibo" className="mt-4">
+                <RecibosTab solicitacaoId={selected.id} />
               </TabsContent>
               <TabsContent value="historico" className="mt-4">
                 <p className="text-center py-4 text-slate-500">Histórico em implementação futura</p>
@@ -559,7 +849,7 @@ export default function Solicitacoes() {
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
                 <p className="text-sm text-emerald-700">
                   <CheckCircle className="w-4 h-4 inline mr-2" />
-                  Solicitação será enviada para próxima etapa (aguardando documentação)
+                  Solicitação será enviada para retirada. Você poderá anexar imagens na próxima etapa.
                 </p>
               </div>
             )}
@@ -575,7 +865,7 @@ export default function Solicitacoes() {
                 }
                 updateStatus(
                   selected,
-                  triageDecision === 'aprovado' ? 'aguardando_documentacao' : 'encerrada',
+                  triageDecision === 'aprovado' ? 'aguardando_retirada' : 'encerrada',
                   triageDecision === 'recusado' ? triageMotivo : undefined
                 );
               }}
@@ -583,6 +873,127 @@ export default function Solicitacoes() {
             >
               {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar Decisão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload de Imagens da Retirada */}
+      <Dialog 
+        open={uploadImagesModalOpen} 
+        onOpenChange={(open) => {
+          setUploadImagesModalOpen(open);
+          if (!open) {
+            setSelectedFiles([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Anexar Imagens do Equipamento</DialogTitle>
+            <DialogDescription>
+              #{selected?.protocolo || selected?.id?.slice(0, 8)} - Você pode anexar 0 ou mais imagens
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-slate-400 transition-colors cursor-pointer"
+              onClick={() => document.getElementById('file-input')?.click()}
+            >
+              <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+              <p className="text-sm font-medium text-slate-700">Clique para selecionar imagens</p>
+              <p className="text-xs text-slate-500 mt-1">ou arraste imagens aqui</p>
+              <input
+                id="file-input"
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.currentTarget.files || []);
+                  setSelectedFiles(prev => [...prev, ...files]);
+                }}
+              />
+            </div>
+
+            {selectedFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">{selectedFiles.length} imagem(ns) selecionada(s)</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                  {selectedFiles.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`preview-${idx}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <p className="text-xs text-slate-500 mt-1 truncate">{file.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-700">
+                <AlertCircle className="w-4 h-4 inline mr-2" />
+                As imagens serão visíveis para o solicitante assim que forem anexadas.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setUploadImagesModalOpen(false);
+                setSelectedFiles([]);
+              }}
+            >
+              Pular (Fazer depois)
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selected || selectedFiles.length === 0) return;
+                setUploadingImages(true);
+                let successCount = 0;
+                
+                try {
+                  for (const file of selectedFiles) {
+                    await new Promise((resolve, reject) => {
+                      uploadImagemMutation.mutate(
+                        { solicitacaoId: selected.id, file },
+                        {
+                          onSuccess: () => { successCount++; resolve(null); },
+                          onError: reject
+                        }
+                      );
+                    });
+                  }
+                  
+                  if (successCount === selectedFiles.length) {
+                    toast({ title: `${successCount} imagem(ns) anexada(s) com sucesso!` });
+                    setUploadImagesModalOpen(false);
+                    setSelectedFiles([]);
+                  }
+                } catch (err: any) {
+                  toast({ 
+                    variant: 'destructive', 
+                    title: 'Erro ao anexar imagens', 
+                    description: err.message 
+                  });
+                } finally {
+                  setUploadingImages(false);
+                }
+              }}
+              disabled={uploadingImages || selectedFiles.length === 0}
+            >
+              {uploadingImages && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Anexar {selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -634,6 +1045,400 @@ export default function Solicitacoes() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReserveModalOpen(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar Prazo de Retirada */}
+      <Dialog open={prazoModalOpen} onOpenChange={setPrazoModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Definir Prazo de Retirada</DialogTitle>
+            <DialogDescription>Defina a data limite para o solicitante retirar o equipamento</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Data Limite *</Label>
+              <Input
+                type="date"
+                value={prazoData}
+                onChange={(e) => setPrazoData(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPrazoModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!selected || !prazoData) return;
+                registrarPrazoMutation.mutate(
+                  { solicitacaoId: selected.id, prazo: new Date(prazoData) },
+                  {
+                    onSuccess: () => {
+                      toast({ title: 'Prazo definido com sucesso' });
+                      setPrazoModalOpen(false);
+                      setPrazoData('');
+                    },
+                    onError: (err: any) =>
+                      toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+                  }
+                );
+              }}
+              disabled={registrarPrazoMutation.isPending || !prazoData}
+            >
+              {registrarPrazoMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Definir Prazo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar Retirada */}
+      <Dialog open={retiradaModalOpen} onOpenChange={setRetiradaModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Retirada do Equipamento</DialogTitle>
+            <DialogDescription>Confirme a data e data prevista de devolução</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Data da Retirada *</Label>
+              <Input
+                type="date"
+                value={retiradaData}
+                onChange={(e) => setRetiradaData(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Data Prevista de Devolução *</Label>
+              <Input
+                type="date"
+                value={retiradaEquipamento}
+                onChange={(e) => setRetiradaEquipamento(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRetiradaModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!selected || !retiradaData || !retiradaEquipamento) return;
+                registrarRetiradaMutation.mutate(
+                  {
+                    solicitacaoId: selected.id,
+                    dataRetirada: new Date(retiradaData),
+                    dataPrevistaDevolucao: new Date(retiradaEquipamento),
+                  },
+                  {
+                    onSuccess: () => {
+                      toast({ title: 'Retirada registrada com sucesso' });
+                      setRetiradaModalOpen(false);
+                      setRetiradaData('');
+                      setRetiradaEquipamento('');
+                    },
+                    onError: (err: any) =>
+                      toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+                  }
+                );
+              }}
+              disabled={registrarRetiradaMutation.isPending || !retiradaData || !retiradaEquipamento}
+            >
+              {registrarRetiradaMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Retirada
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar Devolução */}
+      <Dialog open={devolucaoModalOpen} onOpenChange={setDevolucaoModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Devolução do Equipamento</DialogTitle>
+            <DialogDescription>Adicione fotos e indique o estado de conservação</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Estado de Conservação *</Label>
+              <Select value={devolucaoEstado} onValueChange={setDevolucaoEstado}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="excelente">Excelente</SelectItem>
+                  <SelectItem value="bom">Bom</SelectItem>
+                  <SelectItem value="razoavel">Razoável</SelectItem>
+                  <SelectItem value="ruim">Ruim</SelectItem>
+                  <SelectItem value="danificado">Danificado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Fotos (1-5 imagens)</Label>
+              <div
+                className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-slate-400 transition-colors"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+                }}
+                onDragLeave={(e) => {
+                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length + devolucaoFiles.length <= 5) {
+                    setDevolucaoFiles([...devolucaoFiles, ...files]);
+                  } else {
+                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  }
+                }}
+                onClick={() => document.getElementById('devolucao-file-input')?.click()}
+              >
+                <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                <p className="text-sm font-medium text-slate-700">Clique ou arraste imagens aqui</p>
+                <p className="text-xs text-slate-500">Até 5 imagens</p>
+              </div>
+              <input
+                id="devolucao-file-input"
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length + devolucaoFiles.length <= 5) {
+                    setDevolucaoFiles([...devolucaoFiles, ...files]);
+                  } else {
+                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  }
+                }}
+              />
+            </div>
+
+            {devolucaoFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">{devolucaoFiles.length} imagem(ns) selecionada(s)</p>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  {devolucaoFiles.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`preview-${idx}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => setDevolucaoFiles(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDevolucaoModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={async () => {
+                if (!selected) return;
+                setUploadingDevolucao(true);
+                let successCount = 0;
+
+                try {
+                  for (const file of devolucaoFiles) {
+                    await new Promise((resolve, reject) => {
+                      uploadImagemDevolucaoMutation.mutate(
+                        {
+                          solicitacaoId: selected.id,
+                          file,
+                          estadoConservacao: devolucaoEstado,
+                        },
+                        {
+                          onSuccess: () => { successCount++; resolve(null); },
+                          onError: reject,
+                        }
+                      );
+                    });
+                  }
+
+                  registrarDevolucaoMutation.mutate(
+                    { solicitacaoId: selected.id },
+                    {
+                      onSuccess: () => {
+                        toast({ title: 'Devolução registrada com sucesso' });
+                        setDevolucaoModalOpen(false);
+                        setDevolucaoFiles([]);
+                        setDevolucaoEstado('bom');
+                      },
+                      onError: (err: any) =>
+                        toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+                    }
+                  );
+                } catch (err: any) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Erro ao anexar imagens',
+                    description: err.message,
+                  });
+                } finally {
+                  setUploadingDevolucao(false);
+                }
+              }}
+              disabled={uploadingDevolucao || !devolucaoEstado}
+            >
+              {uploadingDevolucao && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Devolução
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar Boleto de Ressarcimento */}
+      <Dialog open={boletoModalOpen} onOpenChange={setBoletoModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Boleto de Ressarcimento</DialogTitle>
+            <DialogDescription>Preencha os dados do boleto para cobrança</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Link do Boleto *</Label>
+              <Input
+                type="url"
+                value={boletoLink}
+                onChange={(e) => setBoletoLink(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <div>
+              <Label>Valor do Boleto *</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={boletoValor}
+                onChange={(e) => setBoletoValor(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <Label>Data de Vencimento *</Label>
+              <Input
+                type="date"
+                value={boloPrazo}
+                onChange={(e) => setBoloPrazo(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Texto de Notificação (Customizável)</Label>
+              <Textarea
+                value={boletoTexto}
+                onChange={(e) => setBoletoTexto(e.target.value)}
+                placeholder="Mensagem que será enviada ao solicitante..."
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBoletoModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!selected || !boletoLink || !boletoValor || !boloPrazo) return;
+                registrarBoletoMutation.mutate(
+                  {
+                    solicitacaoId: selected.id,
+                    linkBoleto: boletoLink,
+                    valorBoleto: parseFloat(boletoValor),
+                    prazoVencimento: new Date(boloPrazo),
+                    textoNotificacao: boletoTexto,
+                    solicitanteId: selected.solicitante_id,
+                  },
+                  {
+                    onSuccess: () => {
+                      toast({ title: 'Boleto registrado e notificação enviada ao solicitante' });
+                      setBoletoModalOpen(false);
+                      setBoletoLink('');
+                      setBoletoValor('');
+                      setBoloPrazo('');
+                      setBoletoTexto('');
+                    },
+                    onError: (err: any) =>
+                      toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+                  }
+                );
+              }}
+              disabled={registrarBoletoMutation.isPending || !boletoLink || !boletoValor || !boloPrazo}
+            >
+              {registrarBoletoMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Registrar Boleto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar Pagamento */}
+      <Dialog open={pagamentoModalOpen} onOpenChange={setPagamentoModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar Pagamento</DialogTitle>
+            <DialogDescription>Registre o pagamento do boleto de ressarcimento</DialogDescription>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-4 py-4">
+              <div className="bg-slate-50 p-4 rounded-lg space-y-2">
+                <div>
+                  <p className="text-sm text-slate-500">Valor do Boleto</p>
+                  <p className="font-bold text-lg">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selected.valor_boleto_ressarcimento || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Vencimento</p>
+                  <p className="font-medium">
+                    {selected.prazo_vencimento_boleto ? moment(selected.prazo_vencimento_boleto).format('DD/MM/YYYY') : '—'}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                Ao confirmar, será gerado um recibo de pagamento automáticamente.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPagamentoModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (!selected || !selected.solicitante) return;
+                registrarPagamentoMutation.mutate(
+                  {
+                    solicitacaoId: selected.id,
+                    solicitanteId: selected.solicitante_id,
+                    nomeCompleto: selected.solicitante.nome_completo,
+                    cpf: selected.solicitante.cpf,
+                    descricaoEquipamento: selected.tipo?.nome || 'Equipamento',
+                    valorPago: selected.valor_boleto_ressarcimento || 0,
+                    textoCustomizado: selected.texto_notificacao_boleto || '',
+                  },
+                  {
+                    onSuccess: () => {
+                      toast({ title: 'Pagamento registrado e recibo gerado com sucesso!' });
+                      setPagamentoModalOpen(false);
+                    },
+                    onError: (err: any) =>
+                      toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+                  }
+                );
+              }}
+              disabled={registrarPagamentoMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {registrarPagamentoMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar Pagamento
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

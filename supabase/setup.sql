@@ -95,6 +95,16 @@ CREATE TABLE public.solicitacoes (
     observacoes_solicitante TEXT,
     observacoes_atendimento TEXT, -- Uso exclusivo do back-office
     prazo_limite_retirada TIMESTAMP WITH TIME ZONE,
+    -- Controle de Retirada e Devolução
+    prazo_retirada TIMESTAMP WITH TIME ZONE,
+    data_retirada_realizada TIMESTAMP WITH TIME ZONE,
+    -- Controle de Ressarcimento
+    link_boleto_ressarcimento TEXT,
+    valor_boleto_ressarcimento DECIMAL(10,2),
+    prazo_vencimento_boleto TIMESTAMP WITH TIME ZONE,
+    texto_notificacao_boleto TEXT,
+    pagamento_ressarcimento_realizado BOOLEAN DEFAULT false,
+    data_pagamento_ressarcimento TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -125,6 +135,56 @@ CREATE TABLE public.emprestimos (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela de Recibos de Pagamento (Ressarcimento)
+-- Emitida quando o solicitante paga o boleto de ressarcimento
+CREATE TABLE public.recibos_pagamento (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    solicitacao_id UUID NOT NULL REFERENCES public.solicitacoes(id) ON DELETE CASCADE,
+    solicitante_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    nome_completo VARCHAR(255) NOT NULL,
+    cpf VARCHAR(14) NOT NULL,
+    descricao_equipamento TEXT NOT NULL,
+    valor_pago DECIMAL(10,2) NOT NULL,
+    texto_customizado TEXT,
+    data_emissao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tabela de Imagens da Retirada
+-- Armazena imagens do equipamento no momento da retirada, visíveis para o solicitante.
+CREATE TABLE public.imagens_retirada (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    solicitacao_id UUID NOT NULL REFERENCES public.solicitacoes(id) ON DELETE CASCADE,
+    url_imagem TEXT NOT NULL,
+    descricao TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tabela de Imagens da Devolução
+-- Armazena imagens do equipamento no momento da devolução, visíveis para o solicitante.
+CREATE TABLE public.imagens_devolucao (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    solicitacao_id UUID NOT NULL REFERENCES public.solicitacoes(id) ON DELETE CASCADE,
+    url_imagem TEXT NOT NULL,
+    descricao TEXT,
+    estado_conservacao VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tabela de Notificações
+-- Armazena notificações para solicitantes e back-office sobre eventos importantes
+CREATE TABLE public.notificacoes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    solicitacao_id UUID NOT NULL REFERENCES public.solicitacoes(id) ON DELETE CASCADE,
+    usuario_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('boleto', 'pagamento', 'inadimplencia', 'retirada', 'devolucao')),
+    titulo VARCHAR(255) NOT NULL,
+    descricao TEXT,
+    lido BOOLEAN DEFAULT false,
+    link_acao TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ====================================================================================
 -- 3. ROW LEVEL SECURITY (RLS) E POLÍTICAS DE ACESSO
 -- ====================================================================================
@@ -136,6 +196,9 @@ ALTER TABLE public.equipamentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.solicitacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documentos_solicitacao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.emprestimos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.imagens_retirada ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.imagens_devolucao ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recibos_pagamento ENABLE ROW LEVEL SECURITY;
 
 -- Funções utilitárias para RLS
 CREATE OR REPLACE FUNCTION public.get_user_role() RETURNS user_role AS $$
@@ -192,3 +255,39 @@ CREATE POLICY "Solicitante vê seus empréstimos" ON public.emprestimos
     );
 CREATE POLICY "Back-office gerencia empréstimos" ON public.emprestimos 
     FOR ALL USING (public.is_backoffice());
+
+-- POLÍTICAS: IMAGENS DA RETIRADA
+-- Solicitante vê imagens de suas solicitações. Back-office gerencia todas as imagens.
+CREATE POLICY "Solicitante vê imagens de suas solicitações" ON public.imagens_retirada 
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM public.solicitacoes s WHERE s.id = solicitacao_id AND s.solicitante_id = auth.uid())
+    );
+CREATE POLICY "Back-office gerencia imagens de retirada" ON public.imagens_retirada 
+    FOR ALL USING (public.is_backoffice());
+
+-- POLÍTICAS: IMAGENS DA DEVOLUÇÃO
+-- Solicitante vê imagens de suas devoluções. Back-office gerencia todas as imagens.
+CREATE POLICY "Solicitante vê imagens de devoluções" ON public.imagens_devolucao 
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM public.solicitacoes s WHERE s.id = solicitacao_id AND s.solicitante_id = auth.uid())
+    );
+CREATE POLICY "Back-office gerencia imagens de devolução" ON public.imagens_devolucao 
+    FOR ALL USING (public.is_backoffice());
+
+-- POLÍTICAS: RECIBOS DE PAGAMENTO
+-- Solicitante vê seus recibos. Back-office gerencia todos os recibos.
+CREATE POLICY "Solicitante vê seus recibos" ON public.recibos_pagamento 
+    FOR SELECT USING (solicitante_id = auth.uid());
+CREATE POLICY "Back-office gerencia recibos" ON public.recibos_pagamento 
+    FOR ALL USING (public.is_backoffice());
+
+-- RLS para Notificações
+ALTER TABLE public.notificacoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Usuário vê suas notificações" ON public.notificacoes 
+    FOR SELECT USING (usuario_id = auth.uid());
+CREATE POLICY "Back-office pode criar notificações" ON public.notificacoes 
+    FOR INSERT WITH CHECK (public.is_backoffice());
+CREATE POLICY "Usuário pode atualizar suas notificações" ON public.notificacoes 
+    FOR UPDATE USING (usuario_id = auth.uid());
+CREATE POLICY "Usuário pode deletar suas notificações" ON public.notificacoes 
+    FOR DELETE USING (usuario_id = auth.uid());
