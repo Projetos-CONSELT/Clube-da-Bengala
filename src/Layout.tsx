@@ -18,6 +18,7 @@ import {
   Headphones,
   ListOrdered,
   Send,
+  Shield,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ interface NavItem {
   group: string | null;
   backOfficeOnly?: boolean;
   managerOnly?: boolean;
+  gerenteOnly?: boolean;
 }
 
 const navigation: NavItem[] = [
@@ -64,6 +66,7 @@ const navigation: NavItem[] = [
   { name: 'Manutenção', href: 'Manutencao', icon: Wrench, group: 'Estoque', backOfficeOnly: true },
   { name: 'Notificações', href: 'Notificacoes', icon: Send, group: 'Comunicação' },
   { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
+  { name: 'Painel Admin', href: 'AdminPanel', icon: Shield, group: 'Gestão', backOfficeOnly: true, gerenteOnly: true },
   { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
 ];
 
@@ -128,7 +131,8 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   const visibleNav = navigation.filter(
     (item) =>
       (!item.backOfficeOnly || isBackOfficeRole(role)) &&
-      (!item.managerOnly || role === 'gerente' || role === 'coordenador')
+      (!item.managerOnly || role === 'gerente' || role === 'coordenador') &&
+      (!item.gerenteOnly || role === 'gerente')
   );
 
   const handleLogout = async () => {
@@ -268,6 +272,13 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   <DropdownMenuSeparator />
                   {role === 'gerente' && (
                     <>
+                      <DropdownMenuItem asChild>
+                        <Link to={createPageUrl('AdminPanel')} className="cursor-pointer">
+                          <Shield className="w-4 h-4 mr-2" />
+                          Painel Admin
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
                         <Link to={createPageUrl('Configuracoes')} className="cursor-pointer">
                           <Settings className="w-4 h-4 mr-2" />

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
-import type { UsuarioUpdate, UserRole } from '@/types/database.types';
+import type { UsuarioInsert, UsuarioUpdate, UserRole } from '@/types/database.types';
 import { isBackOfficeRole } from '@/types/domain';
 
 export const USUARIOS_KEY = ['usuarios'] as const;
@@ -47,6 +47,26 @@ export function useUpdateUsuarioPapel() {
         .from('usuarios')
         .update({ papel })
         .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: USUARIOS_KEY }),
+  });
+}
+
+export function useCreateUsuario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (usuario: Omit<UsuarioInsert, 'id'>) => {
+      const id = window.crypto.randomUUID();
+      const { data, error } = await supabase
+        .from('usuarios')
+        .insert({
+          ...usuario,
+          id,
+        })
         .select()
         .single();
       if (error) throw error;

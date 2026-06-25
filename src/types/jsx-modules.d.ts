@@ -112,6 +112,15 @@ declare module '@/components/ui/dialog' {
   export const DialogFooter: ComponentType<Record<string, unknown>>;
   export const DialogHeader: ComponentType<Record<string, unknown>>;
   export const DialogTitle: ComponentType<Record<string, unknown>>;
+  export const DialogTrigger: ComponentType<Record<string, unknown>>;
+  export const DialogClose: ComponentType<Record<string, unknown>>;
+}
+
+declare module '@/components/ui/alert' {
+  import type { ComponentType } from 'react';
+  export const Alert: ComponentType<Record<string, unknown>>;
+  export const AlertTitle: ComponentType<Record<string, unknown>>;
+  export const AlertDescription: ComponentType<Record<string, unknown>>;
 }
 
 declare module '@/components/ui/skeleton' {

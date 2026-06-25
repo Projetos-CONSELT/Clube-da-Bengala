@@ -43,6 +43,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Manutencao: BACK_OFFICE_ROLES,
   Atendimento: BACK_OFFICE_ROLES,
   Configuracoes: ['gerente'],
+  AdminPanel: ['gerente'],
 };
 
 const AuthenticatedApp = () => {
