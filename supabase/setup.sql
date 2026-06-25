@@ -215,13 +215,19 @@ ALTER TABLE public.imagens_devolucao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recibos_pagamento ENABLE ROW LEVEL SECURITY;
 
 -- Funções utilitárias para RLS
-CREATE OR REPLACE FUNCTION public.get_user_role() RETURNS user_role AS $$
+CREATE OR REPLACE FUNCTION public.get_user_role() RETURNS public.user_role
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT papel FROM public.usuarios WHERE id = auth.uid() LIMIT 1;
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+$$;
 
-CREATE OR REPLACE FUNCTION public.is_backoffice() RETURNS boolean AS $$
-  SELECT public.get_user_role() IN ('gerente', 'coordenador', 'atendente');
-$$ LANGUAGE sql STABLE SECURITY DEFINER;
+CREATE OR REPLACE FUNCTION public.is_backoffice() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT public.get_user_role() IN ('gerente'::public.user_role, 'coordenador'::public.user_role, 'atendente'::public.user_role);
+$$;
 
 -- POLÍTICAS: USUÁRIOS
 -- Solicitantes veem e editam apenas o próprio perfil. Back-office vê todos.
@@ -312,7 +318,11 @@ CREATE POLICY "Usuário pode deletar suas notificações" ON public.notificacoes
 
 -- Função para sincronizar novos usuários do Supabase Auth para a tabela public.usuarios
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO public.usuarios (
     id,
@@ -331,7 +341,7 @@ BEGIN
   )
   VALUES (
     new.id,
-    COALESCE((new.raw_user_meta_data->>'papel')::user_role, 'solicitante'::user_role),
+    COALESCE((new.raw_user_meta_data->>'papel')::public.user_role, 'solicitante'::public.user_role),
     COALESCE(new.raw_user_meta_data->>'nome_completo', ''),
     COALESCE(new.raw_user_meta_data->>'cpf', ''),
     COALESCE(new.raw_user_meta_data->>'whatsapp', ''),
@@ -346,7 +356,7 @@ BEGIN
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Trigger para executar a função após a criação de um usuário
 CREATE OR REPLACE TRIGGER on_auth_user_created
