@@ -15,7 +15,7 @@ export function useUsuariosQuery() {
       const { data, error } = await supabase
         .from('usuarios')
         .select('*')
-        .order('nome_completo', { ascending: true });
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },

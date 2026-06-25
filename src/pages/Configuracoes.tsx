@@ -13,11 +13,14 @@ import { useToast } from '@/components/ui/use-toast';
 import type { UserRole } from '@/types/database.types';
 import { toast as sonnerToast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 const RECIBO_KEY = 'recibo_template';
 
 export default function Configuracoes() {
   const { toast } = useToast();
+  const { role: currentUserRole } = useAuth();
   const usuariosQuery = useUsuariosQuery();
   const tiposQuery = useTiposEquipamentoQuery();
   const updatePapel = useUpdateUsuarioPapel();
@@ -61,25 +64,92 @@ export default function Configuracoes() {
         </TabsList>
 
         <TabsContent value="usuarios" className="mt-4">
-          <Card>
-            <CardHeader><CardTitle>Papéis de acesso</CardTitle></CardHeader>
-            <CardContent className="divide-y p-0">
-              {(usuariosQuery.data ?? []).map((u) => (
-                <div key={u.id} className="p-4 flex justify-between items-center">
-                  <span>{u.nome_completo} ({u.email})</span>
-                  <Select
-                    value={u.papel}
-                    onValueChange={(v) => updatePapel.mutate({ id: u.id, papel: v as UserRole })}
-                  >
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
+          <Card className="border-slate-200/80 shadow-sm overflow-hidden">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-slate-800">Gestão de Acessos</CardTitle>
+              <p className="text-sm text-slate-500">
+                Gerencie as permissões e papéis de todos os usuários cadastrados no sistema. Apenas gerentes podem realizar alterações.
+              </p>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50/75 border-b border-slate-100">
+                    <TableRow>
+                      <TableHead className="font-medium text-slate-700 h-11 px-6">Nome Completo</TableHead>
+                      <TableHead className="font-medium text-slate-700 h-11 px-6">E-mail</TableHead>
+                      <TableHead className="font-medium text-slate-700 h-11 px-6 font-mono">CPF</TableHead>
+                      <TableHead className="font-medium text-slate-700 h-11 px-6 w-[220px]">Papel Atual</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usuariosQuery.isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-24 text-center text-slate-500 px-6">
+                          Carregando usuários...
+                        </TableCell>
+                      </TableRow>
+                    ) : (usuariosQuery.data ?? []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-24 text-center text-slate-500 px-6">
+                          Nenhum usuário cadastrado.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (usuariosQuery.data ?? []).map((u) => (
+                        <TableRow key={u.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100/80">
+                          <TableCell className="font-medium text-slate-900 px-6 py-3.5">
+                            {u.nome_completo}
+                          </TableCell>
+                          <TableCell className="text-slate-600 px-6 py-3.5">
+                            {u.email || '-'}
+                          </TableCell>
+                          <TableCell className="text-slate-600 px-6 py-3.5 font-mono text-xs">
+                            {u.cpf || '-'}
+                          </TableCell>
+                          <TableCell className="px-6 py-3.5">
+                            <Select
+                              value={u.papel}
+                              disabled={currentUserRole !== 'gerente'}
+                              onValueChange={(v) => {
+                                updatePapel.mutate(
+                                  { id: u.id, papel: v as UserRole },
+                                  {
+                                    onSuccess: () => {
+                                      toast({
+                                        title: 'Papel atualizado',
+                                        description: `O papel de ${u.nome_completo} foi alterado para ${v} com sucesso.`,
+                                      });
+                                    },
+                                    onError: (err: any) => {
+                                      toast({
+                                        variant: 'destructive',
+                                        title: 'Erro ao atualizar',
+                                        description: err?.message || 'Não foi possível atualizar o papel do usuário.',
+                                      });
+                                    },
+                                  }
+                                );
+                              }}
+                            >
+                              <SelectTrigger className="w-full h-9 bg-white border-slate-200 hover:border-slate-300 transition-colors shadow-sm text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
+                                  <SelectItem key={p} value={p} className="capitalize text-sm">
+                                    {p}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

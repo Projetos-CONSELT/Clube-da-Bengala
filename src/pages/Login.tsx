@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-import type { UsuarioInsert } from '@/types/database.types';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -129,59 +128,29 @@ export default function Login() {
         return;
       }
 
-      const signupProfile = {
-        nome_completo: fullName.trim(),
-        cpf: cpf.trim(),
-        whatsapp: whatsapp.trim(),
-        endereco: `${logradouro.trim()}, ${numero.trim()} - ${bairro.trim()}`,
-        cidade: cidade.trim(),
-        estado: estado.trim().toUpperCase(),
-        cep: cep.trim(),
-        papel: 'solicitante' as const,
-      };
-
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: signupProfile,
+          data: {
+            nome_completo: fullName.trim(),
+            cpf: cpf.trim(),
+            whatsapp: whatsapp.trim(),
+            endereco: `${logradouro.trim()}, ${numero.trim()} - ${bairro.trim()}`,
+            cidade: cidade.trim(),
+            estado: estado.trim().toUpperCase(),
+            cep: cep.trim(),
+            papel: 'solicitante' as const,
+          },
         },
       });
       if (error) throw error;
 
-      const userId = data.user?.id ?? data.session?.user?.id;
-      let profileSyncFailed = false;
-
-      if (userId && data.session) {
-        const profilePayload: UsuarioInsert = {
-          id: userId,
-          email: email.trim().toLowerCase(),
-          ...signupProfile,
-          is_inadimplente: false,
-        };
-
-        const { error: profileError } = await supabase.from('usuarios').insert(profilePayload);
-
-        if (profileError) {
-          const { error: upsertError } = await supabase
-            .from('usuarios')
-            .upsert(profilePayload, { onConflict: 'id' });
-
-          if (upsertError) {
-            profileSyncFailed = true;
-            // eslint-disable-next-line no-console
-            console.warn('[login] perfil não pôde ser sincronizado:', upsertError.message);
-          }
-        }
-      }
-
       if (data.session) {
         toast({
           title: 'Cadastro concluído',
-          description: profileSyncFailed
-            ? 'Conta criada, mas o perfil ainda precisa ser sincronizado.'
-            : 'Bem-vindo ao Clube da Bengala!',
+          description: 'Bem-vindo ao Clube da Bengala!',
         });
         await checkUserAuth();
         navigate('/', { replace: true });

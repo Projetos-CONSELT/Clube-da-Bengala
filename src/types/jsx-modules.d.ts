@@ -95,6 +95,7 @@ declare module '@/components/ui/select' {
     defaultValue?: string;
     onValueChange?: (value: string) => void;
     children?: ReactNode;
+    disabled?: boolean;
   };
   export const Select: (props: SelectRootProps) => JSX.Element;
   export const SelectContent: (props: { children?: ReactNode; className?: string }) => JSX.Element;
@@ -131,4 +132,16 @@ declare module '@/components/ui/avatar' {
   import type { ComponentType } from 'react';
   export const Avatar: ComponentType<Record<string, unknown>>;
   export const AvatarFallback: ComponentType<Record<string, unknown>>;
+}
+
+declare module '@/components/ui/table' {
+  import type { ReactNode } from 'react';
+  export const Table: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableHeader: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableBody: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableFooter: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableRow: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableHead: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const TableCell: (props: { children?: ReactNode; className?: string; colSpan?: number }) => JSX.Element;
+  export const TableCaption: (props: { children?: ReactNode; className?: string }) => JSX.Element;
 }
