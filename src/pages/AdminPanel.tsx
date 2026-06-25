@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUsuariosQuery, useUpdateUsuarioPapel, useCreateUsuario } from '@/hooks/useUsuarios';
+import { useUsuariosQuery, useUpdateUsuarioPapel, useCreateUsuario, useUpdateUsuario } from '@/hooks/useUsuarios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ export default function AdminPanel() {
   const { data: usuarios = [], isLoading, error } = useUsuariosQuery();
   const updatePapel = useUpdateUsuarioPapel();
   const createUsuario = useCreateUsuario();
+  const updateUsuario = useUpdateUsuario();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -276,7 +277,7 @@ export default function AdminPanel() {
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
           <CardTitle className="text-lg font-semibold text-slate-800">Membros da Plataforma</CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Lista de todas as contas registradas no banco de dados. Como gerente, você pode alterar os níveis de acesso.
+            Lista de todas as contas registradas no banco de dados. Como gerente, você pode alterar os níveis de acesso de qualquer membro e aprovar solicitações de cargo.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -288,13 +289,14 @@ export default function AdminPanel() {
                   <TableHead className="font-semibold text-slate-700 h-11 px-6">E-mail</TableHead>
                   <TableHead className="font-semibold text-slate-700 h-11 px-6 font-mono">CPF</TableHead>
                   <TableHead className="font-semibold text-slate-700 h-11 px-6">WhatsApp</TableHead>
-                  <TableHead className="font-semibold text-slate-700 h-11 px-6 w-[220px]">Nível de Acesso</TableHead>
+                  <TableHead className="font-semibold text-slate-700 h-11 px-6 w-[200px]">Nível de Acesso</TableHead>
+                  <TableHead className="font-semibold text-slate-700 h-11 px-6 text-right w-[180px]">Solicitação / Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {usuarios.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center text-slate-400 font-medium px-6">
+                    <TableCell colSpan={6} className="h-32 text-center text-slate-400 font-medium px-6">
                       Nenhum usuário cadastrado na plataforma.
                     </TableCell>
                   </TableRow>
@@ -306,6 +308,12 @@ export default function AdminPanel() {
                     >
                       <TableCell className="font-semibold text-slate-800 px-6 py-4">
                         {usuario.nome_completo}
+                        {usuario.solicitacao_papel && (
+                          <div className="mt-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 w-fit font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            Solicitou ser: <span className="capitalize">{usuario.solicitacao_papel}</span>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-slate-600 px-6 py-4">
                         {usuario.email || <span className="text-slate-400 italic text-xs">Não informado</span>}
@@ -334,6 +342,47 @@ export default function AdminPanel() {
                             <SelectItem value="solicitante" className="capitalize text-sm">Solicitante</SelectItem>
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-right">
+                        {usuario.solicitacao_papel && currentUserRole === 'gerente' ? (
+                          <div className="flex justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2 py-1 h-7 text-xs font-semibold"
+                              onClick={() =>
+                                updateUsuario.mutate(
+                                  { id: usuario.id, patch: { papel: usuario.solicitacao_papel as UserRole, solicitacao_papel: null } },
+                                  {
+                                    onSuccess: () =>
+                                      toast({ title: 'Aprovado', description: `Solicitação de cargo de ${usuario.nome_completo} aprovada.` }),
+                                  }
+                                )
+                              }
+                              disabled={updateUsuario.isPending}
+                            >
+                              Aceitar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg px-2 py-1 h-7 text-xs font-semibold"
+                              onClick={() =>
+                                updateUsuario.mutate(
+                                  { id: usuario.id, patch: { solicitacao_papel: null } },
+                                  {
+                                    onSuccess: () =>
+                                      toast({ title: 'Recusado', description: `Solicitação de cargo de ${usuario.nome_completo} recusada.` }),
+                                  }
+                                )
+                              }
+                              disabled={updateUsuario.isPending}
+                            >
+                              Recusar
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

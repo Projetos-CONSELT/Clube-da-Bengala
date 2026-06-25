@@ -22,6 +22,7 @@ export type Database = {
           estado: string | null;
           cep: string | null;
           is_inadimplente: boolean;
+          aprovado: boolean;
           created_at: string | null;
           solicitacao_papel: string | null;
         };
@@ -37,6 +38,7 @@ export type Database = {
           estado?: string | null;
           cep?: string | null;
           is_inadimplente?: boolean;
+          aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
         };
@@ -52,6 +54,7 @@ export type Database = {
           estado?: string | null;
           cep?: string | null;
           is_inadimplente?: boolean;
+          aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
         };

@@ -14,6 +14,7 @@ import type { UserRole, Usuario } from '@/types/database.types';
 export type AuthError =
   | { type: 'profile_error'; message: string }
   | { type: 'user_not_registered'; email?: string | null }
+  | { type: 'user_pending_approval'; email?: string | null }
   | null;
 
 export interface AuthUser {

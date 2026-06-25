@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
+import { Eye, EyeOff } from 'lucide-react';
 
-type AuthMode = 'signin' | 'signup';
+type AuthMode = 'signin' | 'signup' | 'forgot';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -31,6 +32,10 @@ export default function Login() {
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -46,9 +51,14 @@ export default function Login() {
     setCidade('');
     setEstado('');
     setCep('');
+    setConfirmPassword('');
+    setAcceptedTerms(false);
   };
 
-  const toggleMode = () => setMode((current) => (current === 'signin' ? 'signup' : 'signin'));
+  const toggleMode = () => {
+    resetSignupFields();
+    setMode((current) => (current === 'signin' ? 'signup' : 'signin'));
+  };
 
   const handleCpfChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -119,6 +129,39 @@ export default function Login() {
     setLoading(true);
 
     try {
+      if (mode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast({
+          title: 'E-mail enviado',
+          description: 'Verifique sua caixa de entrada para redefinir sua senha.',
+        });
+        setMode('signin');
+        return;
+      }
+
+      if (mode === 'signup' && password !== confirmPassword) {
+        toast({
+          variant: 'destructive',
+          title: 'Senhas diferentes',
+          description: 'A confirmação de senha não confere.',
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (mode === 'signup' && !acceptedTerms) {
+        toast({
+          variant: 'destructive',
+          title: 'Termos de Serviço',
+          description: 'Você precisa aceitar os Termos de Serviço para continuar.',
+        });
+        setLoading(false);
+        return;
+      }
+
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -137,7 +180,9 @@ export default function Login() {
             nome_completo: fullName.trim(),
             cpf: cpf.trim(),
             whatsapp: whatsapp.trim(),
-            endereco: `${logradouro.trim()}, ${numero.trim()} - ${bairro.trim()}`,
+            rua: logradouro.trim(),
+            numero: numero.trim(),
+            bairro: bairro.trim(),
             cidade: cidade.trim(),
             estado: estado.trim().toUpperCase(),
             cep: cep.trim(),
@@ -177,8 +222,14 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 via-white to-slate-100 p-4">
       <Card className="w-full max-w-md shadow-xl border-slate-200/70">
         <CardHeader>
-          <CardTitle>{mode === 'signin' ? 'Entrar' : 'Criar conta'}</CardTitle>
-          <CardDescription>Clube da Bengala</CardDescription>
+          <CardTitle>
+            {mode === 'signin' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : 'Recuperar senha'}
+          </CardTitle>
+          <CardDescription>
+            {mode === 'forgot'
+              ? 'Insira seu e-mail para receber um link de redefinição de senha'
+              : 'Clube da Bengala'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -306,18 +357,86 @@ export default function Login() {
                 placeholder="seuemail@exemplo.com"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => setPassword(event.target.value)}
-                placeholder="Mínimo de 6 caracteres"
-              />
-            </div>
+            {mode !== 'forgot' && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setPassword(event.target.value)}
+                    placeholder="Mínimo de 6 caracteres"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+            {mode === 'signin' && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => setMode('forgot')}
+                  className="text-xs text-blue-600 hover:underline font-medium"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+            )}
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar senha</Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) => setConfirmPassword(event.target.value)}
+                    placeholder="Confirme sua senha"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+            {mode === 'signup' && (
+              <div className="flex items-start gap-2 py-1">
+                <input
+                  id="terms"
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                />
+                <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none">
+                  Li e aceito os{' '}
+                  <Link
+                    to="/termos"
+                    className="text-blue-600 hover:underline font-semibold"
+                  >
+                    Termos de Serviço
+                  </Link>{' '}
+                  do Clube da Bengala.
+                </Label>
+              </div>
+            )}
             {mode === 'signup' && (
               <p className="text-xs text-slate-500 leading-relaxed">
                 O cadastro será criado como solicitante e os dados informados serão usados para
@@ -325,16 +444,33 @@ export default function Login() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? '...' : mode === 'signin' ? 'Entrar' : 'Cadastrar'}
+              {loading
+                ? '...'
+                : mode === 'signin'
+                ? 'Entrar'
+                : mode === 'signup'
+                ? 'Cadastrar'
+                : 'Enviar e-mail de recuperação'}
             </Button>
-            <button
-              type="button"
-              className="w-full text-sm text-slate-600 hover:underline"
-              onClick={toggleMode}
-              disabled={loading}
-            >
-              {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
-            </button>
+            {mode === 'forgot' ? (
+              <button
+                type="button"
+                className="w-full text-sm text-slate-600 hover:underline"
+                onClick={() => setMode('signin')}
+                disabled={loading}
+              >
+                Voltar para o Entrar
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="w-full text-sm text-slate-600 hover:underline"
+                onClick={toggleMode}
+                disabled={loading}
+              >
+                {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
+              </button>
+            )}
           </form>
         </CardContent>
       </Card>

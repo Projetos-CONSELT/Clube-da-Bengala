@@ -8,6 +8,8 @@ import PageNotFound from '@/lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
+import Termos from '@/pages/Termos';
+import ResetPassword from '@/pages/ResetPassword';
 import type { UserRole } from '@/types/database.types';
 import type { ReactNode } from 'react';
 
@@ -62,6 +64,8 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/termos" element={<Termos />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route
         element={

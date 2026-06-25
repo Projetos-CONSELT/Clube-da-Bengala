@@ -39,6 +39,7 @@ CREATE TABLE public.usuarios (
     estado VARCHAR(2),
     -- Controle de Sistema
     is_inadimplente BOOLEAN DEFAULT false,
+    aprovado BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -291,3 +292,50 @@ CREATE POLICY "Usuário pode atualizar suas notificações" ON public.notificaco
     FOR UPDATE USING (usuario_id = auth.uid());
 CREATE POLICY "Usuário pode deletar suas notificações" ON public.notificacoes 
     FOR DELETE USING (usuario_id = auth.uid());
+
+-- ====================================================================================
+-- 4. TRIGGERS AUTOMÁTICOS
+-- ====================================================================================
+
+-- Função para sincronizar novos usuários do Supabase Auth para a tabela public.usuarios
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.usuarios (
+    id,
+    papel,
+    nome_completo,
+    cpf,
+    whatsapp,
+    email,
+    cep,
+    rua,
+    numero,
+    bairro,
+    cidade,
+    estado,
+    is_inadimplente
+  )
+  VALUES (
+    new.id,
+    COALESCE((new.raw_user_meta_data->>'papel')::user_role, 'solicitante'::user_role),
+    COALESCE(new.raw_user_meta_data->>'nome_completo', ''),
+    COALESCE(new.raw_user_meta_data->>'cpf', ''),
+    COALESCE(new.raw_user_meta_data->>'whatsapp', ''),
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'cep', ''),
+    COALESCE(new.raw_user_meta_data->>'rua', ''),
+    COALESCE(new.raw_user_meta_data->>'numero', ''),
+    COALESCE(new.raw_user_meta_data->>'bairro', ''),
+    COALESCE(new.raw_user_meta_data->>'cidade', ''),
+    COALESCE(new.raw_user_meta_data->>'estado', ''),
+    false
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger para executar a função após a criação de um usuário
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
