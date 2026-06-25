@@ -10,10 +10,22 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. TIPOS DE DADOS E ENUMS
 -- ====================================================================================
 
-CREATE TYPE user_role AS ENUM ('gerente', 'coordenador', 'atendente', 'solicitante');
-CREATE TYPE status_equipamento AS ENUM ('disponivel', 'reservado', 'emprestado', 'vendido', 'extraviado', 'manutencao');
-CREATE TYPE status_solicitacao AS ENUM ('triagem', 'aguardando_documentacao', 'aguardando_retirada', 'equipamento_emprestado', 'em_devolucao', 'inadimplente', 'em_cobranca', 'encerrada');
-CREATE TYPE status_documento AS ENUM ('pendente', 'aprovado', 'reprovado');
+DO $$ BEGIN
+    CREATE TYPE user_role AS ENUM ('gerente', 'coordenador', 'atendente', 'solicitante');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE status_equipamento AS ENUM ('disponivel', 'reservado', 'emprestado', 'vendido', 'extraviado', 'manutencao');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE status_solicitacao AS ENUM ('triagem', 'aguardando_documentacao', 'aguardando_retirada', 'equipamento_emprestado', 'em_devolucao', 'inadimplente', 'em_cobranca', 'encerrada');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE status_documento AS ENUM ('pendente', 'aprovado', 'reprovado');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 
 -- ====================================================================================
 -- 2. TABELAS DO SISTEMA
@@ -40,6 +52,7 @@ CREATE TABLE public.usuarios (
     -- Controle de Sistema
     is_inadimplente BOOLEAN DEFAULT false,
     aprovado BOOLEAN DEFAULT true,
+    solicitacao_papel VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
