@@ -134,6 +134,7 @@ export type Database = {
           codigo_patrimonio: string;
           tipo_id: string;
           status: Database['public']['Enums']['status_equipamento'];
+          estado_conservacao: string | null;
           atributos_especificos: Json;
           doador_id: string | null;
           created_at: string | null;
@@ -143,6 +144,7 @@ export type Database = {
           codigo_patrimonio: string;
           tipo_id: string;
           status?: Database['public']['Enums']['status_equipamento'];
+          estado_conservacao?: string | null;
           atributos_especificos?: Json;
           doador_id?: string | null;
           created_at?: string | null;
@@ -152,6 +154,7 @@ export type Database = {
           codigo_patrimonio?: string;
           tipo_id?: string;
           status?: Database['public']['Enums']['status_equipamento'];
+          estado_conservacao?: string | null;
           atributos_especificos?: Json;
           doador_id?: string | null;
           created_at?: string | null;
@@ -185,6 +188,14 @@ export type Database = {
           tempo_estimado_meses: number | null;
           motivo_solicitacao: string | null;
           prazo_limite_retirada: string | null;
+          prazo_retirada: string | null;
+          data_retirada_realizada: string | null;
+          link_boleto_ressarcimento: string | null;
+          valor_boleto_ressarcimento: number | null;
+          prazo_vencimento_boleto: string | null;
+          texto_notificacao_boleto: string | null;
+          pagamento_ressarcimento_realizado: boolean | null;
+          data_pagamento_ressarcimento: string | null;
           created_at: string | null;
         };
         Insert: {
@@ -198,6 +209,14 @@ export type Database = {
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
           prazo_limite_retirada?: string | null;
+          prazo_retirada?: string | null;
+          data_retirada_realizada?: string | null;
+          link_boleto_ressarcimento?: string | null;
+          valor_boleto_ressarcimento?: number | null;
+          prazo_vencimento_boleto?: string | null;
+          texto_notificacao_boleto?: string | null;
+          pagamento_ressarcimento_realizado?: boolean | null;
+          data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
         };
         Update: {
@@ -211,6 +230,14 @@ export type Database = {
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
           prazo_limite_retirada?: string | null;
+          prazo_retirada?: string | null;
+          data_retirada_realizada?: string | null;
+          link_boleto_ressarcimento?: string | null;
+          valor_boleto_ressarcimento?: number | null;
+          prazo_vencimento_boleto?: string | null;
+          texto_notificacao_boleto?: string | null;
+          pagamento_ressarcimento_realizado?: boolean | null;
+          data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
         };
         Relationships: [
@@ -289,6 +316,7 @@ export type Database = {
           equipamento_id: string;
           data_retirada: string;
           data_prevista_devolucao: string | null;
+          data_devolucao_realizada: string | null;
           renovacoes_realizadas: number;
           recibo_texto_customizado: string | null;
           created_at: string | null;
@@ -299,6 +327,7 @@ export type Database = {
           equipamento_id: string;
           data_retirada: string;
           data_prevista_devolucao?: string | null;
+          data_devolucao_realizada?: string | null;
           renovacoes_realizadas?: number;
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
@@ -309,6 +338,7 @@ export type Database = {
           equipamento_id?: string;
           data_retirada?: string;
           data_prevista_devolucao?: string | null;
+          data_devolucao_realizada?: string | null;
           renovacoes_realizadas?: number;
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
@@ -330,6 +360,178 @@ export type Database = {
           },
         ];
       };
+      recibos_pagamento: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          solicitante_id: string;
+          nome_completo: string;
+          cpf: string;
+          descricao_equipamento: string;
+          valor_pago: number;
+          texto_customizado: string | null;
+          data_emissao: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          solicitante_id: string;
+          nome_completo: string;
+          cpf: string;
+          descricao_equipamento: string;
+          valor_pago: number;
+          texto_customizado?: string | null;
+          data_emissao?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          solicitante_id?: string;
+          nome_completo?: string;
+          cpf?: string;
+          descricao_equipamento?: string;
+          valor_pago?: number;
+          texto_customizado?: string | null;
+          data_emissao?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recibos_pagamento_solicitacao_id_fkey';
+            columns: ['solicitacao_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recibos_pagamento_solicitante_id_fkey';
+            columns: ['solicitante_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      imagens_retirada: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          url_imagem: string;
+          descricao: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          url_imagem: string;
+          descricao?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          url_imagem?: string;
+          descricao?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'imagens_retirada_solicitacao_id_fkey';
+            columns: ['solicitacao_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      imagens_devolucao: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          url_imagem: string;
+          descricao: string | null;
+          estado_conservacao: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          url_imagem: string;
+          descricao?: string | null;
+          estado_conservacao?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          url_imagem?: string;
+          descricao?: string | null;
+          estado_conservacao?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'imagens_devolucao_solicitacao_id_fkey';
+            columns: ['solicitacao_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      notificacoes: {
+        Row: {
+          id: string;
+          solicitacao_id: string;
+          usuario_id: string;
+          tipo: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
+          titulo: string;
+          descricao: string | null;
+          lido: boolean;
+          link_acao: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          solicitacao_id: string;
+          usuario_id: string;
+          tipo: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
+          titulo: string;
+          descricao?: string | null;
+          lido?: boolean;
+          link_acao?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          usuario_id?: string;
+          tipo?: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
+          titulo?: string;
+          descricao?: string | null;
+          lido?: boolean;
+          link_acao?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notificacoes_solicitacao_id_fkey';
+            columns: ['solicitacao_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notificacoes_usuario_id_fkey';
+            columns: ['usuario_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -346,6 +548,9 @@ export type Database = {
         | 'triagem'
         | 'aguardando_documentacao'
         | 'aguardando_retirada'
+        | 'equipamento_emprestado'
+        | 'em_devolucao'
+        | 'inadimplente'
         | 'em_cobranca'
         | 'encerrada';
       status_documento: 'pendente' | 'aprovado' | 'reprovado';
@@ -380,3 +585,20 @@ export type DocumentoSolicitacao = Database['public']['Tables']['documentos_soli
 export type Emprestimo = Database['public']['Tables']['emprestimos']['Row'];
 export type EmprestimoInsert = Database['public']['Tables']['emprestimos']['Insert'];
 export type EmprestimoUpdate = Database['public']['Tables']['emprestimos']['Update'];
+
+export type ReciboPagamento = Database['public']['Tables']['recibos_pagamento']['Row'];
+export type ReciboPagamentoInsert = Database['public']['Tables']['recibos_pagamento']['Insert'];
+export type ReciboPagamentoUpdate = Database['public']['Tables']['recibos_pagamento']['Update'];
+
+export type ImagemRetirada = Database['public']['Tables']['imagens_retirada']['Row'];
+export type ImagemRetiradaInsert = Database['public']['Tables']['imagens_retirada']['Insert'];
+export type ImagemRetiradaUpdate = Database['public']['Tables']['imagens_retirada']['Update'];
+
+export type ImagemDevolucao = Database['public']['Tables']['imagens_devolucao']['Row'];
+export type ImagemDevolucaoInsert = Database['public']['Tables']['imagens_devolucao']['Insert'];
+export type ImagemDevolucaoUpdate = Database['public']['Tables']['imagens_devolucao']['Update'];
+
+export type Notificacao = Database['public']['Tables']['notificacoes']['Row'];
+export type NotificacaoInsert = Database['public']['Tables']['notificacoes']['Insert'];
+export type NotificacaoUpdate = Database['public']['Tables']['notificacoes']['Update'];
+

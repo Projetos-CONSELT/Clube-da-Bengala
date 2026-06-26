@@ -42,12 +42,12 @@ export function useRegistrarRetirada() {
       equipamentoId: string;
       dataPrevistaDevolucao: Date;
     }) => {
-      // Atualizar status da solicitação
       const { error: solError } = await supabase
         .from('solicitacoes')
         .update({
           status: 'equipamento_emprestado' as StatusSolicitacao,
           data_retirada_realizada: new Date().toISOString(),
+          equipamento_reservado_id: equipamentoId,
         })
         .eq('id', solicitacaoId);
       if (solError) throw solError;
@@ -92,10 +92,10 @@ export function useRegistrarDevolucao() {
       novoEstadoConservacao,
     }: {
       solicitacaoId: string;
-      equipamentoId: string;
+      equipamentoId?: string;
       novoEstadoConservacao: string;
     }) => {
-      // Atualizar status da solicitação
+      // 1. Atualizar status da solicitação
       const { error: solError } = await supabase
         .from('solicitacoes')
         .update({
@@ -104,21 +104,56 @@ export function useRegistrarDevolucao() {
         .eq('id', solicitacaoId);
       if (solError) throw solError;
 
-      // Atualizar status e estado do equipamento
+      // 2. Buscar o equipamento_id do empréstimo se não foi fornecido
+      let realEquipamentoId = equipamentoId;
+      if (!realEquipamentoId) {
+        const { data: emprestimo, error: empError } = await supabase
+          .from('emprestimos')
+          .select('equipamento_id')
+          .eq('solicitacao_id', solicitacaoId)
+          .is('data_devolucao_realizada', null)
+          .maybeSingle();
+
+        if (empError) throw empError;
+        if (emprestimo) {
+          realEquipamentoId = emprestimo.equipamento_id;
+        }
+      }
+
+      // 3. Se ainda assim não encontrar, tentar pegar de solicitacoes.equipamento_reservado_id
+      if (!realEquipamentoId) {
+        const { data: sol, error: getSolError } = await supabase
+          .from('solicitacoes')
+          .select('equipamento_reservado_id')
+          .eq('id', solicitacaoId)
+          .single();
+        if (getSolError) throw getSolError;
+        if (sol && sol.equipamento_reservado_id) {
+          realEquipamentoId = sol.equipamento_reservado_id;
+        }
+      }
+
+      // 4. Se não encontrar o equipamentoId, lançar erro amigável
+      if (!realEquipamentoId) {
+        throw new Error("Não foi possível localizar o equipamento associado a esta devolução.");
+      }
+
+      // 5. Atualizar status e estado do equipamento
       const { error: eqError } = await supabase
         .from('equipamentos')
         .update({
           status: 'disponivel',
           estado_conservacao: novoEstadoConservacao,
         })
-        .eq('id', equipamentoId);
+        .eq('id', realEquipamentoId);
       if (eqError) throw eqError;
 
-      // Atualizar data de devolução no empréstimo
+      // 6. Atualizar data de devolução no empréstimo
       const { error: empreError } = await supabase
         .from('emprestimos')
         .update({ data_devolucao_realizada: new Date().toISOString() })
-        .eq('solicitacao_id', solicitacaoId);
+        .eq('solicitacao_id', solicitacaoId)
+        .is('data_devolucao_realizada', null);
       if (empreError) throw empreError;
 
       return { success: true };

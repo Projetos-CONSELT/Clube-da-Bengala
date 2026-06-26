@@ -19,6 +19,9 @@ export const STATUS_SOLICITACAO_UI: Record<StatusSolicitacao, StatusUiConfig> = 
   triagem: { label: 'Triagem', className: 'bg-yellow-100 text-yellow-700' },
   aguardando_documentacao: { label: 'Aguardando documentação', className: 'bg-orange-100 text-orange-700' },
   aguardando_retirada: { label: 'Aguardando retirada', className: 'bg-cyan-100 text-cyan-700' },
+  equipamento_emprestado: { label: 'Equipamento emprestado', className: 'bg-blue-100 text-blue-700' },
+  em_devolucao: { label: 'Em devolução', className: 'bg-purple-100 text-purple-700' },
+  inadimplente: { label: 'Inadimplente', className: 'bg-red-100 text-red-700' },
   em_cobranca: { label: 'Em cobrança', className: 'bg-red-100 text-red-700' },
   encerrada: { label: 'Encerrada', className: 'bg-emerald-100 text-emerald-700' },
 };

@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   useSolicitacoesQuery,
   useTiposEquipamentoQuery,
@@ -67,7 +68,7 @@ const beneficiarioName = (s: SolicitacaoComRelacoes) =>
   s?.beneficiario?.nome_completo || 'Mesmo responsável';
 const tipoName = (s: SolicitacaoComRelacoes) => s?.tipo?.nome || '—';
 
-function ImagensRetiradaTab({ solicitacaoId, isBackOffice }: ImagensRetiradaTabProps) {
+function ImagensRetiradaTab({ solicitacaoId, isBackOffice }: { solicitacaoId: string; isBackOffice: boolean }) {
   const { data: imagens = [], isLoading } = useImagensRetiradaQuery(solicitacaoId);
   const deleteImagemMutation = useDeleteImagemRetirada();
   const { toast } = useToast();
@@ -291,6 +292,7 @@ export default function Solicitacoes() {
   const [prazoData, setPrazoData] = useState('');
   const [retiradaData, setRetiradaData] = useState('');
   const [retiradaEquipamento, setRetiradaEquipamento] = useState('');
+  const [retiradaEquipamentoId, setRetiradaEquipamentoId] = useState('');
   const [devolucaoFiles, setDevolucaoFiles] = useState<File[]>([]);
   const [devolucaoEstado, setDevolucaoEstado] = useState('bom');
   const [boletoLink, setBoletoLink] = useState('');
@@ -576,7 +578,11 @@ export default function Solicitacoes() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setSelected(s); setRetiradaModalOpen(true); }}
+                        onClick={() => {
+                          setSelected(s);
+                          setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
+                          setRetiradaModalOpen(true);
+                        }}
                         className="text-blue-600 border-blue-200"
                       >
                         <Package className="w-4 h-4 mr-2" />
@@ -795,7 +801,7 @@ export default function Solicitacoes() {
       {/* Triagem - Aprovação/Recusa */}
       <Dialog 
         open={triageModalOpen} 
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           setTriageModalOpen(open);
           if (!open) {
             setTriageDecision(null);
@@ -881,7 +887,7 @@ export default function Solicitacoes() {
       {/* Upload de Imagens da Retirada */}
       <Dialog 
         open={uploadImagesModalOpen} 
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           setUploadImagesModalOpen(open);
           if (!open) {
             setSelectedFiles([]);
@@ -1059,10 +1065,10 @@ export default function Solicitacoes() {
           <div className="space-y-4 py-4">
             <div>
               <Label>Data Limite *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={prazoData}
-                onChange={(e) => setPrazoData(e.target.value)}
+                onChange={setPrazoData}
+                placeholder="Selecione a data limite"
               />
             </div>
           </div>
@@ -1072,7 +1078,7 @@ export default function Solicitacoes() {
               onClick={() => {
                 if (!selected || !prazoData) return;
                 registrarPrazoMutation.mutate(
-                  { solicitacaoId: selected.id, prazo: new Date(prazoData) },
+                  { solicitacaoId: selected.id, prazoRetirada: new Date(prazoData) },
                   {
                     onSuccess: () => {
                       toast({ title: 'Prazo definido com sucesso' });
@@ -1093,7 +1099,6 @@ export default function Solicitacoes() {
         </DialogContent>
       </Dialog>
 
-      {/* Registrar Retirada */}
       <Dialog open={retiradaModalOpen} onOpenChange={setRetiradaModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1101,20 +1106,53 @@ export default function Solicitacoes() {
             <DialogDescription>Confirme a data e data prevista de devolução</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {(!selected?.equipamento_reservado_id) ? (
+              <div>
+                <Label>Selecionar Equipamento *</Label>
+                <Select
+                  value={retiradaEquipamentoId}
+                  onValueChange={setRetiradaEquipamentoId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um equipamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {equipamentos
+                      .filter((e) => e.status === 'disponivel' && e.tipo_id === selected?.tipo_equipamento_id)
+                      .map((eq) => (
+                        <SelectItem key={eq.id} value={eq.id}>
+                          {eq.codigo_patrimonio} ({eq.estado_conservacao || 'Bom'})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div>
+                <Label>Equipamento Reservado</Label>
+                <Input
+                  disabled
+                  value={
+                    equipamentos.find((e) => e.id === selected.equipamento_reservado_id)
+                      ?.codigo_patrimonio || 'Equipamento Reservado'
+                  }
+                />
+              </div>
+            )}
             <div>
               <Label>Data da Retirada *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={retiradaData}
-                onChange={(e) => setRetiradaData(e.target.value)}
+                onChange={setRetiradaData}
+                placeholder="Selecione a data da retirada"
               />
             </div>
             <div>
               <Label>Data Prevista de Devolução *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={retiradaEquipamento}
-                onChange={(e) => setRetiradaEquipamento(e.target.value)}
+                onChange={setRetiradaEquipamento}
+                placeholder="Selecione a data prevista de devolução"
               />
             </div>
           </div>
@@ -1123,10 +1161,19 @@ export default function Solicitacoes() {
             <Button
               onClick={() => {
                 if (!selected || !retiradaData || !retiradaEquipamento) return;
+                const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
+                if (!eqId) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Erro',
+                    description: 'Por favor, selecione um equipamento para retirada.',
+                  });
+                  return;
+                }
                 registrarRetiradaMutation.mutate(
                   {
                     solicitacaoId: selected.id,
-                    dataRetirada: new Date(retiradaData),
+                    equipamentoId: eqId,
                     dataPrevistaDevolucao: new Date(retiradaEquipamento),
                   },
                   {
@@ -1135,13 +1182,19 @@ export default function Solicitacoes() {
                       setRetiradaModalOpen(false);
                       setRetiradaData('');
                       setRetiradaEquipamento('');
+                      setRetiradaEquipamentoId('');
                     },
                     onError: (err: any) =>
                       toast({ variant: 'destructive', title: 'Erro', description: err.message }),
                   }
                 );
               }}
-              disabled={registrarRetiradaMutation.isPending || !retiradaData || !retiradaEquipamento}
+              disabled={
+                registrarRetiradaMutation.isPending || 
+                !retiradaData || 
+                !retiradaEquipamento || 
+                (!selected?.equipamento_reservado_id && !retiradaEquipamentoId)
+              }
             >
               {registrarRetiradaMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar Retirada
@@ -1267,7 +1320,11 @@ export default function Solicitacoes() {
                   }
 
                   registrarDevolucaoMutation.mutate(
-                    { solicitacaoId: selected.id },
+                    {
+                      solicitacaoId: selected.id,
+                      equipamentoId: selected.equipamento_reservado_id || undefined,
+                      novoEstadoConservacao: devolucaoEstado,
+                    },
                     {
                       onSuccess: () => {
                         toast({ title: 'Devolução registrada com sucesso' });
@@ -1327,10 +1384,10 @@ export default function Solicitacoes() {
             </div>
             <div>
               <Label>Data de Vencimento *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={boloPrazo}
-                onChange={(e) => setBoloPrazo(e.target.value)}
+                onChange={setBoloPrazo}
+                placeholder="Selecione a data de vencimento"
               />
             </div>
             <div>
@@ -1418,7 +1475,7 @@ export default function Solicitacoes() {
                     solicitacaoId: selected.id,
                     solicitanteId: selected.solicitante_id,
                     nomeCompleto: selected.solicitante.nome_completo,
-                    cpf: selected.solicitante.cpf,
+                    cpf: selected.solicitante.cpf || '',
                     descricaoEquipamento: selected.tipo?.nome || 'Equipamento',
                     valorPago: selected.valor_boleto_ressarcimento || 0,
                     textoCustomizado: selected.texto_notificacao_boleto || '',

@@ -16,9 +16,18 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { useToast } from '@/components/ui/use-toast';
 import type { UserRole } from '@/types/database.types';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+
+const ROLE_LEVELS: Record<UserRole, number> = {
+  gerente: 4,
+  coordenador: 3,
+  atendente: 2,
+  solicitante: 1,
+};
 
 export default function Pessoas() {
   const { toast } = useToast();
+  const { role: currentUserRole } = useAuth();
   const usuariosQuery = useUsuariosQuery();
   const beneficiariosQuery = useBeneficiariosQuery();
   const updatePapel = useUpdateUsuarioPapel();
@@ -65,13 +74,16 @@ export default function Pessoas() {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold">Pessoas</h2>
-      <Tabs defaultValue="usuarios">
+      <Tabs defaultValue={currentUserRole === 'atendente' ? 'beneficiarios' : 'usuarios'}>
         <TabsList>
-          <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+          {currentUserRole !== 'atendente' && (
+            <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+          )}
           <TabsTrigger value="beneficiarios">Beneficiários</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="usuarios" className="mt-4 space-y-4">
+        {currentUserRole !== 'atendente' && (
+          <TabsContent value="usuarios" className="mt-4 space-y-4">
           <div className="flex items-center gap-2">
             <Input
               placeholder="Pesquisar por nome, e-mail ou CPF..."
@@ -83,7 +95,16 @@ export default function Pessoas() {
 
           {/* Seção de solicitações de cargo */}
           {(() => {
-            const solicitacoesCargo = (usuariosQuery.data ?? []).filter((u) => u.solicitacao_papel);
+            const solicitacoesCargo = (usuariosQuery.data ?? []).filter((u) => {
+              if (!u.solicitacao_papel) return false;
+              if (currentUserRole === 'gerente') return true;
+              if (currentUserRole === 'coordenador') {
+                const currentLevel = u.papel ? ROLE_LEVELS[u.papel] : 0;
+                const requestedLevel = ROLE_LEVELS[u.solicitacao_papel as UserRole] || 0;
+                return currentLevel < 3 && requestedLevel < 3;
+              }
+              return false;
+            });
             if (solicitacoesCargo.length === 0) return null;
             return (
               <Card className="border-amber-200 bg-amber-50/50">
@@ -127,8 +148,8 @@ export default function Pessoas() {
                           className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                           onClick={() =>
                             updateUsuario.mutate(
-                              { id: u.id, patch: { solicitacao_papel: null } },
-                              { onSuccess: () => toast({ title: `Solicitação de ${u.nome_completo} recusada.` }) }
+                              { id: u.id, patch: { papel: 'solicitante' as UserRole, solicitacao_papel: null } },
+                              { onSuccess: () => toast({ title: `Solicitação de ${u.nome_completo} recusada e cargo removido.` }) }
                             )
                           }
                           disabled={updateUsuario.isPending}
@@ -166,35 +187,59 @@ export default function Pessoas() {
                     );
                   }
 
-                  return filteredUsuarios.map((u) => (
-                    <div key={u.id} className="p-4 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-medium">{u.nome_completo}</p>
-                        <p className="text-sm text-slate-500">{u.email} • {u.cpf}</p>
+                  return filteredUsuarios.map((u) => {
+                    const isSelectDisabled = 
+                      currentUserRole !== 'gerente' && 
+                      (currentUserRole !== 'coordenador' || (u.papel ? ROLE_LEVELS[u.papel] : 0) >= 3);
+
+                    const getAllowedRoles = () => {
+                      if (currentUserRole === 'gerente') {
+                        return ['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[];
+                      }
+                      if (currentUserRole === 'coordenador') {
+                        return ['atendente', 'solicitante'] as UserRole[];
+                      }
+                      return [] as UserRole[];
+                    };
+                    const allowedRoles = getAllowedRoles();
+                    const rolesToShow = u.papel && allowedRoles.includes(u.papel)
+                      ? allowedRoles
+                      : u.papel
+                        ? [...allowedRoles, u.papel]
+                        : allowedRoles;
+
+                    return (
+                      <div key={u.id} className="p-4 flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-medium">{u.nome_completo}</p>
+                          <p className="text-sm text-slate-500">{u.email} • {u.cpf}</p>
+                        </div>
+                        <Select
+                          value={u.papel}
+                          disabled={isSelectDisabled}
+                          onValueChange={(v) =>
+                            updatePapel.mutate(
+                              { id: u.id, papel: v as UserRole },
+                              { onSuccess: () => toast({ title: 'Papel atualizado' }) }
+                            )
+                          }
+                        >
+                          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {rolesToShow.map((p) => (
+                              <SelectItem key={p} value={p}>{p}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Select
-                        value={u.papel}
-                        onValueChange={(v) =>
-                          updatePapel.mutate(
-                            { id: u.id, papel: v as UserRole },
-                            { onSuccess: () => toast({ title: 'Papel atualizado' }) }
-                          )
-                        }
-                      >
-                        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
-                            <SelectItem key={p} value={p}>{p}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ));
+                    );
+                  });
                 })()}
               </CardContent>
             </Card>
           )}
         </TabsContent>
+        )}
 
         <TabsContent value="beneficiarios" className="mt-4 space-y-4">
           <Button onClick={openNewBenef} className="gap-2"><Plus className="w-4 h-4" /> Novo beneficiário</Button>

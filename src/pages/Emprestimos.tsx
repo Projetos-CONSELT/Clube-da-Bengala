@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Truck, Plus, RotateCcw } from 'lucide-react';
 import moment from 'moment';
 
@@ -142,8 +143,20 @@ export default function Emprestimos() {
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div><Label>Retirada</Label><Input type="date" value={form.data_retirada} onChange={(e) => setForm({ ...form, data_retirada: e.target.value })} /></div>
-              <div><Label>Devolução prevista</Label><Input type="date" value={form.data_prevista_devolucao} onChange={(e) => setForm({ ...form, data_prevista_devolucao: e.target.value })} /></div>
+              <div>
+                <Label>Retirada</Label>
+                <DatePicker 
+                  value={form.data_retirada} 
+                  onChange={(val: string) => setForm({ ...form, data_retirada: val })} 
+                />
+              </div>
+              <div>
+                <Label>Devolução prevista</Label>
+                <DatePicker 
+                  value={form.data_prevista_devolucao} 
+                  onChange={(val: string) => setForm({ ...form, data_prevista_devolucao: val })} 
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

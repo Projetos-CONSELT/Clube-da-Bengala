@@ -368,10 +368,10 @@ export default function AdminPanel() {
                               className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg px-2 py-1 h-7 text-xs font-semibold"
                               onClick={() =>
                                 updateUsuario.mutate(
-                                  { id: usuario.id, patch: { solicitacao_papel: null } },
+                                  { id: usuario.id, patch: { papel: 'solicitante' as UserRole, solicitacao_papel: null } },
                                   {
                                     onSuccess: () =>
-                                      toast({ title: 'Recusado', description: `Solicitação de cargo de ${usuario.nome_completo} recusada.` }),
+                                      toast({ title: 'Recusado', description: `Solicitação de cargo de ${usuario.nome_completo} recusada e cargo removido.` }),
                                   }
                                 )
                               }
