@@ -12,7 +12,10 @@ export function useBeneficiariosQuery() {
     queryKey: [...BENEFICIARIOS_KEY, role, user?.id],
     enabled: isAuthenticated,
     queryFn: async () => {
-      let q = supabase.from('beneficiarios').select('*').order('nome_completo', { ascending: true });
+      let q = supabase
+        .from('beneficiarios')
+        .select('*, solicitante:usuarios(*)')
+        .order('nome_completo', { ascending: true });
       if (role === 'solicitante' && user?.id) {
         q = q.eq('solicitante_id', user.id);
       }
@@ -58,15 +61,25 @@ export function useUpdateBeneficiario() {
 
 export function useDeleteBeneficiario() {
   const qc = useQueryClient();
-  const { role } = useAuth();
   return useMutation({
     mutationFn: async (id: string) => {
-      if (!isBackOfficeRole(role)) {
-        const { error } = await supabase.from('beneficiarios').delete().eq('id', id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('beneficiarios').delete().eq('id', id);
-        if (error) throw error;
+      // Verificar se o beneficiário possui solicitações em aberto ou empréstimos ativos (status !== 'encerrada')
+      const { data: solicitacoesAbertas, error: errCheck } = await supabase
+        .from('solicitacoes')
+        .select('id, status')
+        .eq('beneficiario_id', id)
+        .neq('status', 'encerrada');
+
+      if (!errCheck && solicitacoesAbertas && solicitacoesAbertas.length > 0) {
+        throw new Error('O beneficiário está em débito ou possui empréstimos/solicitações pendentes e não pode ser excluído.');
+      }
+
+      const { error } = await supabase.from('beneficiarios').delete().eq('id', id);
+      if (error) {
+        if (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('constraint')) {
+          throw new Error('O beneficiário está em débito com equipamentos pendentes e não pode ser excluído.');
+        }
+        throw error;
       }
       return id;
     },

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
-import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, type SolicitacaoComRelacoes } from '@/types/domain';
+import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
 
 export const SOLICITACOES_KEY = ['solicitacoes'] as const;
 
@@ -78,10 +78,26 @@ export function useUpdateSolicitacaoStatus() {
         .select()
         .single();
       if (error) throw error;
+      if (data && data.solicitante_id) {
+        try {
+          const statusUi = getStatusSolicitacaoUi(status);
+          await supabase.from('notificacoes').insert({
+            solicitacao_id: data.id,
+            usuario_id: data.solicitante_id,
+            tipo: 'retirada',
+            titulo: `Alteração na Solicitação ${data.protocolo || ''}`,
+            descricao: `O status da sua solicitação/triagem foi alterado para "${statusUi.label}".`,
+            lido: false,
+          });
+        } catch (e) {
+          // Ignora se tabela notificacoes não estiver presente
+        }
+      }
       return data;
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SOLICITACOES_KEY });
+      void qc.invalidateQueries({ queryKey: ['notificacoes'] });
     },
   });
 }

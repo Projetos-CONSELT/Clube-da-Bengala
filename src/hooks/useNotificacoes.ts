@@ -1,5 +1,9 @@
+import { useState, useMemo, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
+import { useSolicitacoesQuery } from '@/hooks/useSolicitacoes';
+import { getStatusSolicitacaoUi } from '@/types/domain';
 
 export interface Notificacao {
   id: string;
@@ -17,16 +21,26 @@ export interface Notificacao {
  * Busca todas as notificações do usuário logado
  */
 export function useNotificacoesQuery() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ['notificacoes'],
+    queryKey: ['notificacoes', user?.id],
+    enabled: Boolean(user?.id),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('notificacoes')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data as Notificacao[];
+      if (user?.id) {
+        q = q.eq('usuario_id', user.id);
+      }
+
+      const { data, error } = await q;
+      if (error) {
+        console.warn('[useNotificacoesQuery] Aviso:', error.message);
+        return [];
+      }
+      return (data ?? []) as Notificacao[];
     },
   });
 }
@@ -71,7 +85,7 @@ export function useCriarNotificacao() {
       return data[0];
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
+      void queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
     },
   });
 }
@@ -93,7 +107,7 @@ export function useMarcarNotificacaoLida() {
       return data[0];
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
+      void queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
     },
   });
 }
@@ -113,15 +127,103 @@ export function useDeletarNotificacao() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
+      void queryClient.invalidateQueries({ queryKey: ['notificacoes'] });
     },
   });
 }
 
 /**
- * Conta notificações não lidas
+ * Hook completo que combina a contagem de notificações não lidas
+ * e traz o detalhamento de alterações das triagens/solicitações.
  */
-export function useNotificacoesNaoLidas() {
-  const { data: notificacoes = [] } = useNotificacoesQuery();
-  return notificacoes.filter((n) => !n.lido).length;
+export function useNotificacoesComBadges() {
+  const { user } = useAuth();
+  const { data: notificacoesData = [], refetch: refetchNotif } = useNotificacoesQuery();
+  const { data: solicitacoesData = [] } = useSolicitacoesQuery();
+
+  const localStorageKey = `notif_last_seen_${user?.id || 'guest'}`;
+  const [lastSeenTime, setLastSeenTime] = useState<number>(() => {
+    const saved = localStorage.getItem(localStorageKey);
+    return saved ? Number(saved) : 0;
+  });
+
+  const alteracoesList = useMemo(() => {
+    const items: Array<{
+      id: string;
+      protocolo: string;
+      titulo: string;
+      descricao: string;
+      dataFormatted: string;
+      timestamp: number;
+      lido: boolean;
+    }> = [];
+
+    // 1. Adiciona notificações formais da tabela
+    notificacoesData.forEach((n) => {
+      const ts = new Date(n.created_at).getTime();
+      items.push({
+        id: n.id,
+        protocolo: n.titulo,
+        titulo: n.titulo,
+        descricao: n.descricao,
+        dataFormatted: new Date(n.created_at).toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        timestamp: ts,
+        lido: n.lido || ts <= lastSeenTime,
+      });
+    });
+
+    // 2. Adiciona dados das solicitações/triagens alteradas
+    solicitacoesData.forEach((sol) => {
+      const ts = sol.updated_at ? new Date(sol.updated_at).getTime() : new Date(sol.created_at).getTime();
+      const statusUi = getStatusSolicitacaoUi(sol.status);
+      const itemId = `sol-update-${sol.id}-${sol.status}`;
+
+      if (!items.some((i) => i.id === itemId || i.id === sol.id)) {
+        items.push({
+          id: itemId,
+          protocolo: sol.protocolo || 'Solicitação',
+          titulo: `Alteração na Solicitação ${sol.protocolo || ''}`,
+          descricao: `Status da triagem: "${statusUi.label}". Beneficiário: ${sol.beneficiario?.nome_completo || 'Não especificado'}.`,
+          dataFormatted: new Date(ts).toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          timestamp: ts,
+          lido: ts <= lastSeenTime,
+        });
+      }
+    });
+
+    return items.sort((a, b) => b.timestamp - a.timestamp);
+  }, [notificacoesData, solicitacoesData, lastSeenTime]);
+
+  const unreadCount = alteracoesList.filter((item) => !item.lido).length;
+
+  const marcarTodasLidas = useCallback(async () => {
+    const now = Date.now();
+    localStorage.setItem(localStorageKey, String(now));
+    setLastSeenTime(now);
+
+    try {
+      if (user?.id) {
+        await supabase.from('notificacoes').update({ lido: true }).eq('usuario_id', user.id);
+        void refetchNotif();
+      }
+    } catch (e) {
+      // Ignora erro se a tabela não estiver totalmente configurada
+    }
+  }, [localStorageKey, user?.id, refetchNotif]);
+
+  return {
+    unreadCount,
+    alteracoesList,
+    marcarTodasLidas,
+  };
 }

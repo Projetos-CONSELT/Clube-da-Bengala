@@ -33,10 +33,10 @@ const BACK_OFFICE_ROLES: UserRole[] = ['gerente', 'coordenador', 'atendente'];
 const ALL_ROLES: UserRole[] = ['gerente', 'coordenador', 'atendente', 'solicitante'];
 
 const PAGE_ROLES: Record<string, UserRole[]> = {
-  Dashboard: ALL_ROLES,
+  Dashboard: BACK_OFFICE_ROLES,
   Solicitacoes: ALL_ROLES,
   Notificacoes: ALL_ROLES,
-  Pessoas: BACK_OFFICE_ROLES,
+  Pessoas: ALL_ROLES,
   Equipamentos: BACK_OFFICE_ROLES,
   Emprestimos: BACK_OFFICE_ROLES,
   Relatorios: ['gerente', 'coordenador'],
@@ -49,7 +49,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
 };
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authChecked } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authChecked, role } = useAuth();
 
   if (isLoadingPublicSettings || (isLoadingAuth && !authChecked)) {
     return (
@@ -78,9 +78,13 @@ const AuthenticatedApp = () => {
         <Route
           path="/"
           element={
-            <LayoutWrapper currentPageName={mainPageKey}>
-              <MainPage />
-            </LayoutWrapper>
+            role === 'solicitante' ? (
+              <Navigate to="/Solicitacoes" replace />
+            ) : (
+              <LayoutWrapper currentPageName={mainPageKey}>
+                <MainPage />
+              </LayoutWrapper>
+            )
           }
         />
       </Route>

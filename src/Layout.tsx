@@ -38,6 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
+import { useNotificacoesComBadges } from '@/hooks/useNotificacoes';
 
 interface LayoutProps {
   children: ReactNode;
@@ -55,9 +56,9 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { name: 'Dashboard', href: 'Dashboard', icon: LayoutDashboard, group: null },
+  { name: 'Dashboard', href: 'Dashboard', icon: LayoutDashboard, group: null, backOfficeOnly: true },
   { name: 'Atendimento', href: 'Atendimento', icon: Headphones, group: 'Operacional', backOfficeOnly: true },
-  { name: 'Pessoas', href: 'Pessoas', icon: Users, group: 'Operacional', backOfficeOnly: true },
+  { name: 'Pessoas', href: 'Pessoas', icon: Users, group: 'Operacional' },
   { name: 'Solicitações', href: 'Solicitacoes', icon: ClipboardList, group: 'Operacional' },
   { name: 'Fila', href: 'Fila', icon: ListOrdered, group: 'Operacional', backOfficeOnly: true },
   { name: 'Empréstimos', href: 'Emprestimos', icon: Truck, group: 'Operacional', backOfficeOnly: true },
@@ -94,6 +95,7 @@ const getRoleLabel = (r: string | undefined | null) => {
 
 export default function Layout({ children, currentPageName }: LayoutProps) {
   const { user, profile, isLoadingAuth, logout, role, refreshProfile } = useAuth();
+  const { unreadCount, alteracoesList, marcarTodasLidas } = useNotificacoesComBadges();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [roleRequestModalOpen, setRoleRequestModalOpen] = useState(false);
   const [requestedRole, setRequestedRole] = useState<string>('atendente');
@@ -246,9 +248,65 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="w-5 h-5 text-slate-600" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="w-5 h-5 text-slate-600" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow animate-pulse">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 sm:w-96 max-h-[460px] overflow-y-auto">
+                  <div className="p-3 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-sm text-slate-900 flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-blue-600" /> Notificações de Alterações
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        {unreadCount > 0
+                          ? `${unreadCount} triagem(ns) / solicitação(ões) alterada(s)`
+                          : 'Nenhuma alteração pendente'}
+                      </p>
+                    </div>
+                    {unreadCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 text-blue-600 hover:text-blue-700 px-2"
+                        onClick={marcarTodasLidas}
+                      >
+                        Marcar lidas
+                      </Button>
+                    )}
+                  </div>
+
+                  {alteracoesList.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-400">
+                      Nenhuma alteração de solicitação recente.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {alteracoesList.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`p-3 text-xs space-y-1 transition-colors ${
+                            !item.lido ? 'bg-blue-50/60 font-medium' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-900 truncate">{item.titulo}</span>
+                            <span className="text-[10px] text-slate-400 shrink-0">{item.dataFormatted}</span>
+                          </div>
+                          <p className="text-slate-600 text-xs leading-relaxed">{item.descricao}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
