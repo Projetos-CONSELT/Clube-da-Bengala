@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
-  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload,
+  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { gerarCobrancaGateway } from '@/utils/gatewayService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -299,6 +300,7 @@ export default function Solicitacoes() {
   const [boletoValor, setBoletoValor] = useState('');
   const [boloPrazo, setBoloPrazo] = useState('');
   const [boletoTexto, setBoletoTexto] = useState('');
+  const [generandoCobranca, setGenerandoCobranca] = useState(false);
   const [uploadingDevolucao, setUploadingDevolucao] = useState(false);
   const [formData, setFormData] = useState({
     beneficiario_id: '',
@@ -1399,6 +1401,70 @@ export default function Solicitacoes() {
             <DialogDescription>Preencha os dados do boleto para cobrança</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-indigo-800 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-600" /> Geração Automática
+                </span>
+                <span className="text-[10px] text-slate-500 uppercase font-mono">
+                  Gateway: {localStorage.getItem('gateway_provider') || 'simulado'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                Gere o link de cobrança do Pix/Boleto integrado automaticamente a partir dos dados do solicitante.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full bg-white hover:bg-indigo-50 border-indigo-200 hover:border-indigo-300 text-indigo-700 hover:text-indigo-800 transition-all font-medium text-xs py-1 h-8"
+                disabled={generandoCobranca}
+                onClick={async () => {
+                  if (!selected) return;
+                  setGenerandoCobranca(true);
+                  try {
+                    const defaultVal = localStorage.getItem('gateway_default_value') || '150';
+                    const res = await gerarCobrancaGateway({
+                      solicitacaoId: selected.id,
+                      nomeCliente: selected.solicitante?.nome_completo || 'Cliente',
+                      cpfCliente: selected.solicitante?.cpf || '',
+                      emailCliente: selected.solicitante?.email || '',
+                      valor: parseFloat(boletoValor) || parseFloat(defaultVal),
+                      prazoVencimento: boloPrazo ? new Date(boloPrazo) : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+                      provedor: (localStorage.getItem('gateway_provider') || 'simulado') as any,
+                      apiKey: localStorage.getItem('gateway_api_key') || undefined,
+                      ambiente: (localStorage.getItem('gateway_environment') || 'sandbox') as any,
+                    });
+                    if (res.apiSuccess) {
+                      setBoletoLink(res.linkBoleto);
+                      setBoletoValor(res.valorBoleto.toString());
+                      setBoloPrazo(res.prazoVencimento.toISOString().split('T')[0]);
+                      setBoletoTexto(
+                        `Olá, ${selected.solicitante?.nome_completo || 'Cliente'}. Geramos uma fatura de ressarcimento no valor de R$ ${res.valorBoleto.toFixed(2)} referente à sua solicitação #${selected.protocolo || selected.id.slice(0, 8)}. Pague via PIX ou Boleto clicando neste link: ${res.linkBoleto}`
+                      );
+                      toast({ title: 'Sucesso', description: `Cobrança gerada via gateway (${res.provedorUsed})!` });
+                    }
+                  } catch (err: any) {
+                    toast({ variant: 'destructive', title: 'Erro ao gerar cobrança', description: err.message });
+                  } finally {
+                    setGenerandoCobranca(false);
+                  }
+                }}
+              >
+                {generandoCobranca ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin text-indigo-700" />
+                    Gerando Cobrança...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-3.5 h-3.5 mr-2" />
+                    Gerar Pix/Boleto via Gateway
+                  </>
+                )}
+              </Button>
+            </div>
+
             <div>
               <Label>Link do Boleto *</Label>
               <Input

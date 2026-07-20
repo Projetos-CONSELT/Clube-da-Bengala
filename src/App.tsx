@@ -10,6 +10,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
 import Termos from '@/pages/Termos';
 import ResetPassword from '@/pages/ResetPassword';
+import FaturaPagamento from '@/pages/FaturaPagamento';
 import type { UserRole } from '@/types/database.types';
 import type { ReactNode } from 'react';
 
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/termos" element={<Termos />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/fatura/:solicitacaoId" element={<FaturaPagamento />} />
 
       <Route
         element={
