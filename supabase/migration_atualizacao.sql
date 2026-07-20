@@ -292,3 +292,30 @@ CREATE TRIGGER on_usuario_papel_update
   BEFORE UPDATE ON public.usuarios
   FOR EACH ROW EXECUTE FUNCTION public.valida_alteracao_papel();
 
+-- 12. Atualização das políticas RLS para public.beneficiarios
+-- Garantir permissão explícita de SELECT, INSERT, UPDATE e DELETE para Solicitantes e Back-office
+ALTER TABLE public.beneficiarios ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    DROP POLICY IF EXISTS "Solicitante gerencia seus beneficiários" ON public.beneficiarios;
+    DROP POLICY IF EXISTS "Back-office gerencia todos os beneficiários" ON public.beneficiarios;
+    DROP POLICY IF EXISTS "Solicitante vê seus beneficiários" ON public.beneficiarios;
+    DROP POLICY IF EXISTS "Solicitante insere seus beneficiários" ON public.beneficiarios;
+    DROP POLICY IF EXISTS "Solicitante atualiza seus beneficiários" ON public.beneficiarios;
+    DROP POLICY IF EXISTS "Solicitante deleta seus beneficiários" ON public.beneficiarios;
+END $$;
+
+CREATE POLICY "Solicitante vê seus beneficiários" ON public.beneficiarios 
+    FOR SELECT USING (solicitante_id = auth.uid() OR public.is_backoffice());
+
+CREATE POLICY "Solicitante insere seus beneficiários" ON public.beneficiarios 
+    FOR INSERT WITH CHECK (solicitante_id = auth.uid() OR public.is_backoffice());
+
+CREATE POLICY "Solicitante atualiza seus beneficiários" ON public.beneficiarios 
+    FOR UPDATE USING (solicitante_id = auth.uid() OR public.is_backoffice());
+
+CREATE POLICY "Solicitante deleta seus beneficiários" ON public.beneficiarios 
+    FOR DELETE USING (solicitante_id = auth.uid() OR public.is_backoffice());
+
+

@@ -423,73 +423,128 @@ export default function Pessoas() {
             })()}
 
             {usuariosQuery.isLoading ? (
-              <Loader2 className="animate-spin" />
+              <div className="flex justify-center p-8">
+                <Loader2 className="animate-spin w-6 h-6 text-blue-600" />
+              </div>
             ) : (
-              <Card>
-                <CardContent className="p-0 divide-y">
-                  {(() => {
-                    const filteredUsuarios = (usuariosQuery.data ?? []).filter((u) => {
-                      const term = searchTerm.toLowerCase();
-                      return (
-                        u.nome_completo?.toLowerCase().includes(term) ||
-                        (u.email ?? '').toLowerCase().includes(term) ||
-                        (u.cpf ?? '').toLowerCase().includes(term)
-                      );
-                    });
+              (() => {
+                const filteredUsuarios = (usuariosQuery.data ?? []).filter((u) => {
+                  const term = searchTerm.toLowerCase();
+                  return (
+                    u.nome_completo?.toLowerCase().includes(term) ||
+                    (u.email ?? '').toLowerCase().includes(term) ||
+                    (u.cpf ?? '').toLowerCase().includes(term)
+                  );
+                });
 
-                    if (filteredUsuarios.length === 0) {
-                      return (
-                        <div className="p-8 text-center text-slate-500">
-                          Nenhum usuário encontrado.
-                        </div>
-                      );
+                if (filteredUsuarios.length === 0) {
+                  return (
+                    <Card>
+                      <CardContent className="p-8 text-center text-slate-500">
+                        Nenhum usuário encontrado.
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
+                const roleSections = [
+                  { key: 'gerente', label: 'Gerentes', color: 'border-purple-200 bg-purple-50/50 text-purple-900', badge: 'bg-purple-100 text-purple-800' },
+                  { key: 'coordenador', label: 'Coordenadores', color: 'border-indigo-200 bg-indigo-50/50 text-indigo-900', badge: 'bg-indigo-100 text-indigo-800' },
+                  { key: 'atendente', label: 'Atendentes', color: 'border-emerald-200 bg-emerald-50/50 text-emerald-900', badge: 'bg-emerald-100 text-emerald-800' },
+                  { key: 'solicitante', label: 'Solicitantes', color: 'border-blue-200 bg-blue-50/50 text-blue-900', badge: 'bg-blue-100 text-blue-800' },
+                ];
+
+                const renderUserItem = (u: any) => {
+                  const isSelectDisabled = 
+                    currentUserRole !== 'gerente' && 
+                    (currentUserRole !== 'coordenador' || (u.papel ? ROLE_LEVELS[u.papel] : 0) >= 3);
+
+                  const getAllowedRoles = () => {
+                    if (currentUserRole === 'gerente') {
+                      return ['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[];
                     }
+                    if (currentUserRole === 'coordenador') {
+                      return ['atendente', 'solicitante'] as UserRole[];
+                    }
+                    return [] as UserRole[];
+                  };
+                  const allowedRoles = getAllowedRoles();
+                  const rolesToShow = u.papel && allowedRoles.includes(u.papel)
+                    ? allowedRoles
+                    : u.papel
+                      ? [...allowedRoles, u.papel]
+                      : allowedRoles;
 
-                    return filteredUsuarios.map((u) => {
-                      const isSelectDisabled = 
-                        currentUserRole !== 'gerente' && 
-                        (currentUserRole !== 'coordenador' || (u.papel ? ROLE_LEVELS[u.papel] : 0) >= 3);
+                  return (
+                    <div key={u.id} className="p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-slate-900">{u.nome_completo || 'Sem Nome'}</p>
+                        <p className="text-sm text-slate-500">{u.email}{u.cpf ? ` • ${u.cpf}` : ''}</p>
+                      </div>
+                      <Select
+                        value={u.papel ?? 'solicitante'}
+                        disabled={isSelectDisabled}
+                        onValueChange={(v) => handlePromptRoleChange(u, v as UserRole)}
+                      >
+                        <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {rolesToShow.map((p) => (
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                };
 
-                      const getAllowedRoles = () => {
-                        if (currentUserRole === 'gerente') {
-                          return ['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[];
-                        }
-                        if (currentUserRole === 'coordenador') {
-                          return ['atendente', 'solicitante'] as UserRole[];
-                        }
-                        return [] as UserRole[];
-                      };
-                      const allowedRoles = getAllowedRoles();
-                      const rolesToShow = u.papel && allowedRoles.includes(u.papel)
-                        ? allowedRoles
-                        : u.papel
-                          ? [...allowedRoles, u.papel]
-                          : allowedRoles;
+                const uncategorizedUsers = filteredUsuarios.filter(
+                  (u) => !roleSections.some((s) => s.key === (u.papel ?? 'solicitante'))
+                );
+
+                return (
+                  <div className="space-y-6">
+                    {roleSections.map((section) => {
+                      const usersInRole = filteredUsuarios.filter(
+                        (u) => (u.papel ?? 'solicitante') === section.key
+                      );
+
+                      if (usersInRole.length === 0) return null;
 
                       return (
-                        <div key={u.id} className="p-4 flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium">{u.nome_completo}</p>
-                            <p className="text-sm text-slate-500">{u.email} • {u.cpf}</p>
+                        <Card key={section.key} className="overflow-hidden border">
+                          <div className={`px-4 py-3 border-b flex items-center justify-between ${section.color}`}>
+                            <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                              <span>{section.label}</span>
+                              <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${section.badge}`}>
+                                {usersInRole.length}
+                              </span>
+                            </h3>
                           </div>
-                          <Select
-                            value={u.papel}
-                            disabled={isSelectDisabled}
-                            onValueChange={(v) => handlePromptRoleChange(u, v as UserRole)}
-                          >
-                            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {rolesToShow.map((p) => (
-                                <SelectItem key={p} value={p}>{p}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                          <CardContent className="p-0 divide-y">
+                            {usersInRole.map(renderUserItem)}
+                          </CardContent>
+                        </Card>
                       );
-                    });
-                  })()}
-                </CardContent>
-              </Card>
+                    })}
+
+                    {uncategorizedUsers.length > 0 && (
+                      <Card className="overflow-hidden border">
+                        <div className="px-4 py-3 border-b bg-slate-100 text-slate-900 flex items-center justify-between">
+                          <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                            <span>Outros / Sem Cargo</span>
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-slate-200 text-slate-800">
+                              {uncategorizedUsers.length}
+                            </span>
+                          </h3>
+                        </div>
+                        <CardContent className="p-0 divide-y">
+                          {uncategorizedUsers.map(renderUserItem)}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </TabsContent>
         )}

@@ -333,6 +333,7 @@ export default function Solicitacoes() {
       aguardando_documentacao: solicitacoes.filter((s) => s.status === 'aguardando_documentacao').length,
       aguardando_retirada: solicitacoes.filter((s) => s.status === 'aguardando_retirada').length,
       em_cobranca: solicitacoes.filter((s) => s.status === 'em_cobranca').length,
+      encerrada: solicitacoes.filter((s) => s.status === 'encerrada').length,
     }),
     [solicitacoes]
   );
@@ -439,11 +440,151 @@ export default function Solicitacoes() {
     { key: 'aguardando_documentacao', label: 'Documentação', value: counts.aguardando_documentacao, color: 'yellow', icon: Clock },
     { key: 'aguardando_retirada', label: 'Retirada', value: counts.aguardando_retirada, color: 'purple', icon: Package },
     { key: 'em_cobranca', label: 'Cobrança', value: counts.em_cobranca, color: 'cyan', icon: AlertCircle },
+    { key: 'encerrada', label: 'Concluídos', value: counts.encerrada, color: 'emerald', icon: CheckCircle },
   ];
+
+  const emAndamento = filtered.filter((s) => s.status !== 'encerrada');
+  const concluidas = filtered.filter((s) => s.status === 'encerrada');
+
+  const renderSolicitacaoItem = (s: SolicitacaoComRelacoes) => (
+    <div
+      key={s.id}
+      className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+    >
+      <div className="flex items-center gap-4">
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${s.status === 'encerrada' ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
+          <FileText className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-slate-900">
+              #{s.protocolo || s.id.slice(0, 8)}
+            </p>
+            <StatusBadge status={s.status} />
+          </div>
+          <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
+            <span className="flex items-center gap-1">
+              <User className="w-3 h-3" />
+              {solicitanteName(s)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Package className="w-3 h-3" />
+              {tipoName(s)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {moment(s.created_at).format('DD/MM/YYYY')}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {isBackOffice && s.status === 'triagem' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setSelected(s); setTriageModalOpen(true); }}
+          >
+            Iniciar Triagem
+          </Button>
+        )}
+        {isBackOffice && s.status === 'aguardando_documentacao' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setSelected(s); setReserveModalOpen(true); }}
+          >
+            Reservar
+          </Button>
+        )}
+        {isBackOffice && s.status === 'aguardando_retirada' && !s.prazo_retirada && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setSelected(s); setPrazoModalOpen(true); }}
+            className="text-orange-600 border-orange-200"
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            Definir Prazo
+          </Button>
+        )}
+        {isBackOffice && s.status === 'aguardando_retirada' && s.prazo_retirada && !s.data_retirada_realizada && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSelected(s);
+              setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
+              setRetiradaModalOpen(true);
+            }}
+            className="text-blue-600 border-blue-200"
+          >
+            <Package className="w-4 h-4 mr-2" />
+            Registrar Retirada
+          </Button>
+        )}
+        {isBackOffice && s.status === 'equipamento_emprestado' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setSelected(s); setDevolucaoModalOpen(true); }}
+            className="text-green-600 border-green-200"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Registrar Devolução
+          </Button>
+        )}
+        {isBackOffice && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setSelected(s); setPagamentoModalOpen(true); }}
+            className="text-emerald-600 border-emerald-200"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Recebimento
+          </Button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
+              <Eye className="w-4 h-4 mr-2" /> Visualizar
+            </DropdownMenuItem>
+            {isBackOffice && s.status === 'aguardando_retirada' && (
+              <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
+                <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
+              </DropdownMenuItem>
+            )}
+            {isBackOffice && (
+              <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
+                <Edit className="w-4 h-4 mr-2" /> Triar
+              </DropdownMenuItem>
+            )}
+            {(isBackOffice || s.solicitante_id === user?.id) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleDelete(s)}
+                  className="text-red-600"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {kpiCards.map(({ key, label, value, color, icon: Icon }) => (
           <Card
             key={key}
@@ -503,154 +644,49 @@ export default function Solicitacoes() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {filtered.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>Nenhuma solicitação encontrada</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {filtered.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-slate-900">
-                          #{s.protocolo || s.id.slice(0, 8)}
-                        </p>
-                        <StatusBadge status={s.status} />
-                      </div>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {solicitanteName(s)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Package className="w-3 h-3" />
-                          {tipoName(s)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {moment(s.created_at).format('DD/MM/YYYY')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isBackOffice && s.status === 'triagem' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setSelected(s); setTriageModalOpen(true); }}
-                      >
-                        Iniciar Triagem
-                      </Button>
-                    )}
-                    {isBackOffice && s.status === 'aguardando_documentacao' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setSelected(s); setReserveModalOpen(true); }}
-                      >
-                        Reservar
-                      </Button>
-                    )}
-                    {isBackOffice && s.status === 'aguardando_retirada' && !s.prazo_retirada && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setSelected(s); setPrazoModalOpen(true); }}
-                        className="text-orange-600 border-orange-200"
-                      >
-                        <Calendar className="w-4 h-4 mr-2" />
-                        Definir Prazo
-                      </Button>
-                    )}
-                    {isBackOffice && s.status === 'aguardando_retirada' && s.prazo_retirada && !s.data_retirada_realizada && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelected(s);
-                          setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
-                          setRetiradaModalOpen(true);
-                        }}
-                        className="text-blue-600 border-blue-200"
-                      >
-                        <Package className="w-4 h-4 mr-2" />
-                        Registrar Retirada
-                      </Button>
-                    )}
-                    {isBackOffice && s.status === 'equipamento_emprestado' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setSelected(s); setDevolucaoModalOpen(true); }}
-                        className="text-green-600 border-green-200"
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Registrar Devolução
-                      </Button>
-                    )}
-                    {isBackOffice && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setSelected(s); setPagamentoModalOpen(true); }}
-                        className="text-emerald-600 border-emerald-200"
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Recebimento
-                      </Button>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
-                          <Eye className="w-4 h-4 mr-2" /> Visualizar
-                        </DropdownMenuItem>
-                        {isBackOffice && s.status === 'aguardando_retirada' && (
-                          <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
-                            <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
-                          </DropdownMenuItem>
-                        )}
-                        {isBackOffice && (
-                          <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
-                            <Edit className="w-4 h-4 mr-2" /> Triar
-                          </DropdownMenuItem>
-                        )}
-                        {(isBackOffice || s.solicitante_id === user?.id) && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(s)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" /> Excluir
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {emAndamento.length === 0 && concluidas.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-slate-500">
+            <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>Nenhuma solicitação encontrada</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {emAndamento.length > 0 && (
+            <Card className="overflow-hidden border">
+              <div className="px-4 py-3 border-b bg-slate-50 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <span>Solicitações em Andamento</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
+                    {emAndamento.length}
+                  </span>
+                </h3>
+              </div>
+              <CardContent className="p-0 divide-y divide-slate-100">
+                {emAndamento.map(renderSolicitacaoItem)}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+
+          {concluidas.length > 0 && (
+            <Card className="overflow-hidden border border-emerald-200">
+              <div className="px-4 py-3 border-b bg-emerald-50/70 text-emerald-900 flex items-center justify-between">
+                <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>Concluídos / Encerrados</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                    {concluidas.length}
+                  </span>
+                </h3>
+              </div>
+              <CardContent className="p-0 divide-y divide-slate-100">
+                {concluidas.map(renderSolicitacaoItem)}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Nova Solicitação */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

@@ -28,10 +28,13 @@ export function useBeneficiariosQuery() {
 
 export function useCreateBeneficiario() {
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   return useMutation({
     mutationFn: async (payload: Omit<BeneficiarioInsert, 'solicitante_id'> & { solicitante_id?: string }) => {
-      const solicitante_id = payload.solicitante_id ?? user?.id;
+      const isSol = role === 'solicitante';
+      const solicitante_id = (isSol || !payload.solicitante_id || payload.solicitante_id.trim() === '')
+        ? user?.id
+        : payload.solicitante_id;
       if (!solicitante_id) throw new Error('Solicitante não identificado.');
       const row: BeneficiarioInsert = { ...payload, solicitante_id };
       const { data, error } = await supabase.from('beneficiarios').insert(row).select().single();
