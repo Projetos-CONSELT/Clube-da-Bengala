@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
-  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard,
+  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard, Copy,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { gerarCobrancaGateway } from '@/utils/gatewayService';
@@ -478,6 +478,30 @@ export default function Solicitacoes() {
               {moment(s.created_at).format('DD/MM/YYYY')}
             </span>
           </div>
+          {s.link_boleto_ressarcimento && (
+            <div className="flex items-center gap-2 mt-2 text-xs flex-wrap">
+              <span className={`px-2 py-0.5 rounded-full font-semibold ${s.pagamento_ressarcimento_realizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {s.pagamento_ressarcimento_realizado ? 'Cobrança Paga' : 'Cobrança Pendente'}
+              </span>
+              <span className="text-slate-600 font-bold">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.valor_boleto_ressarcimento || 0)}
+              </span>
+              {!s.pagamento_ressarcimento_realizado && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 flex items-center gap-1 border border-indigo-100 rounded"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(s.link_boleto_ressarcimento || '');
+                    toast({ title: 'Copiado!', description: 'Link da fatura copiado para a área de transferência.' });
+                  }}
+                >
+                  <Copy className="w-2.5 h-2.5" /> Copiar Link Fatura
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">
