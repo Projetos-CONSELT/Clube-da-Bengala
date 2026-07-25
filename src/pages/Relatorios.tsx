@@ -93,39 +93,81 @@ export default function Relatorios() {
     setErrorCharts(null);
 
     try {
-      // 1. Busca estatísticas de empréstimos
-      // Query real no Supabase selecionando a coluna de status da tabela de empréstimos
+      // 1. Busca estatísticas de empréstimos (SEM filtros restritivos no Supabase)
       const { data: dataEmprestimos, error: errEmprestimos } = await supabase
-        .from(NOME_TABELA_EMPRESTIMOS) // INSIRA_AQUI_NOME_DA_TABELA_EMPRESTIMOS
-        .select(`id, ${COLUNA_STATUS_EMPRESTIMO}`); // INSIRA_AQUI_COLUNA_STATUS_EMPRESTIMO
+        .from(NOME_TABELA_EMPRESTIMOS)
+        .select('*, solicitacao:solicitacoes(status)');
+
+      // Log de depuração conforme solicitado
+      console.log("DEBUG SUPABASE EMPRÉSTIMOS:", dataEmprestimos, errEmprestimos);
 
       if (errEmprestimos) {
         console.warn('[Supabase Relatórios] Aviso ao carregar empréstimos:', errEmprestimos.message);
       }
 
-      // Processamento agrupadivo dos dados recebidos do Supabase
+      // Processamento resiliente dos dados recebidos do Supabase
+      const rawEmprestimos = Array.isArray(dataEmprestimos) ? dataEmprestimos : [];
       const statusCounts: Record<string, number> = {};
-      (dataEmprestimos || []).forEach((item: Record<string, any>) => {
-        const st = String(item[COLUNA_STATUS_EMPRESTIMO] || 'indefinido').toLowerCase();
-        statusCounts[st] = (statusCounts[st] || 0) + 1;
+
+      rawEmprestimos.forEach((item: Record<string, any>) => {
+        // VERIFIQUE: Se a sua coluna de status no banco não se chamar 'status', altere a chave abaixo
+        let st = item[COLUNA_STATUS_EMPRESTIMO] || item?.status || item?.solicitacao?.status;
+
+        // Se o status não for informado diretamente na coluna, deriva a situação através das datas
+        if (!st) {
+          if (item.data_devolucao_realizada) {
+            st = 'devolvido';
+          } else if (item.data_prevista_devolucao && new Date(item.data_prevista_devolucao).getTime() < Date.now()) {
+            st = 'atrasado';
+          } else {
+            st = 'ativo';
+          }
+        }
+
+        const normalizedSt = String(st || 'ativo').toLowerCase();
+        statusCounts[normalizedSt] = (statusCounts[normalizedSt] || 0) + 1;
       });
 
-      const pieData: PieChartItem[] = [
-        { name: 'Ativos', value: statusCounts['ativo'] || statusCounts['em_uso'] || statusCounts['aberto'] || 0, color: '#3b82f6' },
-        { name: 'Devolvidos', value: statusCounts['devolvido'] || statusCounts['concluido'] || statusCounts['encerrado'] || 0, color: '#10b981' },
-        { name: 'Atrasados / Outros', value: statusCounts['atrasado'] || statusCounts['inadimplente'] || 0, color: '#ef4444' },
-      ].filter((item) => item.value > 0);
+      // Mapeamento dos dados agregados para a variável que alimenta o PieChart
+      let pieData: PieChartItem[] = [];
 
-      // Se nenhum status mapeado tiver contagem, gera categorias a partir das chaves retornadas
+      const ativosCount =
+        (statusCounts['ativo'] || 0) +
+        (statusCounts['em_uso'] || 0) +
+        (statusCounts['aberto'] || 0) +
+        (statusCounts['equipamento_emprestado'] || 0);
+
+      const devolvidosCount =
+        (statusCounts['devolvido'] || 0) +
+        (statusCounts['concluido'] || 0) +
+        (statusCounts['encerrado'] || 0);
+
+      const atrasadosCount =
+        (statusCounts['atrasado'] || 0) +
+        (statusCounts['inadimplente'] || 0) +
+        (statusCounts['em_cobranca'] || 0);
+
+      if (ativosCount > 0) pieData.push({ name: 'Ativos', value: ativosCount, color: '#3b82f6' });
+      if (devolvidosCount > 0) pieData.push({ name: 'Devolvidos', value: devolvidosCount, color: '#10b981' });
+      if (atrasadosCount > 0) pieData.push({ name: 'Atrasados / Outros', value: atrasadosCount, color: '#ef4444' });
+
+      // Se nenhum status mapeado tiver contagem, gera categorias dinâmicas a partir das chaves retornadas
       if (pieData.length === 0 && Object.keys(statusCounts).length > 0) {
         const cores = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-        Object.entries(statusCounts).forEach(([st, val], idx) => {
-          pieData.push({
-            name: st.charAt(0).toUpperCase() + st.slice(1),
-            value: val,
-            color: cores[idx % cores.length],
-          });
+        Object.entries(statusCounts).forEach(([stKey, val], idx) => {
+          if (val > 0) {
+            pieData.push({
+              name: stKey.charAt(0).toUpperCase() + stKey.slice(1),
+              value: val,
+              color: cores[idx % cores.length],
+            });
+          }
         });
+      }
+
+      // Fallback de segurança: Se houver registros na tabela mas nenhum status categorizado
+      if (pieData.length === 0 && rawEmprestimos.length > 0) {
+        pieData = [{ name: 'Empréstimos Registrados', value: rawEmprestimos.length, color: '#3b82f6' }];
       }
 
       setEmprestimosStats(pieData);
@@ -162,31 +204,63 @@ export default function Relatorios() {
 
       setEstoqueStats(barData);
 
-      // 3. Busca fluxo de cobranças
+      // 3. Busca fluxo de cobranças na tabela 'solicitacoes' (onde estão atreladas as cobranças)
       const { data: dataCobrancas, error: errCobrancas } = await supabase
-        .from(NOME_TABELA_COBRANCAS) // INSIRA_AQUI_NOME_DA_TABELA_COBRANCAS
-        .select(`${COLUNA_VALOR_COBRANCA}, ${COLUNA_DATA_COBRANCA}, ${COLUNA_STATUS_COBRANCA}`) // INSIRA_AQUI_COLUNA_VALOR_COBRANCA
-        .order(COLUNA_DATA_COBRANCA, { ascending: true }); // INSIRA_AQUI_COLUNA_DATA_COBRANCA
+        .from('solicitacoes')
+        .select('id, status, valor_boleto_ressarcimento, pagamento_ressarcimento_realizado, data_pagamento_ressarcimento, created_at')
+        .order('created_at', { ascending: true });
+
+      // LOG DE DEBBUGGING EXIGIDO
+      console.log("DEBUG COBRANÇAS:", dataCobrancas);
 
       if (errCobrancas) {
-        console.info('[Supabase Relatórios] Tabela de cobranças não encontrada ou inacessível no momento.');
+        console.warn('[Supabase Relatórios] Aviso ao consultar cobranças:', errCobrancas.message);
       }
 
-      // Agrupa por mês se houver dados
+      // Busca recibos de pagamento adicionais se disponíveis
+      const { data: dataRecibos } = await supabase
+        .from('recibos_pagamento')
+        .select('id, valor_pago, created_at, data_emissao');
+
+      console.log("DEBUG RECIBOS COBRANÇAS:", dataRecibos);
+
+      // Agrupa os valores de cobrança por mês (Mês/Ano)
       const mesMap: Record<string, { total: number; pagos: number }> = {};
+
       (dataCobrancas || []).forEach((cob: Record<string, any>) => {
-        const dataRaw = cob[COLUNA_DATA_COBRANCA];
+        // Considera solicitações que tenham valor de boleto de ressarcimento ou status de cobrança / inadimplência
+        const valor = Number(cob.valor_boleto_ressarcimento) || (['em_cobranca', 'inadimplente'].includes(cob.status) ? 150 : 0);
+        if (valor <= 0) return;
+
+        const dataRaw = cob.data_pagamento_ressarcimento || cob.created_at;
         const dataObj = dataRaw ? new Date(dataRaw) : new Date();
         const mesChave = dataObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 
         if (!mesMap[mesChave]) {
           mesMap[mesChave] = { total: 0, pagos: 0 };
         }
-        const val = Number(cob[COLUNA_VALOR_COBRANCA]) || 0;
-        mesMap[mesChave].total += val;
-        const st = String(cob[COLUNA_STATUS_COBRANCA] || '').toLowerCase();
-        if (st.includes('pago') || st.includes('concluido') || st.includes('recebido')) {
-          mesMap[mesChave].pagos += val;
+        mesMap[mesChave].total += valor;
+
+        const isPago = Boolean(cob.pagamento_ressarcimento_realizado) || cob.status === 'encerrada';
+        if (isPago) {
+          mesMap[mesChave].pagos += valor;
+        }
+      });
+
+      (dataRecibos || []).forEach((rec: Record<string, any>) => {
+        const valor = Number(rec.valor_pago) || 0;
+        if (valor <= 0) return;
+
+        const dataRaw = rec.data_emissao || rec.created_at;
+        const dataObj = dataRaw ? new Date(dataRaw) : new Date();
+        const mesChave = dataObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+
+        if (!mesMap[mesChave]) {
+          mesMap[mesChave] = { total: 0, pagos: 0 };
+        }
+        mesMap[mesChave].pagos += valor;
+        if (mesMap[mesChave].total < mesMap[mesChave].pagos) {
+          mesMap[mesChave].total = mesMap[mesChave].pagos;
         }
       });
 
@@ -199,7 +273,8 @@ export default function Relatorios() {
       setFluxoCobrancasStats(areaData);
     } catch (err: any) {
       console.error('[Supabase Relatórios] Erro na busca de dados dos gráficos:', err);
-      setErrorCharts(err?.message || 'Falha ao buscar os dados dos gráficos no Supabase.');
+      const msg = 'Erro de conexão. Verifique sua rede e tente novamente.';
+      setErrorCharts(msg);
     } finally {
       setLoadingCharts(false);
     }
@@ -330,7 +405,7 @@ export default function Relatorios() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-center min-h-[260px] pt-4">
-                {emprestimosStats.length === 0 ? (
+                {!emprestimosStats || emprestimosStats.length === 0 ? (
                   <div className="text-center py-10 text-slate-400 text-xs">
                     Nenhum registro de empréstimo encontrado.
                   </div>

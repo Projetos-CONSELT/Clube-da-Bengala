@@ -68,7 +68,7 @@ const navigation: NavItem[] = [
   { name: 'Notificações', href: 'Notificacoes', icon: Send, group: 'Comunicação' },
   { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
   { name: 'Painel Admin', href: 'AdminPanel', icon: Shield, group: 'Gestão', backOfficeOnly: true, gerenteOnly: true },
-  { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
+  { name: 'Configurações', href: 'Configuracoes', icon: Settings, group: 'Gestão', backOfficeOnly: true },
 ];
 
 const roleBadgeStyles: Record<string, string> = {
@@ -344,6 +344,10 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {isBackOfficeRole(role) && (
+                    <>
                       <DropdownMenuItem asChild>
                         <Link to={createPageUrl('Configuracoes')} className="cursor-pointer">
                           <Settings className="w-4 h-4 mr-2" />

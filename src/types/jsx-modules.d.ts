@@ -100,7 +100,7 @@ declare module '@/components/ui/select' {
   export const Select: (props: SelectRootProps) => JSX.Element;
   export const SelectContent: (props: { children?: ReactNode; className?: string }) => JSX.Element;
   export const SelectItem: (props: { value: string; children?: ReactNode; className?: string }) => JSX.Element;
-  export const SelectTrigger: (props: { children?: ReactNode; className?: string }) => JSX.Element;
+  export const SelectTrigger: (props: { children?: ReactNode; className?: string; id?: string }) => JSX.Element;
   export const SelectValue: (props: { placeholder?: string }) => JSX.Element;
 }
 
@@ -154,3 +154,22 @@ declare module '@/components/ui/table' {
   export const TableCell: (props: { children?: ReactNode; className?: string; colSpan?: number }) => JSX.Element;
   export const TableCaption: (props: { children?: ReactNode; className?: string }) => JSX.Element;
 }
+
+declare module '@/components/ui/switch' {
+  import type { ComponentType } from 'react';
+  export const Switch: ComponentType<Record<string, unknown>>;
+}
+
+declare module '@/components/ui/alert-dialog' {
+  import type { ComponentType } from 'react';
+  export const AlertDialog: ComponentType<Record<string, unknown>>;
+  export const AlertDialogAction: ComponentType<Record<string, unknown>>;
+  export const AlertDialogCancel: ComponentType<Record<string, unknown>>;
+  export const AlertDialogContent: ComponentType<Record<string, unknown>>;
+  export const AlertDialogDescription: ComponentType<Record<string, unknown>>;
+  export const AlertDialogFooter: ComponentType<Record<string, unknown>>;
+  export const AlertDialogHeader: ComponentType<Record<string, unknown>>;
+  export const AlertDialogTitle: ComponentType<Record<string, unknown>>;
+  export const AlertDialogTrigger: ComponentType<Record<string, unknown>>;
+}
+

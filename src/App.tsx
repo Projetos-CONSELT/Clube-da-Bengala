@@ -45,7 +45,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Doacoes: BACK_OFFICE_ROLES,
   Manutencao: BACK_OFFICE_ROLES,
   Atendimento: BACK_OFFICE_ROLES,
-  Configuracoes: ['gerente'],
+  Configuracoes: ALL_ROLES,
   AdminPanel: ['gerente'],
 };
 
