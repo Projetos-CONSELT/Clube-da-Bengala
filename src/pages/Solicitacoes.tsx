@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
+import RequestHistoryTimeline from '@/components/solicitacoes/RequestHistoryTimeline';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   useSolicitacoesQuery,
@@ -850,7 +851,7 @@ export default function Solicitacoes() {
                 <RecibosTab solicitacaoId={selected.id} />
               </TabsContent>
               <TabsContent value="historico" className="mt-4">
-                <p className="text-center py-4 text-slate-500">Histórico em implementação futura</p>
+                <RequestHistoryTimeline requestId={selected.id} />
               </TabsContent>
             </Tabs>
           )}

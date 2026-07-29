@@ -199,6 +199,27 @@ CREATE TABLE public.notificacoes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tabela de auditoria e histórico de solicitações
+CREATE TABLE public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    request_id UUID NOT NULL REFERENCES public.solicitacoes(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE RESTRICT,
+    action_type TEXT NOT NULL CHECK (
+        action_type IN (
+            'CREATED',
+            'STATUS_CHANGED',
+            'MESSAGE_SENT',
+            'FILE_UPLOADED',
+            'FILE_REMOVED',
+            'PAYMENT_APPROVED',
+            'UPDATED',
+            'DELETED'
+        )
+    ),
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
 -- ====================================================================================
 -- 3. ROW LEVEL SECURITY (RLS) E POLÍTICAS DE ACESSO
 -- ====================================================================================
@@ -213,6 +234,7 @@ ALTER TABLE public.emprestimos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.imagens_retirada ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.imagens_devolucao ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recibos_pagamento ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Funções utilitárias para RLS
 CREATE OR REPLACE FUNCTION public.get_user_role() RETURNS public.user_role
@@ -301,6 +323,46 @@ CREATE POLICY "Solicitante vê seus recibos" ON public.recibos_pagamento
 CREATE POLICY "Back-office gerencia recibos" ON public.recibos_pagamento 
     FOR ALL USING (public.is_backoffice());
 
+-- POLÍTICAS: AUDIT LOGS
+CREATE POLICY "Solicitante vê logs da própria solicitação" ON public.audit_logs
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1
+            FROM public.solicitacoes s
+            WHERE s.id = request_id
+              AND s.solicitante_id = auth.uid()
+        )
+    );
+CREATE POLICY "Back-office vê logs de todas as solicitações" ON public.audit_logs
+    FOR SELECT USING (public.is_backoffice());
+CREATE POLICY "Back-office registra auditoria" ON public.audit_logs
+    FOR INSERT WITH CHECK (
+        public.is_backoffice()
+        AND user_id = auth.uid()
+    );
+CREATE POLICY "Solicitante registra auditoria própria" ON public.audit_logs
+    FOR INSERT WITH CHECK (
+        auth.uid() IS NOT NULL
+        AND user_id = auth.uid()
+        AND EXISTS (
+            SELECT 1
+            FROM public.solicitacoes s
+            WHERE s.id = request_id
+              AND s.solicitante_id = auth.uid()
+        )
+    );
+CREATE POLICY "Confirmação pública de pagamento registra auditoria" ON public.audit_logs
+    FOR INSERT WITH CHECK (
+        auth.uid() IS NULL
+        AND action_type = 'PAYMENT_APPROVED'
+        AND EXISTS (
+            SELECT 1
+            FROM public.solicitacoes s
+            WHERE s.id = request_id
+              AND s.solicitante_id = user_id
+        )
+    );
+
 -- RLS para Notificações
 ALTER TABLE public.notificacoes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Usuário vê suas notificações" ON public.notificacoes 
@@ -361,4 +423,4 @@ $$;
 -- Trigger para executar a função após a criação de um usuário
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

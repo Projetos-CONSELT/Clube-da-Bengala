@@ -495,6 +495,72 @@ export type Database = {
         };
         Insert: {
           id?: string;
+      audit_logs: {
+        Row: {
+          id: string;
+          request_id: string;
+          user_id: string;
+          action_type:
+            | 'CREATED'
+            | 'STATUS_CHANGED'
+            | 'MESSAGE_SENT'
+            | 'FILE_UPLOADED'
+            | 'FILE_REMOVED'
+            | 'PAYMENT_APPROVED'
+            | 'UPDATED'
+            | 'DELETED';
+          details: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          request_id: string;
+          user_id: string;
+          action_type:
+            | 'CREATED'
+            | 'STATUS_CHANGED'
+            | 'MESSAGE_SENT'
+            | 'FILE_UPLOADED'
+            | 'FILE_REMOVED'
+            | 'PAYMENT_APPROVED'
+            | 'UPDATED'
+            | 'DELETED';
+          details?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          request_id?: string;
+          user_id?: string;
+          action_type?:
+            | 'CREATED'
+            | 'STATUS_CHANGED'
+            | 'MESSAGE_SENT'
+            | 'FILE_UPLOADED'
+            | 'FILE_REMOVED'
+            | 'PAYMENT_APPROVED'
+            | 'UPDATED'
+            | 'DELETED';
+          details?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'audit_logs_request_id_fkey';
+            columns: ['request_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'audit_logs_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
           solicitacao_id: string;
           usuario_id: string;
           tipo: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
@@ -631,6 +697,11 @@ export type ImagemDevolucaoUpdate = Database['public']['Tables']['imagens_devolu
 export type Notificacao = Database['public']['Tables']['notificacoes']['Row'];
 export type NotificacaoInsert = Database['public']['Tables']['notificacoes']['Insert'];
 export type NotificacaoUpdate = Database['public']['Tables']['notificacoes']['Update'];
+
+export type AuditLog = Database['public']['Tables']['audit_logs']['Row'];
+export type AuditLogInsert = Database['public']['Tables']['audit_logs']['Insert'];
+export type AuditLogUpdate = Database['public']['Tables']['audit_logs']['Update'];
+export type AuditLogActionType = AuditLog['action_type'];
 
 export type Configuracao = Database['public']['Tables']['configuracoes']['Row'];
 export type ConfiguracaoInsert = Database['public']['Tables']['configuracoes']['Insert'];

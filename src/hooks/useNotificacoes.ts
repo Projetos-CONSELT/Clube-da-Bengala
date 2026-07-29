@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { useSolicitacoesQuery } from '@/hooks/useSolicitacoes';
 import { getStatusSolicitacaoUi } from '@/types/domain';
+import { createAuditLog } from '@/lib/audit';
 
 export interface Notificacao {
   id: string;
@@ -82,6 +83,21 @@ export function useCriarNotificacao() {
         .select();
 
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'MESSAGE_SENT',
+        details: {
+          tipo,
+          titulo,
+          descricao,
+          link_acao: linkAcao ?? null,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar notificação enviada:', audit.error.message);
+      }
+
       return data[0];
     },
     onSuccess: () => {

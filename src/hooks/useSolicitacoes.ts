@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 import type { SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
 import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
 
@@ -69,6 +70,13 @@ export function useUpdateSolicitacaoStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status, motivo }: { id: string; status: StatusSolicitacao; motivo?: string }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', id)
+        .single();
+      if (currentError) throw currentError;
+
       const payload: SolicitacaoUpdate = { status };
       if (motivo !== undefined) payload.motivo_solicitacao = motivo;
       const { data, error } = await supabase
@@ -93,6 +101,22 @@ export function useUpdateSolicitacaoStatus() {
           // Ignora se tabela notificacoes não estiver presente
         }
       }
+
+      const audit = await createAuditLog({
+        requestId: id,
+        actionType: 'STATUS_CHANGED',
+        details: {
+          from_status: current?.status ?? null,
+          to_status: status,
+          protocolo: current?.protocolo ?? null,
+          motivo: motivo ?? null,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar alteração de status:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(id) });
+
       return data;
     },
     onSuccess: () => {
@@ -106,6 +130,12 @@ export function useUpdateSolicitacao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: SolicitacaoUpdate }) => {
+      const shouldTrackStatusChange = typeof patch.status !== 'undefined';
+      const { data: current, error: currentError } = shouldTrackStatusChange
+        ? await supabase.from('solicitacoes').select('status, protocolo').eq('id', id).single()
+        : { data: null, error: null };
+      if (currentError) throw currentError;
+
       const { data, error } = await supabase
         .from('solicitacoes')
         .update(patch)
@@ -113,6 +143,27 @@ export function useUpdateSolicitacao() {
         .select()
         .single();
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: id,
+        actionType: shouldTrackStatusChange ? 'STATUS_CHANGED' : 'UPDATED',
+        details: shouldTrackStatusChange
+          ? {
+              from_status: current?.status ?? null,
+              to_status: patch.status ?? null,
+              protocolo: current?.protocolo ?? null,
+              patch,
+            }
+          : {
+              protocolo: data?.protocolo ?? null,
+              patch,
+            },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar atualização da solicitação:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(id) });
+
       return data;
     },
     onSuccess: () => {
@@ -148,6 +199,23 @@ export function useCreateSolicitacao() {
         .select()
         .single();
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: data.id,
+        actionType: 'CREATED',
+        details: {
+          protocolo: data.protocolo,
+          solicitante_id: user.id,
+          beneficiario_id,
+          tipo_equipamento_id,
+          status: data.status,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar criação da solicitação:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(data.id) });
+
       return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: SOLICITACOES_KEY }),
@@ -158,8 +226,29 @@ export function useDeleteSolicitacao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('protocolo, status')
+        .eq('id', id)
+        .single();
+      if (currentError) throw currentError;
+
+      const audit = await createAuditLog({
+        requestId: id,
+        actionType: 'DELETED',
+        details: {
+          protocolo: current?.protocolo ?? null,
+          previous_status: current?.status ?? null,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar exclusão da solicitação:', audit.error.message);
+      }
+
       const { error } = await supabase.from('solicitacoes').delete().eq('id', id);
       if (error) throw error;
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(id) });
+
       return id;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: SOLICITACOES_KEY }),
@@ -170,6 +259,13 @@ export function useReservarEquipamento() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ solicitacaoId, equipamentoId }: { solicitacaoId: string; equipamentoId: string }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       const limite = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       const { error: e1 } = await supabase
         .from('solicitacoes')
@@ -185,6 +281,23 @@ export function useReservarEquipamento() {
         .update({ status: 'reservado' })
         .eq('id', equipamentoId);
       if (e2) throw e2;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'STATUS_CHANGED',
+        details: {
+          from_status: current?.status ?? null,
+          to_status: 'aguardando_retirada',
+          protocolo: current?.protocolo ?? null,
+          equipamento_id: equipamentoId,
+          prazo_limite_retirada: limite,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar reserva da solicitação:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return true;
     },
     onSuccess: () => {

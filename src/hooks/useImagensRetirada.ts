@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 
 const IMAGENS_KEY = ['imagens_retirada'] as const;
 
@@ -61,6 +62,22 @@ export function useUploadImagemRetirada() {
         .single();
 
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'FILE_UPLOADED',
+        details: {
+          file_name: file.name,
+          descricao: descricao || null,
+          url_imagem: publicUrlData.publicUrl,
+          bucket: 'imagens-retirada',
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar upload de imagem de retirada:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return data;
     },
     onSuccess: (_, { solicitacaoId }) => {
@@ -86,6 +103,21 @@ export function useDeleteImagemRetirada() {
         .eq('id', id);
 
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'FILE_REMOVED',
+        details: {
+          file_name: filePath ?? urlImagem,
+          url_imagem: urlImagem,
+          bucket: 'imagens-retirada',
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar remoção de imagem de retirada:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
     },
     onSuccess: (_, { solicitacaoId }) => {
       qc.invalidateQueries({ queryKey: [...IMAGENS_KEY, { solicitacaoId }] });

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 
 const IMAGENS_DEVOLUCAO_KEY = ['imagens_devolucao'] as const;
 
@@ -64,6 +65,23 @@ export function useUploadImagemDevolucao() {
         .single();
 
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'FILE_UPLOADED',
+        details: {
+          file_name: file.name,
+          descricao: descricao || null,
+          estado_conservacao: estadoConservacao || null,
+          url_imagem: publicUrlData.publicUrl,
+          bucket: 'imagens-devolucao',
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar upload de imagem de devolução:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return data;
     },
     onSuccess: (_, { solicitacaoId }) => {
@@ -89,6 +107,21 @@ export function useDeleteImagemDevolucao() {
         .eq('id', id);
 
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'FILE_REMOVED',
+        details: {
+          file_name: filePath ?? urlImagem,
+          url_imagem: urlImagem,
+          bucket: 'imagens-devolucao',
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar remoção de imagem de devolução:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
     },
     onSuccess: (_, { solicitacaoId }) => {
       qc.invalidateQueries({ queryKey: [...IMAGENS_DEVOLUCAO_KEY, { solicitacaoId }] });

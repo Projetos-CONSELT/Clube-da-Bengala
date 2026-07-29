@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { StatusSolicitacao } from '@/types/database.types';
+import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 
 const FLUXO_KEY = ['fluxo_retirada_devolucao'] as const;
 
@@ -12,6 +13,13 @@ export function useRegistrarPrazoRetirada() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ solicitacaoId, prazoRetirada }: { solicitacaoId: string; prazoRetirada: Date }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('protocolo, status')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       const { data, error } = await supabase
         .from('solicitacoes')
         .update({ prazo_retirada: prazoRetirada.toISOString() })
@@ -19,6 +27,21 @@ export function useRegistrarPrazoRetirada() {
         .select()
         .single();
       if (error) throw error;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'UPDATED',
+        details: {
+          protocolo: current?.protocolo ?? null,
+          previous_status: current?.status ?? null,
+          prazo_retirada: prazoRetirada.toISOString(),
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar prazo de retirada:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return data;
     },
     onSuccess: (_, { solicitacaoId }) => {
@@ -42,6 +65,13 @@ export function useRegistrarRetirada() {
       equipamentoId: string;
       dataPrevistaDevolucao: Date;
     }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       const { error: solError } = await supabase
         .from('solicitacoes')
         .update({
@@ -71,6 +101,23 @@ export function useRegistrarRetirada() {
         .select()
         .single();
       if (empreError) throw empreError;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'STATUS_CHANGED',
+        details: {
+          from_status: current?.status ?? null,
+          to_status: 'equipamento_emprestado',
+          protocolo: current?.protocolo ?? null,
+          equipamento_id: equipamentoId,
+          data_prevista_devolucao: dataPrevistaDevolucao.toISOString(),
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar retirada:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return empreData;
     },
     onSuccess: (_, { solicitacaoId }) => {
@@ -95,6 +142,13 @@ export function useRegistrarDevolucao() {
       equipamentoId?: string;
       novoEstadoConservacao: string;
     }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       // 1. Atualizar status da solicitação
       const { error: solError } = await supabase
         .from('solicitacoes')
@@ -156,6 +210,22 @@ export function useRegistrarDevolucao() {
         .is('data_devolucao_realizada', null);
       if (empreError) throw empreError;
 
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'STATUS_CHANGED',
+        details: {
+          from_status: current?.status ?? null,
+          to_status: 'encerrada',
+          protocolo: current?.protocolo ?? null,
+          equipamento_id: realEquipamentoId,
+          novo_estado_conservacao: novoEstadoConservacao,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar devolução:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return { success: true };
     },
     onSuccess: (_, { solicitacaoId }) => {
@@ -187,6 +257,13 @@ export function useRegistrarBoletoRessarcimento() {
       textoNotificacao: string;
       solicitanteId: string;
     }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       // Atualizar solicitação com dados do boleto
       const { data, error } = await supabase
         .from('solicitacoes')
@@ -214,6 +291,24 @@ export function useRegistrarBoletoRessarcimento() {
           link_acao: linkBoleto,
         });
       if (notifError) console.error('Erro ao criar notificação:', notifError);
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'MESSAGE_SENT',
+        details: {
+          protocolo: current?.protocolo ?? null,
+          previous_status: current?.status ?? null,
+          tipo: 'boleto',
+          link_boleto: linkBoleto,
+          valor_boleto: valorBoleto,
+          prazo_vencimento_boleto: prazoVencimento.toISOString(),
+          mensagem: textoNotificacao,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar boleto de ressarcimento:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
 
       return data;
     },
@@ -246,6 +341,13 @@ export function useRegistrarPagamentoRessarcimento() {
       valorPago: number;
       textoCustomizado: string;
     }) => {
+      const { data: current, error: currentError } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .single();
+      if (currentError) throw currentError;
+
       // Atualizar solicitação
       const { error: solError } = await supabase
         .from('solicitacoes')
@@ -292,12 +394,28 @@ export function useRegistrarPagamentoRessarcimento() {
         });
       if (notifError) console.error('Erro ao criar notificação:', notifError);
 
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'PAYMENT_APPROVED',
+        details: {
+          protocolo: current?.protocolo ?? null,
+          previous_status: current?.status ?? null,
+          valor_pago: valorPago,
+          texto_customizado: textoCustomizado,
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar pagamento:', audit.error.message);
+      }
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
+
       return reciboData;
     },
     onSuccess: (_, { solicitacaoId, solicitanteId }) => {
       qc.invalidateQueries({ queryKey: ['solicitacoes', { solicitacaoId }] });
       qc.invalidateQueries({ queryKey: ['usuarios', { userId: solicitanteId }] });
       qc.invalidateQueries({ queryKey: ['recibos_pagamento'] });
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
     },
   });
 }
@@ -328,6 +446,7 @@ export function useMarcarInadimplente() {
     onSuccess: (_, { solicitacaoId, solicitanteId }) => {
       qc.invalidateQueries({ queryKey: ['solicitacoes', { solicitacaoId }] });
       qc.invalidateQueries({ queryKey: ['usuarios', { userId: solicitanteId }] });
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
     },
   });
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { createAuditLog } from '@/lib/audit';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ interface FaturaDetalhes {
   id: string;
   protocolo: string;
   status: string;
+  solicitante_id: string;
   valor_boleto_ressarcimento: number;
   prazo_vencimento_boleto: string;
   link_boleto_ressarcimento: string;
@@ -99,6 +101,22 @@ export default function FaturaPagamento() {
       if (error) throw error;
 
       if (data) {
+        const audit = await createAuditLog({
+          requestId: solicitacaoId,
+          userId: fatura.solicitante_id,
+          actionType: 'PAYMENT_APPROVED',
+          details: {
+            protocolo: fatura.protocolo,
+            valor_pago: fatura.valor_boleto_ressarcimento,
+            cpf_verificado: true,
+            origem: 'fatura_publica',
+          },
+        });
+
+        if (audit.error) {
+          console.warn('[audit] não foi possível registrar pagamento confirmado na fatura:', audit.error.message);
+        }
+
         toast({
           title: 'Pagamento Confirmado',
           description: 'A cobrança foi baixada no sistema e o solicitante liberado.'
