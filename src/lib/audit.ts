@@ -205,18 +205,12 @@ export async function createAuditLog(input: CreateAuditLogInput): Promise<Create
     };
   }
 
-  const payload: AuditLogInsert = {
-    request_id: requestId,
-    user_id: userId,
-    action_type: actionType,
-    details: input.details ?? {},
-  };
-
-  const { data, error } = await supabase
-    .from('audit_logs')
-    .insert(payload)
-    .select('id, request_id, user_id, action_type, details, created_at')
-    .single();
+  const { data, error } = await supabase.rpc('registrar_auditoria', {
+    p_request_id: requestId,
+    p_user_id: userId,
+    p_action_type: actionType,
+    p_details: input.details ?? {},
+  });
 
   if (error) {
     return {

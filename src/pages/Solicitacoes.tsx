@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
+import { downloadReceiptPdf } from '@/lib/receiptPdf';
 import RequestHistoryTimeline from '@/components/solicitacoes/RequestHistoryTimeline';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -238,8 +239,11 @@ function RecibosTab({ solicitacaoId }: RecibosTabProps) {
           <p className="text-slate-700">{recibo.texto_customizado}</p>
         </div>
       )}
-      <Button 
-        onClick={() => toast({ title: 'PDF será implementado em versão futura' })} 
+      <Button
+        onClick={() => {
+          downloadReceiptPdf(recibo);
+          toast({ title: 'PDF do recibo gerado com sucesso' });
+        }}
         className="w-full"
       >
         <FileText className="w-4 h-4 mr-2" /> Gerar PDF (em breve)

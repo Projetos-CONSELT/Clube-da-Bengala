@@ -23,6 +23,64 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
+CREATE OR REPLACE FUNCTION public.registrar_auditoria(
+    p_request_id UUID,
+    p_user_id UUID,
+    p_action_type TEXT,
+    p_details JSONB DEFAULT '{}'::jsonb
+)
+RETURNS public.audit_logs
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_log public.audit_logs;
+    v_request_owner UUID;
+BEGIN
+    IF p_request_id IS NULL OR p_user_id IS NULL OR p_action_type IS NULL THEN
+        RAISE EXCEPTION 'Parâmetros obrigatórios ausentes para registrar auditoria.';
+    END IF;
+
+    SELECT solicitante_id
+      INTO v_request_owner
+      FROM public.solicitacoes
+     WHERE id = p_request_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Solicitação não encontrada para auditoria.';
+    END IF;
+
+    IF auth.uid() IS NULL THEN
+        IF p_action_type <> 'PAYMENT_APPROVED' OR v_request_owner <> p_user_id THEN
+            RAISE EXCEPTION 'Auditoria pública permitida apenas para confirmação de pagamento.';
+        END IF;
+    ELSIF auth.uid() <> p_user_id THEN
+        RAISE EXCEPTION 'Usuário autenticado não confere com o autor do log.';
+    ELSIF NOT (public.is_backoffice() OR v_request_owner = auth.uid()) THEN
+        RAISE EXCEPTION 'Usuário sem permissão para registrar auditoria nesta solicitação.';
+    END IF;
+
+    INSERT INTO public.audit_logs (
+        request_id,
+        user_id,
+        action_type,
+        details
+    )
+    VALUES (
+        p_request_id,
+        p_user_id,
+        p_action_type,
+        COALESCE(p_details, '{}'::jsonb)
+    )
+    RETURNING * INTO v_log;
+
+    RETURN v_log;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.registrar_auditoria(UUID, UUID, TEXT, JSONB) TO authenticated, anon;
+
 CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id_created_at
     ON public.audit_logs (request_id, created_at DESC);
 
