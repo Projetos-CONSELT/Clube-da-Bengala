@@ -15,6 +15,9 @@ export interface DashboardStats {
   emprestimosVencendo: number;
   emprestimosVencidos: number;
   inadimplentes: number;
+  equipamentosEmManutencao: number;
+  valorRecebido: number;
+  valorPendente: number;
 }
 
 export interface OperacionalAlerta {
@@ -30,12 +33,13 @@ export function useDashboardStats() {
     queryKey: ['dashboard-stats'],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async (): Promise<DashboardStats> => {
-      const [usuarios, beneficiarios, equipamentos, solicitacoes, emprestimos] = await Promise.all([
+      const [usuarios, beneficiarios, equipamentos, solicitacoes, emprestimos, recibos] = await Promise.all([
         supabase.from('usuarios').select('id, is_inadimplente'),
         supabase.from('beneficiarios').select('id'),
         supabase.from('equipamentos').select('id, status'),
-        supabase.from('solicitacoes').select('id, status'),
-        supabase.from('emprestimos').select('id, data_prevista_devolucao'),
+        supabase.from('solicitacoes').select('id, status, valor_boleto_ressarcimento, pagamento_ressarcimento_realizado'),
+        supabase.from('emprestimos').select('id, data_prevista_devolucao, data_devolucao_realizada'),
+        supabase.from('recibos_pagamento').select('solicitacao_id, valor_pago')
       ]);
 
       if (usuarios.error) throw usuarios.error;
@@ -43,11 +47,12 @@ export function useDashboardStats() {
       if (equipamentos.error) throw equipamentos.error;
       if (solicitacoes.error) throw solicitacoes.error;
       if (emprestimos.error) throw emprestimos.error;
+      if (recibos.error) throw recibos.error;
 
       const today = new Date();
       const in7Days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      const emprestimosData = emprestimos.data ?? [];
+      const emprestimosData = emprestimos.data?.filter(e => !e.data_devolucao_realizada) ?? [];
       const vencendo = emprestimosData.filter((e) => {
         if (!e.data_prevista_devolucao) return false;
         const d = new Date(e.data_prevista_devolucao);
@@ -60,12 +65,38 @@ export function useDashboardStats() {
 
       const sol = solicitacoes.data ?? [];
       const eq = equipamentos.data ?? [];
+      const rec = recibos.data ?? [];
+
+      let valorRecebido = 0;
+      let valorPendente = 0;
+      const solicitacoesPagasIds = new Set<string>();
+
+      rec.forEach(r => {
+        const valor = Number(r.valor_pago) || 0;
+        if (valor > 0) {
+          valorRecebido += valor;
+          if (r.solicitacao_id) solicitacoesPagasIds.add(r.solicitacao_id);
+        }
+      });
+
+      sol.forEach((s) => {
+        const valor = Number(s.valor_boleto_ressarcimento) || (['em_cobranca', 'inadimplente'].includes(s.status) ? 150 : 0);
+        if (valor <= 0) return;
+        
+        const isPago = Boolean(s.pagamento_ressarcimento_realizado) || s.status === 'encerrada';
+        if (isPago) {
+           if (!solicitacoesPagasIds.has(s.id)) valorRecebido += valor;
+        } else {
+           if (!solicitacoesPagasIds.has(s.id)) valorPendente += valor;
+        }
+      });
 
       return {
         totalUsuarios: usuarios.data?.length ?? 0,
         totalBeneficiarios: beneficiarios.data?.length ?? 0,
         totalEquipamentos: eq.length,
         equipamentosDisponiveis: eq.filter((e) => e.status === 'disponivel').length,
+        equipamentosEmManutencao: eq.filter((e) => e.status === 'manutencao').length,
         solicitacoesTriagem: sol.filter((s) => s.status === 'triagem').length,
         solicitacoesAguardandoDocumentacao: sol.filter((s) => s.status === 'aguardando_documentacao').length,
         solicitacoesAguardandoRetirada: sol.filter((s) => s.status === 'aguardando_retirada').length,
@@ -73,6 +104,8 @@ export function useDashboardStats() {
         emprestimosVencendo: vencendo.length,
         emprestimosVencidos: vencidos.length,
         inadimplentes: (usuarios.data ?? []).filter((u) => u.is_inadimplente).length,
+        valorRecebido,
+        valorPendente,
       };
     },
   });

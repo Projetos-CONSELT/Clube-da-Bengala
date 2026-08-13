@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, Package, FileText, Truck, AlertTriangle, Clock, Loader2, ShieldCheck } from 'lucide-react';
+import { Users, Package, FileText, Truck, AlertTriangle, Clock, Loader2, ShieldCheck, CheckCircle2, Wrench, DollarSign, Wallet } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
@@ -100,21 +100,50 @@ export default function Dashboard() {
       )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Usuários', value: stats?.totalUsuarios ?? 0, icon: Users },
-          { label: 'Equipamentos', value: stats?.totalEquipamentos ?? 0, icon: Package },
-          { label: 'Em triagem', value: stats?.solicitacoesTriagem ?? 0, icon: FileText },
-          { label: 'Empréstimos ativos', value: stats?.emprestimosAtivos ?? 0, icon: Truck },
-        ].map(({ label, value, icon: Icon }) => (
+          { label: 'Empréstimos ativos', value: stats?.emprestimosAtivos ?? 0, icon: Truck, color: 'text-blue-500' },
+          { label: 'Em triagem', value: stats?.solicitacoesTriagem ?? 0, icon: FileText, color: 'text-amber-500' },
+          { label: 'Equip. disponíveis', value: stats?.equipamentosDisponiveis ?? 0, icon: CheckCircle2, color: 'text-emerald-500' },
+          { label: 'Em manutenção', value: stats?.equipamentosEmManutencao ?? 0, icon: Wrench, color: 'text-red-500' },
+        ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <CardContent className="p-4 flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">{label}</p>
                 <p className="text-2xl font-bold">{value}</p>
               </div>
-              <Icon className="w-8 h-8 text-blue-500 opacity-70" />
+              <Icon className={`w-8 h-8 ${color || 'text-blue-500'} opacity-70`} />
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-emerald-50 border-emerald-100 shadow-sm">
+          <CardContent className="p-5 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-emerald-800">Receita Recebida</p>
+              <p className="text-3xl font-bold text-emerald-900">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats?.valorRecebido ?? 0)}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-emerald-200/50 flex items-center justify-center shrink-0">
+              <DollarSign className="w-6 h-6 text-emerald-700" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-amber-50 border-amber-100 shadow-sm">
+          <CardContent className="p-5 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-amber-800">Cobranças Pendentes</p>
+              <p className="text-3xl font-bold text-amber-900">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats?.valorPendente ?? 0)}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-amber-200/50 flex items-center justify-center shrink-0">
+              <Wallet className="w-6 h-6 text-amber-700" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {alertas.length > 0 && (

@@ -34,21 +34,6 @@ import {
   CartesianGrid,
 } from 'recharts';
 
-// ============================================================================
-// CONFIGURAÇÃO DE SCHEMA DO SUPABASE
-// INSIRA_AQUI OS NOMES DAS SUAS TABELAS E COLUNAS CORRESPONDENTES NO BANCO
-// ============================================================================
-const NOME_TABELA_EMPRESTIMOS = 'emprestimos'; // INSIRA_AQUI_NOME_DA_TABELA_EMPRESTIMOS
-const COLUNA_STATUS_EMPRESTIMO = 'status'; // INSIRA_AQUI_COLUNA_STATUS_EMPRESTIMO
-
-const NOME_TABELA_EQUIPAMENTOS = 'equipamentos'; // INSIRA_AQUI_NOME_DA_TABELA_EQUIPAMENTOS
-const COLUNA_STATUS_EQUIPAMENTO = 'status'; // INSIRA_AQUI_COLUNA_STATUS_EQUIPAMENTO
-
-const NOME_TABELA_COBRANCAS = 'cobrancas'; // INSIRA_AQUI_NOME_DA_TABELA_COBRANCAS
-const COLUNA_VALOR_COBRANCA = 'valor'; // INSIRA_AQUI_COLUNA_VALOR_COBRANCA
-const COLUNA_DATA_COBRANCA = 'created_at'; // INSIRA_AQUI_COLUNA_DATA_COBRANCA
-const COLUNA_STATUS_COBRANCA = 'status'; // INSIRA_AQUI_COLUNA_STATUS_COBRANCA
-
 // Tipos de dados dos gráficos
 interface PieChartItem {
   name: string;
@@ -95,7 +80,7 @@ export default function Relatorios() {
     try {
       // 1. Busca estatísticas de empréstimos (SEM filtros restritivos no Supabase)
       const { data: dataEmprestimos, error: errEmprestimos } = await supabase
-        .from(NOME_TABELA_EMPRESTIMOS)
+        .from('emprestimos')
         .select('*, solicitacao:solicitacoes(status)');
 
       // Log de depuração conforme solicitado
@@ -110,21 +95,14 @@ export default function Relatorios() {
       const statusCounts: Record<string, number> = {};
 
       rawEmprestimos.forEach((item: Record<string, any>) => {
-        // VERIFIQUE: Se a sua coluna de status no banco não se chamar 'status', altere a chave abaixo
-        let st = item[COLUNA_STATUS_EMPRESTIMO] || item?.status || item?.solicitacao?.status;
-
-        // Se o status não for informado diretamente na coluna, deriva a situação através das datas
-        if (!st) {
-          if (item.data_devolucao_realizada) {
-            st = 'devolvido';
-          } else if (item.data_prevista_devolucao && new Date(item.data_prevista_devolucao).getTime() < Date.now()) {
-            st = 'atrasado';
-          } else {
-            st = 'ativo';
-          }
+        let st = 'ativo';
+        if (item.data_devolucao_realizada) {
+          st = 'devolvido';
+        } else if (item.data_prevista_devolucao && new Date(item.data_prevista_devolucao).getTime() < Date.now()) {
+          st = 'atrasado';
         }
 
-        const normalizedSt = String(st || 'ativo').toLowerCase();
+        const normalizedSt = String(st).toLowerCase();
         statusCounts[normalizedSt] = (statusCounts[normalizedSt] || 0) + 1;
       });
 
@@ -174,8 +152,8 @@ export default function Relatorios() {
 
       // 2. Busca estoque de equipamentos (Ativos vs. Manutenção)
       const { data: dataEquipamentos, error: errEquipamentos } = await supabase
-        .from(NOME_TABELA_EQUIPAMENTOS) // INSIRA_AQUI_NOME_DA_TABELA_EQUIPAMENTOS
-        .select(`id, ${COLUNA_STATUS_EQUIPAMENTO}, tipo_id, tipo:tipos_equipamento(nome)`); // INSIRA_AQUI_COLUNA_STATUS_EQUIPAMENTO
+        .from('equipamentos')
+        .select(`id, status, tipo_id, tipo:tipos_equipamento(nome)`);
 
       if (errEquipamentos) {
         console.warn('[Supabase Relatórios] Aviso ao carregar equipamentos:', errEquipamentos.message);
@@ -188,7 +166,7 @@ export default function Relatorios() {
         if (!catMap[catNome]) {
           catMap[catNome] = { ativos: 0, manutencao: 0 };
         }
-        const st = String(eq[COLUNA_STATUS_EQUIPAMENTO] || '').toLowerCase();
+        const st = String(eq.status || '').toLowerCase();
         if (st.includes('manuten') || st.includes('reparo') || st.includes('danificado')) {
           catMap[catNome].manutencao += 1;
         } else {
@@ -220,15 +198,32 @@ export default function Relatorios() {
       // Busca recibos de pagamento adicionais se disponíveis
       const { data: dataRecibos } = await supabase
         .from('recibos_pagamento')
-        .select('id, valor_pago, created_at, data_emissao');
+        .select('id, solicitacao_id, valor_pago, created_at, data_emissao');
 
       console.log("DEBUG RECIBOS COBRANÇAS:", dataRecibos);
 
       // Agrupa os valores de cobrança por mês (Mês/Ano)
       const mesMap: Record<string, { total: number; pagos: number }> = {};
+      const solicitacoesPagasIds = new Set<string>();
+
+      (dataRecibos || []).forEach((rec: Record<string, any>) => {
+        const valor = Number(rec.valor_pago) || 0;
+        if (valor <= 0) return;
+        
+        if (rec.solicitacao_id) solicitacoesPagasIds.add(rec.solicitacao_id);
+
+        const dataRaw = rec.data_emissao || rec.created_at;
+        const dataObj = dataRaw ? new Date(dataRaw) : new Date();
+        const mesChave = dataObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+
+        if (!mesMap[mesChave]) {
+          mesMap[mesChave] = { total: 0, pagos: 0 };
+        }
+        mesMap[mesChave].pagos += valor;
+        mesMap[mesChave].total += valor; // Emitido deve incluir o que foi pago
+      });
 
       (dataCobrancas || []).forEach((cob: Record<string, any>) => {
-        // Considera solicitações que tenham valor de boleto de ressarcimento ou status de cobrança / inadimplência
         const valor = Number(cob.valor_boleto_ressarcimento) || (['em_cobranca', 'inadimplente'].includes(cob.status) ? 150 : 0);
         if (valor <= 0) return;
 
@@ -239,28 +234,16 @@ export default function Relatorios() {
         if (!mesMap[mesChave]) {
           mesMap[mesChave] = { total: 0, pagos: 0 };
         }
+        
+        if (solicitacoesPagasIds.has(cob.id)) {
+           return;
+        }
+
         mesMap[mesChave].total += valor;
 
         const isPago = Boolean(cob.pagamento_ressarcimento_realizado) || cob.status === 'encerrada';
         if (isPago) {
           mesMap[mesChave].pagos += valor;
-        }
-      });
-
-      (dataRecibos || []).forEach((rec: Record<string, any>) => {
-        const valor = Number(rec.valor_pago) || 0;
-        if (valor <= 0) return;
-
-        const dataRaw = rec.data_emissao || rec.created_at;
-        const dataObj = dataRaw ? new Date(dataRaw) : new Date();
-        const mesChave = dataObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-
-        if (!mesMap[mesChave]) {
-          mesMap[mesChave] = { total: 0, pagos: 0 };
-        }
-        mesMap[mesChave].pagos += valor;
-        if (mesMap[mesChave].total < mesMap[mesChave].pagos) {
-          mesMap[mesChave].total = mesMap[mesChave].pagos;
         }
       });
 
