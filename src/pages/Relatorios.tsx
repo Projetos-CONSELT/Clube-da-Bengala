@@ -209,7 +209,7 @@ export default function Relatorios() {
       (dataRecibos || []).forEach((rec: Record<string, any>) => {
         const valor = Number(rec.valor_pago) || 0;
         if (valor <= 0) return;
-        
+
         if (rec.solicitacao_id) solicitacoesPagasIds.add(rec.solicitacao_id);
 
         const dataRaw = rec.data_emissao || rec.created_at;
@@ -234,9 +234,9 @@ export default function Relatorios() {
         if (!mesMap[mesChave]) {
           mesMap[mesChave] = { total: 0, pagos: 0 };
         }
-        
+
         if (solicitacoesPagasIds.has(cob.id)) {
-           return;
+          return;
         }
 
         mesMap[mesChave].total += valor;
@@ -329,7 +329,7 @@ export default function Relatorios() {
           <p>Solicitações em triagem: <strong className="text-slate-900">{stats?.solicitacoesTriagem ?? 0}</strong></p>
           <p>Aguardando documentação: <strong className="text-slate-900">{stats?.solicitacoesAguardandoDocumentacao ?? 0}</strong></p>
           <p>Aguardando retirada: <strong className="text-slate-900">{stats?.solicitacoesAguardandoRetirada ?? 0}</strong></p>
-          <p>Empréstimos vencendo (7d): <strong className="text-slate-900">{stats?.emprestimosVencendo ?? 0}</strong></p>
+          <p>Empréstimos vencendo: <strong className="text-slate-900">{stats?.emprestimosVencendo ?? 0}</strong></p>
           <p>Inadimplentes: <strong className="text-slate-900">{stats?.inadimplentes ?? 0}</strong></p>
         </CardContent>
       </Card>
@@ -376,7 +376,7 @@ export default function Relatorios() {
         ) : (
           /* CONTAINER RESPONSIVO (Lado a lado em telas grandes, empilhados em menores) */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
+
             {/* 1. GRÁFICO DE PIZZA: Estatísticas de Empréstimos */}
             <Card className="bg-card text-card-foreground shadow-sm rounded-xl border border-slate-200 flex flex-col">
               <CardHeader className="pb-2">
