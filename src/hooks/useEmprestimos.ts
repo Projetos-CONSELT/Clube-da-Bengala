@@ -94,10 +94,10 @@ export function useRenovarEmprestimoRpc() {
         return old.map((e) =>
           e.id === data.id
             ? {
-                ...e,
-                data_prevista_devolucao: data.nova_data,
-                renovacoes_realizadas: data.renovacoes_realizadas,
-              }
+              ...e,
+              data_prevista_devolucao: data.nova_data,
+              renovacoes_realizadas: data.renovacoes_realizadas,
+            }
             : e
         );
       });
