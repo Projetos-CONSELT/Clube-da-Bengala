@@ -328,7 +328,7 @@ export default function AdminPanel() {
                       <TableCell className="px-6 py-4">
                         <Select
                           value={usuario.papel}
-                          disabled={currentUserRole !== 'gerente' && currentUserRole !== 'ceo'}
+                          disabled={usuario.papel === 'ceo' || (currentUserRole !== 'gerente' && currentUserRole !== 'ceo')}
                           onValueChange={(value) =>
                             handleRoleChange(usuario.id, usuario.nome_completo, value as UserRole)
                           }

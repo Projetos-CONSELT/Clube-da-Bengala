@@ -187,6 +187,7 @@ export default function Login() {
             estado: estado.trim().toUpperCase(),
             cep: cep.trim(),
             papel: 'solicitante' as const,
+            nucleo_id: null,
           },
         },
       });
