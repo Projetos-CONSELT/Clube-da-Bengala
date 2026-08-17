@@ -3,7 +3,7 @@ import {
   useEmprestimosQuery,
   useCreateEmprestimo,
   useDevolverEmprestimo,
-  useRenovarEmprestimo,
+  useRenovarEmprestimoRpc,
 } from '@/hooks/useEmprestimos';
 import { useSolicitacoesQuery, useEquipamentosQuery } from '@/hooks/useSolicitacoes';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,7 +26,7 @@ export default function Emprestimos() {
   const equipamentosQuery = useEquipamentosQuery();
   const createMut = useCreateEmprestimo();
   const devolverMut = useDevolverEmprestimo();
-  const renovarMut = useRenovarEmprestimo();
+  const renovarMut = useRenovarEmprestimoRpc();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -81,18 +81,30 @@ export default function Emprestimos() {
                   size="sm"
                   variant="outline"
                   className="gap-1"
+                  disabled={renovarMut.isPending && renovarMut.variables?.id === e.id}
                   onClick={() =>
                     renovarMut.mutate(
-                      {
-                        id: e.id,
-                        renovacoes_realizadas: e.renovacoes_realizadas + 1,
-                        data_prevista_devolucao: moment(e.data_prevista_devolucao).add(30, 'days').format('YYYY-MM-DD'),
-                      },
-                      { onSuccess: () => toast({ title: 'Renovado' }) }
+                      { id: e.id },
+                      { 
+                        onSuccess: () => toast({ title: 'Renovado com sucesso' }),
+                        onError: (err) => {
+                          const msg = err.message.toLowerCase();
+                          if (msg.includes('limite') || msg.includes('renova')) {
+                            toast({ variant: 'destructive', title: 'Aviso', description: 'Limite de renovações atingido para este equipamento.' });
+                          } else {
+                            toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível renovar o empréstimo.' });
+                          }
+                        }
+                      }
                     )
                   }
                 >
-                  <RotateCcw className="w-3 h-3" /> Renovar
+                  {renovarMut.isPending && renovarMut.variables?.id === e.id ? (
+                    <RotateCcw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3 h-3" />
+                  )}
+                  Renovar
                 </Button>
                 <Button
                   size="sm"

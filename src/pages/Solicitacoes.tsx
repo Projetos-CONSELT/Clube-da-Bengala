@@ -57,6 +57,7 @@ import {
 import type { StatusSolicitacao } from '@/types/database.types';
 import moment from 'moment';
 import 'moment/locale/pt-br';
+import { History } from 'lucide-react';
 
 moment.locale('pt-br');
 
@@ -257,7 +258,15 @@ export default function Solicitacoes() {
   const { role, user } = useAuth();
   const isBackOffice = isBackOfficeRole(role);
 
-  const solicitacoesQuery = useSolicitacoesQuery();
+  const [viewMode, setViewMode] = useState<'normal' | 'historico'>('normal');
+  const [historicoPage, setHistoricoPage] = useState(0);
+  const pageSize = 50;
+
+  const solicitacoesQuery = useSolicitacoesQuery(
+    viewMode === 'normal'
+      ? { includeEncerradas: false }
+      : { statuses: ['encerrada'], page: historicoPage, pageSize }
+  );
   const tiposQuery = useTiposEquipamentoQuery();
   const equipamentosQuery = useEquipamentosQuery();
   const beneficiariosQuery = useBeneficiariosQuery();
@@ -450,8 +459,9 @@ export default function Solicitacoes() {
     { key: 'encerrada', label: 'Concluídos', value: counts.encerrada, color: 'emerald', icon: CheckCircle },
   ];
 
-  const emAndamento = filtered.filter((s) => s.status !== 'encerrada');
-  const concluidas = filtered.filter((s) => s.status === 'encerrada');
+  const solicitacoesToRender = filtered;
+  const emAndamento = viewMode === 'normal' ? solicitacoesToRender.filter((s) => s.status !== 'encerrada') : [];
+  const concluidas = viewMode === 'normal' ? solicitacoesToRender.filter((s) => s.status === 'encerrada') : solicitacoesToRender;
 
   const renderSolicitacaoItem = (s: SolicitacaoComRelacoes) => (
     <div
@@ -615,27 +625,29 @@ export default function Solicitacoes() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {kpiCards.map(({ key, label, value, color, icon: Icon }) => (
-          <Card
-            key={key}
-            className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => setStatusFilter(key)}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-500">{label}</p>
-                  <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
+      {viewMode === 'normal' && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {kpiCards.map(({ key, label, value, color, icon: Icon }) => (
+            <Card
+              key={key}
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setStatusFilter(key)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">{label}</p>
+                    <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
+                  </div>
+                  <div className={`w-10 h-10 rounded-lg bg-${color}-100 flex items-center justify-center`}>
+                    <Icon className={`w-5 h-5 text-${color}-600`} />
+                  </div>
                 </div>
-                <div className={`w-10 h-10 rounded-lg bg-${color}-100 flex items-center justify-center`}>
-                  <Icon className={`w-5 h-5 text-${color}-600`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="relative flex-1 max-w-md">
@@ -668,6 +680,21 @@ export default function Solicitacoes() {
           </Select>
           <Button variant="outline" onClick={handleRefresh} className="gap-2">
             <RefreshCw className={`w-4 h-4 ${solicitacoesQuery.isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button
+            variant={viewMode === 'historico' ? 'default' : 'outline'}
+            onClick={() => {
+              if (viewMode === 'historico') {
+                setViewMode('normal');
+                setHistoricoPage(0);
+              } else {
+                setViewMode('historico');
+                setHistoricoPage(0);
+              }
+            }}
+            className="gap-2"
+          >
+            <History className="w-4 h-4" /> {viewMode === 'historico' ? 'Voltar' : 'Ver Histórico'}
           </Button>
           <Button onClick={openNewModal} className="gap-2 bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4" /> Nova Solicitação
@@ -714,6 +741,25 @@ export default function Solicitacoes() {
               <CardContent className="p-0 divide-y divide-slate-100">
                 {concluidas.map(renderSolicitacaoItem)}
               </CardContent>
+              {viewMode === 'historico' && (
+                <div className="p-4 border-t flex justify-between items-center bg-slate-50">
+                  <Button
+                    variant="outline"
+                    disabled={historicoPage === 0}
+                    onClick={() => setHistoricoPage(p => p - 1)}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-slate-500">Página {historicoPage + 1}</span>
+                  <Button
+                    variant="outline"
+                    disabled={concluidas.length < pageSize}
+                    onClick={() => setHistoricoPage(p => p + 1)}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
             </Card>
           )}
         </div>

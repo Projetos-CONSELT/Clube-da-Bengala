@@ -76,6 +76,35 @@ export function useRenovarEmprestimo() {
   });
 }
 
+export function useRenovarEmprestimoRpc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { data, error } = await supabase.rpc('renovar_emprestimo', {
+        p_emprestimo_id: id,
+        p_dias_adicionais: 30,
+      });
+      if (error) throw error;
+      return { id, ...(data as { nova_data: string; renovacoes_realizadas: number }) };
+    },
+    onSuccess: (data) => {
+      // Atualiza o estado local sem recarregar tudo
+      qc.setQueryData(EMPRESTIMOS_KEY, (old: EmprestimoComRelacoes[] | undefined) => {
+        if (!old) return old;
+        return old.map((e) =>
+          e.id === data.id
+            ? {
+                ...e,
+                data_prevista_devolucao: data.nova_data,
+                renovacoes_realizadas: data.renovacoes_realizadas,
+              }
+            : e
+        );
+      });
+    },
+  });
+}
+
 export function useDevolverEmprestimo() {
   const qc = useQueryClient();
   return useMutation({

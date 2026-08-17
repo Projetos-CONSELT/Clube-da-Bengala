@@ -10,13 +10,16 @@ export const SOLICITACOES_KEY = ['solicitacoes'] as const;
 interface SolicitacoesQueryOptions {
   statuses?: StatusSolicitacao[];
   tipoId?: string;
+  includeEncerradas?: boolean;
+  page?: number;
+  pageSize?: number;
 }
 
-export function useSolicitacoesQuery({ statuses, tipoId }: SolicitacoesQueryOptions = {}) {
+export function useSolicitacoesQuery({ statuses, tipoId, includeEncerradas, page, pageSize }: SolicitacoesQueryOptions = {}) {
   const { user, role, isAuthenticated } = useAuth();
 
   return useQuery({
-    queryKey: [...SOLICITACOES_KEY, { statuses, tipoId, role, userId: user?.id }],
+    queryKey: [...SOLICITACOES_KEY, { statuses, tipoId, includeEncerradas, page, pageSize, role, userId: user?.id }],
     enabled: isAuthenticated,
     queryFn: async (): Promise<SolicitacaoComRelacoes[]> => {
       let q = supabase
@@ -27,6 +30,16 @@ export function useSolicitacoesQuery({ statuses, tipoId }: SolicitacoesQueryOpti
       if (statuses?.length) q = q.in('status', statuses);
       if (tipoId) q = q.eq('tipo_equipamento_id', tipoId);
       if (role === 'solicitante' && user?.id) q = q.eq('solicitante_id', user.id);
+
+      if (!includeEncerradas && (!statuses || !statuses.includes('encerrada'))) {
+        q = q.neq('status', 'encerrada');
+      }
+
+      if (page !== undefined && pageSize !== undefined) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        q = q.range(from, to);
+      }
 
       const { data, error } = await q;
       if (error) throw error;
