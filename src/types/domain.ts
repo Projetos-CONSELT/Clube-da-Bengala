@@ -122,7 +122,7 @@ export function generateCodigoPatrimonio(): string {
   return `EQ-${y}-${r}`;
 }
 
-export const BACK_OFFICE_ROLES = ['gerente', 'coordenador', 'atendente'] as const;
+export const BACK_OFFICE_ROLES = ['ceo', 'gerente', 'coordenador', 'atendente'] as const;
 
 export function isBackOfficeRole(role: string | null | undefined): boolean {
   return BACK_OFFICE_ROLES.includes(role as (typeof BACK_OFFICE_ROLES)[number]);

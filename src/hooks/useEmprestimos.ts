@@ -26,8 +26,12 @@ export function useEmprestimosQuery() {
 
 export function useCreateEmprestimo() {
   const qc = useQueryClient();
+  const { user, role } = useAuth();
   return useMutation({
     mutationFn: async (payload: EmprestimoInsert) => {
+      if (role === 'gerente' && user?.nucleo_id) {
+        payload.nucleo_id = user.nucleo_id;
+      }
       const { data, error } = await supabase.from('emprestimos').insert(payload).select().single();
       if (error) throw error;
 

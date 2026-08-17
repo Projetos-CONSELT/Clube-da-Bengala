@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import type { EquipamentoInsert, EquipamentoUpdate, TipoEquipamentoInsert } from '@/types/database.types';
 import type { AtributosEquipamento } from '@/types/domain';
 
@@ -26,11 +27,17 @@ function toEquipamentoInsert(payload: EquipamentoFormPayload): EquipamentoInsert
 
 export function useCreateEquipamento() {
   const qc = useQueryClient();
+  const { user, role } = useAuth();
   return useMutation({
     mutationFn: async (payload: EquipamentoFormPayload) => {
+      const insertData = toEquipamentoInsert(payload);
+      if (role === 'gerente' && user?.nucleo_id) {
+        insertData.nucleo_id = user.nucleo_id;
+      }
+      
       const { data, error } = await supabase
         .from('equipamentos')
-        .insert(toEquipamentoInsert(payload))
+        .insert(insertData)
         .select('*, tipo:tipos_equipamento(*)')
         .single();
       if (error) throw error;

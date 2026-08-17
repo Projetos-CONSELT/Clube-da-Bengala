@@ -22,6 +22,7 @@ export interface AuthUser {
   email?: string;
   full_name: string;
   role: UserRole | null;
+  nucleo_id: string | null;
 }
 
 export interface AuthContextValue {
@@ -29,6 +30,7 @@ export interface AuthContextValue {
   user: AuthUser | null;
   profile: Usuario | null;
   role: UserRole | null;
+  nucleo_id: string | null;
   isAuthenticated: boolean;
   isLoadingAuth: boolean;
   isLoadingPublicSettings: boolean;
@@ -139,6 +141,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const role = profile?.papel ?? null;
+  const nucleo_id = profile?.nucleo_id ?? null;
 
   const user: AuthUser | null = session?.user
     ? {
@@ -146,6 +149,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         email: session.user.email,
         full_name: profile?.nome_completo || session.user.email || '',
         role,
+        nucleo_id,
       }
     : null;
 
@@ -154,6 +158,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     user,
     profile,
     role,
+    nucleo_id,
     isAuthenticated: !!session && !!profile,
     isLoadingAuth,
     isLoadingPublicSettings: false,

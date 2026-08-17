@@ -25,6 +25,7 @@ export type Database = {
           aprovado: boolean;
           created_at: string | null;
           solicitacao_papel: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id: string;
@@ -41,6 +42,7 @@ export type Database = {
           aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -57,6 +59,7 @@ export type Database = {
           aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [];
       };
@@ -138,6 +141,7 @@ export type Database = {
           atributos_especificos: Json;
           doador_id: string | null;
           created_at: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id?: string;
@@ -148,6 +152,7 @@ export type Database = {
           atributos_especificos?: Json;
           doador_id?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -158,6 +163,7 @@ export type Database = {
           atributos_especificos?: Json;
           doador_id?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [
           {
@@ -197,6 +203,7 @@ export type Database = {
           pagamento_ressarcimento_realizado: boolean | null;
           data_pagamento_ressarcimento: string | null;
           created_at: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id?: string;
@@ -218,6 +225,7 @@ export type Database = {
           pagamento_ressarcimento_realizado?: boolean | null;
           data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -239,6 +247,7 @@ export type Database = {
           pagamento_ressarcimento_realizado?: boolean | null;
           data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [
           {
@@ -320,6 +329,7 @@ export type Database = {
           renovacoes_realizadas: number;
           recibo_texto_customizado: string | null;
           created_at: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id?: string;
@@ -331,6 +341,7 @@ export type Database = {
           renovacoes_realizadas?: number;
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -342,6 +353,7 @@ export type Database = {
           renovacoes_realizadas?: number;
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [
           {
@@ -632,7 +644,7 @@ export type Database = {
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
-      user_role: 'gerente' | 'coordenador' | 'atendente' | 'solicitante';
+      user_role: 'ceo' | 'gerente' | 'coordenador' | 'atendente' | 'solicitante';
       status_equipamento:
         | 'disponivel'
         | 'reservado'

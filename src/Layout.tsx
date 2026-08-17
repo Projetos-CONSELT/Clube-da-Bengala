@@ -72,6 +72,7 @@ const navigation: NavItem[] = [
 ];
 
 const roleBadgeStyles: Record<string, string> = {
+  ceo: 'bg-indigo-900 text-white border-indigo-700',
   gerente: 'bg-purple-50 text-purple-700 border-purple-200',
   coordenador: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   atendente: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -80,6 +81,8 @@ const roleBadgeStyles: Record<string, string> = {
 
 const getRoleLabel = (r: string | undefined | null) => {
   switch (r) {
+    case 'ceo':
+      return 'CEO';
     case 'gerente':
       return 'Gerente';
     case 'coordenador':
@@ -133,8 +136,8 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   const visibleNav = navigation.filter(
     (item) =>
       (!item.backOfficeOnly || isBackOfficeRole(role)) &&
-      (!item.managerOnly || role === 'gerente' || role === 'coordenador') &&
-      (!item.gerenteOnly || role === 'gerente')
+      (!item.managerOnly || role === 'gerente' || role === 'coordenador' || role === 'ceo') &&
+      (!item.gerenteOnly || role === 'gerente' || role === 'ceo')
   );
 
   const handleLogout = async () => {
@@ -335,7 +338,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                     </span>
                   </div>
                   <DropdownMenuSeparator />
-                  {role === 'gerente' && (
+                  {(role === 'gerente' || role === 'ceo') && (
                     <>
                       <DropdownMenuItem asChild>
                         <Link to={createPageUrl('AdminPanel')} className="cursor-pointer">
@@ -357,7 +360,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  {role !== 'gerente' && (
+                  {(role !== 'gerente' && role !== 'ceo') && (
                     <>
                       <DropdownMenuItem onClick={() => setRoleRequestModalOpen(true)} className="cursor-pointer">
                         <Settings className="w-4 h-4 mr-2" />

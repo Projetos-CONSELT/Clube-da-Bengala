@@ -30,8 +30,8 @@ const LayoutWrapper = ({ children, currentPageName }: LayoutWrapperProps) =>
     <>{children}</>
   );
 
-const BACK_OFFICE_ROLES: UserRole[] = ['gerente', 'coordenador', 'atendente'];
-const ALL_ROLES: UserRole[] = ['gerente', 'coordenador', 'atendente', 'solicitante'];
+const BACK_OFFICE_ROLES: UserRole[] = ['ceo', 'gerente', 'coordenador', 'atendente'];
+const ALL_ROLES: UserRole[] = ['ceo', 'gerente', 'coordenador', 'atendente', 'solicitante'];
 
 const PAGE_ROLES: Record<string, UserRole[]> = {
   Dashboard: BACK_OFFICE_ROLES,
@@ -46,7 +46,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Manutencao: BACK_OFFICE_ROLES,
   Atendimento: BACK_OFFICE_ROLES,
   Configuracoes: ALL_ROLES,
-  AdminPanel: ['gerente'],
+  AdminPanel: ['ceo', 'gerente'],
 };
 
 const AuthenticatedApp = () => {

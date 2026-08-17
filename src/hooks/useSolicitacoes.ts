@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
-import type { SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
+import type { SolicitacaoInsert, SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
 import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
 
 export const SOLICITACOES_KEY = ['solicitacoes'] as const;
@@ -186,16 +186,23 @@ export function useCreateSolicitacao() {
       motivo_solicitacao?: string;
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado.');
+      
+      const insertData: SolicitacaoInsert = {
+        protocolo: generateProtocolo(),
+        solicitante_id: user.id,
+        beneficiario_id,
+        tipo_equipamento_id,
+        motivo_solicitacao: motivo_solicitacao || null,
+        status: 'triagem',
+      };
+      
+      if (role === 'gerente' && user?.nucleo_id) {
+        insertData.nucleo_id = user.nucleo_id;
+      }
+
       const { data, error } = await supabase
         .from('solicitacoes')
-        .insert({
-          protocolo: generateProtocolo(),
-          solicitante_id: user.id,
-          beneficiario_id,
-          tipo_equipamento_id,
-          motivo_solicitacao: motivo_solicitacao || null,
-          status: 'triagem',
-        })
+        .insert(insertData)
         .select()
         .single();
       if (error) throw error;

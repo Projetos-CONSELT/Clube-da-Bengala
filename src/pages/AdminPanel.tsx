@@ -15,7 +15,7 @@ import { UserPlus, Shield, Loader2, Info } from 'lucide-react';
 
 export default function AdminPanel() {
   const { toast } = useToast();
-  const { role: currentUserRole } = useAuth();
+  const { role: currentUserRole, user } = useAuth();
   const { data: usuarios = [], isLoading, error } = useUsuariosQuery();
   const updatePapel = useUpdateUsuarioPapel();
   const createUsuario = useCreateUsuario();
@@ -63,6 +63,7 @@ export default function AdminPanel() {
         whatsapp: formData.whatsapp.trim() || null,
         papel: formData.papel,
         is_inadimplente: false,
+        nucleo_id: currentUserRole === 'gerente' ? user?.nucleo_id : undefined,
       },
       {
         onSuccess: () => {
@@ -327,7 +328,7 @@ export default function AdminPanel() {
                       <TableCell className="px-6 py-4">
                         <Select
                           value={usuario.papel}
-                          disabled={currentUserRole !== 'gerente'}
+                          disabled={currentUserRole !== 'gerente' && currentUserRole !== 'ceo'}
                           onValueChange={(value) =>
                             handleRoleChange(usuario.id, usuario.nome_completo, value as UserRole)
                           }
@@ -344,7 +345,7 @@ export default function AdminPanel() {
                         </Select>
                       </TableCell>
                       <TableCell className="px-6 py-4 text-right">
-                        {usuario.solicitacao_papel && currentUserRole === 'gerente' ? (
+                        {usuario.solicitacao_papel && (currentUserRole === 'gerente' || currentUserRole === 'ceo') ? (
                           <div className="flex justify-end gap-1.5">
                             <Button
                               size="sm"
