@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Search, Plus, MoreVertical, Package, Tag, MapPin, Loader2, Eye, Edit, Trash2,
-  CheckCircle, AlertCircle, Settings, RefreshCw, Folder, FolderPlus, FolderOpen,
+  CheckCircle, AlertCircle, AlertTriangle, Settings, RefreshCw, Folder, FolderPlus, FolderOpen,
   Layers, Box, FileText, Sparkles, Image as ImageIcon, ToggleLeft, Hash, CheckSquare, X, ChevronRight,
+  ChevronDown, ChevronUp, Lock,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/lib/AuthContext';
 import { useEquipamentosQuery, useTiposEquipamentoQuery } from '@/hooks/useSolicitacoes';
 import {
   useCreateEquipamento,
@@ -112,6 +114,8 @@ function equipamentoToForm(eq: EquipamentoComTipo): FormState {
 
 export default function Equipamentos() {
   const { toast } = useToast();
+  const { role } = useAuth();
+  const isManager = role === 'gerente' || role === 'ceo';
 
   const equipamentosQuery = useEquipamentosQuery();
   const tiposQuery = useTiposEquipamentoQuery();
@@ -134,6 +138,39 @@ export default function Equipamentos() {
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
   const [activeTab, setActiveTab] = useState('equipamentos');
+
+  const [expandedTipos, setExpandedTipos] = useState<Record<string, boolean>>({});
+
+  const toggleTipoExpand = (tipoId: string) => {
+    setExpandedTipos((prev) => ({
+      ...prev,
+      [tipoId]: !prev[tipoId],
+    }));
+  };
+
+  const [expandedEquipamentoTipos, setExpandedEquipamentoTipos] = useState<Record<string, boolean>>({});
+
+  const toggleEquipamentoTipoExpand = (tipoId: string) => {
+    setExpandedEquipamentoTipos((prev) => ({
+      ...prev,
+      [tipoId]: !prev[tipoId],
+    }));
+  };
+
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    open: boolean;
+    type: 'tipo' | 'subtipo' | 'equipamento' | null;
+    targetTipo?: TipoEquipamento | null;
+    targetTipoId?: string | null;
+    targetSubtipo?: SubtipoEquipamento | null;
+    targetEquipamento?: EquipamentoComTipo | null;
+    blocked?: boolean;
+    blockReason?: string;
+    itemCount?: number;
+  }>({
+    open: false,
+    type: null,
+  });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [tipoModalOpen, setTipoModalOpen] = useState(false);
@@ -184,6 +221,60 @@ export default function Equipamentos() {
     if (tipoFilter !== 'todos') list = list.filter((e) => e.tipo_id === tipoFilter);
     return list;
   }, [equipamentos, searchTerm, statusFilter, tipoFilter]);
+
+  const groupedEquipamentos = useMemo(() => {
+    if (filtered.length === 0) return [];
+
+    const groupsMap = new Map<
+      string,
+      {
+        tipoId: string;
+        tipoNome: string;
+        subtiposMap: Map<
+          string,
+          {
+            subtipoId: string;
+            subtipoNome: string;
+            items: EquipamentoComTipo[];
+          }
+        >;
+      }
+    >();
+
+    filtered.forEach((eq) => {
+      const tipoId = eq.tipo_id || 'sem-tipo';
+      const tipoNome = tipoOf(eq);
+      const attrs = getAtributosEquipamento(eq.atributos_especificos);
+      const subtipoId = String(attrs.subtipo_id || attrs.subtipo_nome || 'sem-subtipo');
+      const subtipoNome = attrs.subtipo_nome ? String(attrs.subtipo_nome) : 'Geral / Sem subtipo específico';
+
+      if (!groupsMap.has(tipoId)) {
+        groupsMap.set(tipoId, {
+          tipoId,
+          tipoNome,
+          subtiposMap: new Map(),
+        });
+      }
+
+      const tipoGroup = groupsMap.get(tipoId)!;
+      if (!tipoGroup.subtiposMap.has(subtipoId)) {
+        tipoGroup.subtiposMap.set(subtipoId, {
+          subtipoId,
+          subtipoNome,
+          items: [],
+        });
+      }
+
+      tipoGroup.subtiposMap.get(subtipoId)!.items.push(eq);
+    });
+
+    return Array.from(groupsMap.values()).map((group) => ({
+      tipoId: group.tipoId,
+      tipoNome: group.tipoNome,
+      totalItems: Array.from(group.subtiposMap.values()).reduce((acc, s) => acc + s.items.length, 0),
+      subtipoGroups: Array.from(group.subtiposMap.values()),
+    }));
+  }, [filtered]);
 
   const counts = useMemo(
     () => ({
@@ -269,15 +360,23 @@ export default function Equipamentos() {
   };
 
   const handleDelete = (eq: EquipamentoComTipo) => {
-    if (!confirm('Tem certeza que deseja excluir este equipamento?')) return;
-    deleteMut.mutate(eq.id, {
-      onSuccess: () => toast({ title: 'Equipamento excluído' }),
-      onError: (err) =>
-        toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message }),
+    setDeleteConfirmState({
+      open: true,
+      type: 'equipamento',
+      targetEquipamento: eq,
+      blocked: false,
     });
   };
 
   const openNewTipoModal = () => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para criar tipos de equipamento.',
+      });
+      return;
+    }
     setIsEditingTipo(false);
     setSelectedTipoForEdit(null);
     setTipoFormData({ nome: '', descricao: '' });
@@ -285,6 +384,14 @@ export default function Equipamentos() {
   };
 
   const openEditTipoModal = (tipo: TipoEquipamento) => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para editar tipos de equipamento.',
+      });
+      return;
+    }
     setIsEditingTipo(true);
     setSelectedTipoForEdit(tipo);
     setTipoFormData({ nome: tipo.nome, descricao: tipo.descricao || '' });
@@ -292,6 +399,14 @@ export default function Equipamentos() {
   };
 
   const handleSaveTipo = () => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para salvar tipos de equipamento.',
+      });
+      return;
+    }
     if (!tipoFormData.nome.trim()) return;
     if (isEditingTipo && selectedTipoForEdit) {
       updateTipoMut.mutate(
@@ -301,36 +416,65 @@ export default function Equipamentos() {
         },
         {
           onSuccess: () => {
-            toast({ title: 'Pasta de equipamento atualizada' });
+            toast({ title: 'Tipo de equipamento atualizado com sucesso' });
             setTipoModalOpen(false);
           },
           onError: (err) =>
-            toast({ variant: 'destructive', title: 'Erro ao atualizar pasta', description: err.message }),
+            toast({ variant: 'destructive', title: 'Erro ao atualizar tipo', description: err.message }),
         }
       );
     } else {
       createTipoMut.mutate(tipoFormData, {
         onSuccess: () => {
-          toast({ title: 'Nova pasta de equipamento cadastrada' });
+          toast({ title: 'Novo tipo de equipamento cadastrado com sucesso' });
           setTipoModalOpen(false);
           setTipoFormData({ nome: '', descricao: '' });
         },
         onError: (err) =>
-          toast({ variant: 'destructive', title: 'Erro ao criar pasta', description: err.message }),
+          toast({ variant: 'destructive', title: 'Erro ao criar tipo', description: err.message }),
       });
     }
   };
 
   const handleDeleteTipo = (tipo: TipoEquipamento) => {
-    if (!confirm(`Tem certeza que deseja excluir a pasta "${tipo.nome}" e suas configurações?`)) return;
-    deleteTipoMut.mutate(tipo.id, {
-      onSuccess: () => toast({ title: 'Pasta de equipamento excluída' }),
-      onError: (err) =>
-        toast({ variant: 'destructive', title: 'Erro ao excluir pasta', description: err.message }),
-    });
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para excluir tipos de equipamento.',
+      });
+      return;
+    }
+    const count = equipamentos.filter((e) => e.tipo_id === tipo.id).length;
+    if (count > 0) {
+      setDeleteConfirmState({
+        open: true,
+        type: 'tipo',
+        targetTipo: tipo,
+        blocked: true,
+        itemCount: count,
+        blockReason: `Existem ${count} equipamento(s) cadastrado(s) vinculado(s) ao tipo "${tipo.nome}". Para poder excluí-lo, você deve primeiro excluir esses equipamentos ou alterá-los para outro tipo.`,
+      });
+    } else {
+      setDeleteConfirmState({
+        open: true,
+        type: 'tipo',
+        targetTipo: tipo,
+        blocked: false,
+        itemCount: 0,
+      });
+    }
   };
 
   const openNewSubtipoModal = (tipoId: string) => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para criar subtipos de equipamento.',
+      });
+      return;
+    }
     setTargetTipoId(tipoId);
     setSelectedSubtipo(null);
     setSubtipoFormData({ nome: '', descricao: '', imagem_url: '', categorias: [] });
@@ -338,6 +482,14 @@ export default function Equipamentos() {
   };
 
   const openEditSubtipoModal = (tipoId: string, subtipo: SubtipoEquipamento) => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para editar subtipos e tags de equipamento.',
+      });
+      return;
+    }
     setTargetTipoId(tipoId);
     setSelectedSubtipo(subtipo);
     setSubtipoFormData({
@@ -379,6 +531,14 @@ export default function Equipamentos() {
   };
 
   const handleSaveSubtipo = () => {
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para salvar subtipos e tags de equipamento.',
+      });
+      return;
+    }
     if (!targetTipoId || !subtipoFormData.nome.trim()) return;
     const cleanedCategories = subtipoFormData.categorias
       .filter((c) => c.nome.trim().length > 0)
@@ -415,7 +575,7 @@ export default function Equipamentos() {
         },
         {
           onSuccess: () => {
-            toast({ title: 'Subtipo cadastrado na pasta!' });
+            toast({ title: 'Subtipo cadastrado com sucesso!' });
             setSubtipoModalOpen(false);
           },
           onError: (err) =>
@@ -426,15 +586,69 @@ export default function Equipamentos() {
   };
 
   const handleDeleteSubtipo = (tipoId: string, subtipo: SubtipoEquipamento) => {
-    if (!confirm(`Tem certeza que deseja excluir o subtipo "${subtipo.nome}"?`)) return;
-    deleteSubtipoMut.mutate(
-      { tipoId, subtipoId: subtipo.id },
-      {
-        onSuccess: () => toast({ title: 'Subtipo excluído' }),
-        onError: (err) =>
-          toast({ variant: 'destructive', title: 'Erro ao excluir subtipo', description: err.message }),
-      }
-    );
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Negado',
+        description: 'Apenas gerentes possuem permissão para excluir subtipos de equipamento.',
+      });
+      return;
+    }
+    const count = equipamentos.filter((e) => {
+      if (e.tipo_id !== tipoId) return false;
+      const attrs = getAtributosEquipamento(e.atributos_especificos);
+      return attrs.subtipo_id === subtipo.id || attrs.subtipo_nome === subtipo.nome;
+    }).length;
+
+    setDeleteConfirmState({
+      open: true,
+      type: 'subtipo',
+      targetTipoId: tipoId,
+      targetSubtipo: subtipo,
+      blocked: false,
+      itemCount: count,
+    });
+  };
+
+  const handleExecuteDelete = () => {
+    if (deleteConfirmState.type === 'tipo' && deleteConfirmState.targetTipo) {
+      deleteTipoMut.mutate(deleteConfirmState.targetTipo.id, {
+        onSuccess: () => {
+          toast({ title: 'Tipo de equipamento excluído com sucesso' });
+          setDeleteConfirmState({ open: false, type: null });
+        },
+        onError: (err: Error) => {
+          toast({ variant: 'destructive', title: 'Erro ao excluir tipo', description: err.message });
+        },
+      });
+    } else if (
+      deleteConfirmState.type === 'subtipo' &&
+      deleteConfirmState.targetTipoId &&
+      deleteConfirmState.targetSubtipo
+    ) {
+      deleteSubtipoMut.mutate(
+        { tipoId: deleteConfirmState.targetTipoId, subtipoId: deleteConfirmState.targetSubtipo.id },
+        {
+          onSuccess: () => {
+            toast({ title: 'Subtipo excluído com sucesso' });
+            setDeleteConfirmState({ open: false, type: null });
+          },
+          onError: (err: Error) => {
+            toast({ variant: 'destructive', title: 'Erro ao excluir subtipo', description: err.message });
+          },
+        }
+      );
+    } else if (deleteConfirmState.type === 'equipamento' && deleteConfirmState.targetEquipamento) {
+      deleteMut.mutate(deleteConfirmState.targetEquipamento.id, {
+        onSuccess: () => {
+          toast({ title: 'Equipamento excluído com sucesso' });
+          setDeleteConfirmState({ open: false, type: null });
+        },
+        onError: (err: Error) => {
+          toast({ variant: 'destructive', title: 'Erro ao excluir equipamento', description: err.message });
+        },
+      });
+    }
   };
 
   const handleRefresh = () => {
@@ -483,7 +697,7 @@ export default function Equipamentos() {
         <TabsList className="bg-slate-200/60 p-1 rounded-xl">
           <TabsTrigger value="equipamentos" className="rounded-lg font-medium">Equipamentos</TabsTrigger>
           <TabsTrigger value="tipos" className="rounded-lg font-medium flex items-center gap-1.5">
-            <Folder className="w-4 h-4 text-amber-500" /> Pastas de Tipos
+            <Folder className="w-4 h-4 text-amber-500" /> Tipos de equipamento
           </TabsTrigger>
         </TabsList>
 
@@ -548,78 +762,175 @@ export default function Equipamentos() {
             </div>
           </div>
 
-          <Card>
-            <CardContent className="p-0">
-              {filtered.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p>Nenhum equipamento encontrado</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {filtered.map((eq) => {
-                    const attrs = getAtributosEquipamento(eq.atributos_especificos);
-                    return (
+          {filtered.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-12 text-slate-500">
+                <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>Nenhum equipamento encontrado</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {groupedEquipamentos.map((tipoGroup) => {
+                const totalCount = tipoGroup.totalItems;
+                const hasMoreThanTwo = totalCount > 2;
+                const isExpanded = expandedEquipamentoTipos[tipoGroup.tipoId] ?? false;
+
+                // Slice subtipos/items to show max 2 items when compressed
+                let limitRemaining = 2;
+                const visibleSubGroupList = (hasMoreThanTwo && !isExpanded)
+                  ? tipoGroup.subtipoGroups.reduce((acc, subGroup) => {
+                      if (limitRemaining <= 0) return acc;
+                      const sliced = subGroup.items.slice(0, limitRemaining);
+                      if (sliced.length > 0) {
+                        limitRemaining -= sliced.length;
+                        acc.push({ ...subGroup, items: sliced });
+                      }
+                      return acc;
+                    }, [] as typeof tipoGroup.subtipoGroups)
+                  : tipoGroup.subtipoGroups;
+
+                return (
+                  <Card key={tipoGroup.tipoId} className="overflow-hidden border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      {/* Cabeçalho do Tipo */}
                       <div
-                        key={eq.id}
-                        className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                        className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
+                        onClick={() => hasMoreThanTwo && toggleEquipamentoTipoExpand(tipoGroup.tipoId)}
+                        title={hasMoreThanTwo ? (isExpanded ? 'Clique para compactar' : 'Clique para descompactar') : undefined}
                       >
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                            <Package className="w-7 h-7 text-white" />
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                            <Folder className="w-4 h-4 fill-amber-400" />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-slate-900">{eq.codigo_patrimonio}</p>
-                              <StatusBadge status={eq.status} />
-                              {attrs.subtipo_nome && (
-                                <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold">
-                                  {String(attrs.subtipo_nome)}
-                                </Badge>
+                          <h3 className="font-bold text-base text-white flex items-center gap-2">
+                            {tipoGroup.tipoNome}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-slate-800 text-slate-200 border border-slate-700 font-medium text-xs">
+                            <Package className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                            {totalCount} {totalCount === 1 ? 'item' : 'itens'}
+                          </Badge>
+                          {hasMoreThanTwo && (
+                            <Badge
+                              className={`text-[10px] font-bold cursor-pointer transition-colors ${
+                                isExpanded
+                                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                  : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
+                              }`}
+                            >
+                              {isExpanded ? (
+                                <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Descompactado</span>
+                              ) : (
+                                <span className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Compactado (+{totalCount - 2})</span>
                               )}
-                            </div>
-                            <p className="text-sm text-slate-600 mt-0.5">{tipoOf(eq)}</p>
-                            <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
-                              {attrs.localizacao && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" /> {String(attrs.localizacao)}
-                                </span>
-                              )}
-                              <Badge className="bg-blue-100 text-blue-700">
-                                {String(attrs.estado_conservacao || 'bom')}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Subtipos e Equipamentos */}
+                      <CardContent className="p-4 space-y-4 bg-slate-50/50">
+                        {visibleSubGroupList.map((subGroup) => (
+                          <div key={subGroup.subtipoId} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                            <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                                <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">{subGroup.subtipoNome}</span>
+                              </div>
+                              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold">
+                                {subGroup.items.length} {subGroup.items.length === 1 ? 'item' : 'itens'}
                               </Badge>
                             </div>
+
+                            <div className="divide-y divide-slate-100">
+                              {subGroup.items.map((eq) => {
+                                const attrs = getAtributosEquipamento(eq.atributos_especificos);
+                                return (
+                                  <div
+                                    key={eq.id}
+                                    className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3.5">
+                                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shrink-0 shadow-xs">
+                                        <Package className="w-5 h-5 text-white" />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <p className="font-semibold text-slate-900 text-sm">{eq.codigo_patrimonio}</p>
+                                          <StatusBadge status={eq.status} />
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
+                                          {attrs.localizacao && (
+                                            <span className="flex items-center gap-1">
+                                              <MapPin className="w-3 h-3 text-slate-400" /> {String(attrs.localizacao)}
+                                            </span>
+                                          )}
+                                          <Badge className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
+                                            {String(attrs.estado_conservacao || 'bom')}
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                          <MoreVertical className="w-4 h-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={() => { setSelected(eq); setDetailModalOpen(true); }}>
+                                          <Eye className="w-4 h-4 mr-2" /> Visualizar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => openEditModal(eq)}>
+                                          <Edit className="w-4 h-4 mr-2" /> Editar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleDelete(eq)}
+                                          className="text-red-600"
+                                        >
+                                          <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => { setSelected(eq); setDetailModalOpen(true); }}>
-                              <Eye className="w-4 h-4 mr-2" /> Visualizar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditModal(eq)}>
-                              <Edit className="w-4 h-4 mr-2" /> Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(eq)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" /> Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        ))}
+                      </CardContent>
+                    </div>
+
+                    {/* Botão de Descompactar / Compactar se tiver mais que 2 equipamentos */}
+                    {hasMoreThanTwo && (
+                      <div className="p-4 pt-0 bg-slate-50/50">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => toggleEquipamentoTipoExpand(tipoGroup.tipoId)}
+                          className="w-full border-amber-300 bg-amber-50/90 hover:bg-amber-100 text-amber-900 font-semibold text-xs flex items-center justify-center gap-1.5 rounded-xl py-2 shadow-2xs transition-colors"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="w-4 h-4 text-amber-700" /> Compactar equipamentos
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="w-4 h-4 text-amber-700" /> Descompactar {totalCount} equipamentos (+{totalCount - 2} ocultos)
+                            </>
+                          )}
+                        </Button>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="tipos" className="space-y-6 mt-6">
@@ -627,233 +938,302 @@ export default function Equipamentos() {
             <div>
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <FolderOpen className="w-6 h-6 text-amber-400" />
-                Pastas de Tipos de Equipamento
+                Tipos de Equipamento
               </h3>
               <p className="text-slate-300 text-xs md:text-sm mt-1">
-                Cada pasta representa uma categoria principal de equipamento. Dentro de cada pasta, cadastre subtipos com imagem de referência e especificações personalizadas (Booleano/Número).
+                Cada tipo representa uma categoria principal de equipamento. Dentro de cada tipo, cadastre subtipos com imagem de referência e especificações personalizadas (Booleano/Número).
               </p>
             </div>
-            <Button
-              onClick={openNewTipoModal}
-              className="gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg shrink-0"
-            >
-              <FolderPlus className="w-5 h-5" /> Novo Tipo (Pasta)
-            </Button>
+            {isManager ? (
+              <Button
+                onClick={openNewTipoModal}
+                className="gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg shrink-0"
+              >
+                <FolderPlus className="w-5 h-5" /> Novo Tipo
+              </Button>
+            ) : (
+              <Badge variant="outline" className="bg-slate-800 text-amber-300 border-slate-700 px-3 py-1.5 font-medium text-xs flex items-center gap-1.5 shrink-0">
+                <Lock className="w-3.5 h-3.5 text-amber-400" /> Apenas gerentes podem criar e editar tipos
+              </Badge>
+            )}
           </div>
 
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {tipos.map((tipo) => {
               const subtipos = getSubtiposTipo(tipo.schema_especificacoes);
               const totalItemsDoTipo = equipamentos.filter((e) => e.tipo_id === tipo.id).length;
 
+              const hasMoreThanTwo = subtipos.length > 2;
+              const isExpanded = expandedTipos[tipo.id] ?? false;
+              const visibleSubtipos = (hasMoreThanTwo && !isExpanded) ? subtipos.slice(0, 2) : subtipos;
+
               return (
                 <div
                   key={tipo.id}
-                  className="border border-amber-200/80 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10 rounded-2xl shadow-sm overflow-hidden p-5 transition-all hover:shadow-md"
+                  className="border border-amber-200/80 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10 rounded-2xl shadow-sm overflow-hidden p-5 transition-all hover:shadow-md flex flex-col justify-between"
                 >
-                  {/* Cabeçalho da Pasta */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-amber-200/50">
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 shadow-sm">
-                        <Folder className="w-6 h-6 fill-amber-300" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-lg font-bold text-slate-900">{tipo.nome}</h4>
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 font-semibold text-xs">
-                            <Folder className="w-3 h-3 mr-1 fill-amber-400" /> Pasta
-                          </Badge>
-                          <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-medium text-xs">
-                            <Layers className="w-3 h-3 mr-1 text-blue-500" /> {subtipos.length} Subtipo(s)
-                          </Badge>
-                          <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-medium text-xs">
-                            <Package className="w-3 h-3 mr-1 text-slate-500" /> {totalItemsDoTipo} Equipamento(s)
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-slate-600 mt-1">
-                          {tipo.descricao || 'Sem descrição cadastrada para esta categoria.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
-                      <Button
-                        size="sm"
-                        onClick={() => openNewSubtipoModal(tipo.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 rounded-xl text-xs font-semibold shadow-sm"
-                      >
-                        <Plus className="w-4 h-4" /> Criar Subtipo
-                      </Button>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl border-slate-200">
-                            <MoreVertical className="w-4 h-4 text-slate-600" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditTipoModal(tipo)}>
-                            <Edit className="w-4 h-4 mr-2" /> Editar Pasta (Tipo)
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteTipo(tipo)}
-                            className="text-red-600"
+                  <div>
+                    {/* Cabeçalho do Tipo */}
+                    <div className="flex flex-col gap-3 pb-4 border-b border-amber-200/50">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-3.5">
+                          <div
+                            className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 shadow-sm cursor-pointer hover:bg-amber-200/80 transition-colors"
+                            onClick={() => hasMoreThanTwo && toggleTipoExpand(tipo.id)}
+                            title={hasMoreThanTwo ? (isExpanded ? 'Recolher tipo' : 'Expandir tipo') : undefined}
                           >
-                            <Trash2 className="w-4 h-4 mr-2" /> Excluir Pasta
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
+                            <Folder className="w-6 h-6 fill-amber-300" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="text-lg font-bold text-slate-900">{tipo.nome}</h4>
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 font-semibold text-xs">
+                                Tipo
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-medium text-[11px]">
+                                <Layers className="w-3 h-3 mr-1 text-blue-500" /> {subtipos.length} Subtipo(s)
+                              </Badge>
+                              <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-medium text-[11px]">
+                                <Package className="w-3 h-3 mr-1 text-slate-500" /> {totalItemsDoTipo} Equipamento(s)
+                              </Badge>
+                              {hasMoreThanTwo && (
+                                <Badge
+                                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toggleTipoExpand(tipo.id); }}
+                                  className={`cursor-pointer transition-colors text-[11px] font-semibold ${
+                                    isExpanded
+                                      ? 'bg-amber-200 text-amber-900 border-amber-300 hover:bg-amber-300'
+                                      : 'bg-amber-500 text-slate-950 font-bold hover:bg-amber-600'
+                                  }`}
+                                >
+                                  {isExpanded ? (
+                                    <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Expandido</span>
+                                  ) : (
+                                    <span className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Recolhido (+{subtipos.length - 2})</span>
+                                  )}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-600 mt-2 line-clamp-2">
+                              {tipo.descricao || 'Sem descrição cadastrada para este tipo.'}
+                            </p>
+                          </div>
+                        </div>
 
-                  {/* Conteúdo da Pasta: Cards de Subtipos */}
-                  <div className="mt-4">
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Subtipos de {tipo.nome}
-                    </p>
-
-                    {subtipos.length === 0 ? (
-                      <div className="bg-white/80 border border-dashed border-slate-200 rounded-xl p-6 text-center">
-                        <Layers className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                        <p className="text-sm font-medium text-slate-700">Nenhum subtipo cadastrado nesta pasta</p>
-                        <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                          Clique no botão <strong className="text-blue-600">"Criar Subtipo"</strong> acima para adicionar modelos, fotos de referência e campos dinâmicos para {tipo.nome}.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {subtipos.map((sub) => {
-                          const countSubtipoItems = equipamentos.filter((e) => {
-                            if (e.tipo_id !== tipo.id) return false;
-                            const attrs = getAtributosEquipamento(e.atributos_especificos);
-                            return attrs.subtipo_id === sub.id || attrs.subtipo_nome === sub.nome;
-                          }).length;
-
-                          const cats = sub.categorias || [];
-
-                          return (
-                            <div
-                              key={sub.id}
-                              className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                        {isManager && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              onClick={(e: React.MouseEvent) => { e.stopPropagation(); openNewSubtipoModal(tipo.id); }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white gap-1 rounded-xl text-xs font-semibold shadow-xs h-8 px-2.5"
                             >
-                              <div>
-                                {/* Imagem de Referência ou Banner */}
-                                {sub.imagem_url ? (
-                                  <div className="relative h-36 bg-slate-100 overflow-hidden border-b border-slate-100">
-                                    <img
-                                      src={sub.imagem_url}
-                                      alt={sub.nome}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                      onError={(e) => {
-                                        (e.target as HTMLElement).style.display = 'none';
-                                      }}
-                                    />
-                                    <Badge className="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] border-none">
-                                      Referência
-                                    </Badge>
-                                  </div>
-                                ) : (
-                                  <div className="h-16 bg-gradient-to-r from-slate-100 to-indigo-50/50 flex items-center justify-between px-4 border-b border-slate-100">
-                                    <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                      <Tag className="w-4 h-4" />
+                              <Plus className="w-3.5 h-3.5" /> Subtipo
+                            </Button>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                                <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl border-slate-200">
+                                  <MoreVertical className="w-4 h-4 text-slate-600" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEditTipoModal(tipo)}>
+                                  <Edit className="w-4 h-4 mr-2" /> Editar Tipo
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteTipo(tipo)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Excluir Tipo
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Conteúdo do Tipo: Cards de Subtipos */}
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Subtipos de {tipo.nome}
+                        </p>
+                        {hasMoreThanTwo && (
+                          <span className="text-[11px] font-medium text-slate-500">
+                            Mostrando {visibleSubtipos.length} de {subtipos.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {subtipos.length === 0 ? (
+                        <div className="bg-white/80 border border-dashed border-slate-200 rounded-xl p-5 text-center">
+                          <Layers className="w-7 h-7 mx-auto text-slate-300 mb-2" />
+                          <p className="text-xs font-medium text-slate-700">Nenhum subtipo cadastrado neste tipo</p>
+                          {isManager && (
+                            <p className="text-[11px] text-slate-400 mt-1">
+                              Clique em <strong className="text-blue-600">"+ Subtipo"</strong> acima para adicionar modelos.
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-3.5">
+                          {visibleSubtipos.map((sub) => {
+                            const countSubtipoItems = equipamentos.filter((e) => {
+                              if (e.tipo_id !== tipo.id) return false;
+                              const attrs = getAtributosEquipamento(e.atributos_especificos);
+                              return attrs.subtipo_id === sub.id || attrs.subtipo_nome === sub.nome;
+                            }).length;
+
+                            const cats = sub.categorias || [];
+
+                            return (
+                              <div
+                                key={sub.id}
+                                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                              >
+                                <div>
+                                  {/* Imagem de Referência ou Banner */}
+                                  {sub.imagem_url ? (
+                                    <div className="relative h-28 bg-slate-100 overflow-hidden border-b border-slate-100">
+                                      <img
+                                        src={sub.imagem_url}
+                                        alt={sub.nome}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        onError={(e) => {
+                                          (e.target as HTMLElement).style.display = 'none';
+                                        }}
+                                      />
+                                      <Badge className="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] border-none">
+                                        Referência
+                                      </Badge>
                                     </div>
-                                    <Badge className="bg-slate-200/70 text-slate-600 text-[10px] border-none">
-                                      Sem foto
-                                    </Badge>
-                                  </div>
-                                )}
-
-                                <div className="p-4 space-y-2">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <h5 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
-                                      {sub.nome}
-                                    </h5>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditSubtipoModal(tipo.id, sub)}
-                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                        title="Editar Subtipo"
-                                      >
-                                        <Edit className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteSubtipo(tipo.id, sub)}
-                                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                        title="Excluir Subtipo"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                                    {sub.descricao || 'Sem descrição cadastrada.'}
-                                  </p>
-
-                                  {/* Badges de Categorias / Campos Definidos */}
-                                  {cats.length > 0 && (
-                                    <div className="pt-2">
-                                      <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1">
-                                        Campos Obrigatórios/Personalizados:
-                                      </p>
-                                      <div className="flex flex-wrap gap-1">
-                                        {cats.map((c) => (
-                                          <Badge
-                                            key={c.id}
-                                            variant="outline"
-                                            className={`text-[10px] px-2 py-0.5 font-medium ${
-                                              c.tipo_dado === 'booleano'
-                                                ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                : 'bg-blue-50 text-blue-700 border-blue-200'
-                                            }`}
-                                          >
-                                            {c.tipo_dado === 'booleano' ? (
-                                              <ToggleLeft className="w-2.5 h-2.5 mr-1 text-purple-600 inline" />
-                                            ) : (
-                                              <Hash className="w-2.5 h-2.5 mr-1 text-blue-600 inline" />
-                                            )}
-                                            {c.nome} ({c.tipo_dado === 'booleano' ? 'Sim/Não' : 'Número'})
-                                          </Badge>
-                                        ))}
+                                  ) : (
+                                    <div className="h-12 bg-gradient-to-r from-slate-100 to-indigo-50/50 flex items-center justify-between px-3 border-b border-slate-100">
+                                      <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                        <Tag className="w-3.5 h-3.5" />
                                       </div>
+                                      <Badge className="bg-slate-200/70 text-slate-600 text-[10px] border-none">
+                                        Sem foto
+                                      </Badge>
                                     </div>
+                                  )}
+
+                                  <div className="p-3.5 space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h5 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
+                                        {sub.nome}
+                                      </h5>
+                                      {isManager && (
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => openEditSubtipoModal(tipo.id, sub)}
+                                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                            title="Editar Subtipo"
+                                          >
+                                            <Edit className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteSubtipo(tipo.id, sub)}
+                                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                            title="Excluir Subtipo"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                                      {sub.descricao || 'Sem descrição cadastrada.'}
+                                    </p>
+
+                                    {/* Badges de Categorias / Campos Definidos */}
+                                    {cats.length > 0 && (
+                                      <div className="pt-1">
+                                        <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1">
+                                          Campos Personalizados:
+                                        </p>
+                                        <div className="flex flex-wrap gap-1">
+                                          {cats.map((c) => (
+                                            <Badge
+                                              key={c.id}
+                                              variant="outline"
+                                              className={`text-[10px] px-1.5 py-0.5 font-medium ${
+                                                c.tipo_dado === 'booleano'
+                                                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                                              }`}
+                                            >
+                                              {c.tipo_dado === 'booleano' ? (
+                                                <ToggleLeft className="w-2.5 h-2.5 mr-1 text-purple-600 inline" />
+                                              ) : (
+                                                <Hash className="w-2.5 h-2.5 mr-1 text-blue-600 inline" />
+                                              )}
+                                              {c.nome} ({c.tipo_dado === 'booleano' ? 'Sim/Não' : 'Número'})
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="px-3.5 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                  <span className="flex items-center gap-1 font-medium text-slate-600">
+                                    <Package className="w-3.5 h-3.5 text-blue-500" />
+                                    {countSubtipoItems} em estoque
+                                  </span>
+                                  {sub.created_at && (
+                                    <span className="text-[10px] text-slate-400">
+                                      {moment(sub.created_at).format('DD/MM/YYYY')}
+                                    </span>
                                   )}
                                 </div>
                               </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
-                              <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                                <span className="flex items-center gap-1 font-medium text-slate-600">
-                                  <Package className="w-3.5 h-3.5 text-blue-500" />
-                                  {countSubtipoItems} em estoque
-                                </span>
-                                {sub.created_at && (
-                                  <span className="text-[10px] text-slate-400">
-                                    {moment(sub.created_at).format('DD/MM/YYYY')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                      {/* Botão de Expandir / Recolher se houver mais de 2 subtipos */}
+                      {hasMoreThanTwo && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => toggleTipoExpand(tipo.id)}
+                          className="w-full mt-3 border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors rounded-xl py-2"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="w-4 h-4 text-amber-700" /> Recolher tipo (mostrando todos os {subtipos.length} subtipos)
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="w-4 h-4 text-amber-700" /> Expandir tipo (+{subtipos.length - 2} subtipos recolhidos)
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
 
             {tipos.length === 0 && (
-              <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
+              <div className="col-span-full text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
                 <Folder className="w-16 h-16 mx-auto mb-3 text-amber-300 opacity-60" />
-                <h4 className="text-lg font-bold text-slate-800">Nenhuma pasta cadastrada</h4>
+                <h4 className="text-lg font-bold text-slate-800">Nenhum tipo cadastrado</h4>
                 <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
-                  Clique no botão "Novo Tipo (Pasta)" para criar sua primeira categoria principal de equipamentos.
+                  Clique no botão "Novo Tipo" para criar seu primeiro tipo de equipamento.
                 </p>
                 <Button onClick={openNewTipoModal} className="mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl">
-                  <FolderPlus className="w-4 h-4 mr-2" /> Criar Primeira Pasta
+                  <FolderPlus className="w-4 h-4 mr-2" /> Criar Primeiro Tipo
                 </Button>
               </div>
             )}
@@ -1448,6 +1828,124 @@ export default function Equipamentos() {
             >
               <Edit className="w-4 h-4 mr-2" /> Editar
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Dialog
+        open={deleteConfirmState.open}
+        onOpenChange={(open: boolean) => !open && setDeleteConfirmState({ open: false, type: null })}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5 text-slate-900">
+              {deleteConfirmState.blocked ? (
+                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+              )}
+              {deleteConfirmState.blocked
+                ? 'Não é possível excluir'
+                : `Confirmar exclusão de ${
+                    deleteConfirmState.type === 'tipo'
+                      ? 'tipo de equipamento'
+                      : deleteConfirmState.type === 'subtipo'
+                      ? 'subtipo'
+                      : 'equipamento'
+                  }`}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3 text-slate-600 text-sm">
+            {deleteConfirmState.blocked ? (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2">
+                <p className="font-semibold text-red-900 text-sm leading-relaxed">
+                  {deleteConfirmState.blockReason}
+                </p>
+                <p className="text-xs text-red-700">
+                  Por razões de integridade dos dados, tipos que possuem equipamentos cadastrados não podem ser removidos.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="leading-relaxed text-slate-700">
+                  {deleteConfirmState.type === 'tipo' && (
+                    <>
+                      Você tem certeza que deseja excluir o tipo de equipamento{' '}
+                      <strong className="text-slate-900 font-bold">"{deleteConfirmState.targetTipo?.nome}"</strong>?
+                      Esta ação não poderá ser desfeita e removerá todas as configurações deste tipo.
+                    </>
+                  )}
+                  {deleteConfirmState.type === 'subtipo' && (
+                    <>
+                      Você tem certeza que deseja excluir o subtipo{' '}
+                      <strong className="text-slate-900 font-bold">"{deleteConfirmState.targetSubtipo?.nome}"</strong>?
+                    </>
+                  )}
+                  {deleteConfirmState.type === 'equipamento' && (
+                    <>
+                      Você tem certeza que deseja excluir o equipamento de patrimônio{' '}
+                      <strong className="text-slate-900 font-bold">"{deleteConfirmState.targetEquipamento?.codigo_patrimonio}"</strong>?
+                    </>
+                  )}
+                </p>
+
+                {deleteConfirmState.type === 'subtipo' &&
+                deleteConfirmState.itemCount &&
+                deleteConfirmState.itemCount > 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-800">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Atenção aos equipamentos cadastrados:
+                    </p>
+                    <p>
+                      Existem <strong className="font-extrabold">{deleteConfirmState.itemCount}</strong> equipamento(s) cadastrado(s) com este subtipo. Eles permanecerão no estoque, porém sem este subtipo atribuído.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+            {deleteConfirmState.blocked ? (
+              <Button
+                onClick={() => setDeleteConfirmState({ open: false, type: null })}
+                className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl"
+              >
+                Entendido
+              </Button>
+            ) : (
+              <div className="flex items-center justify-end gap-2 w-full">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteConfirmState({ open: false, type: null })}
+                  className="rounded-xl font-medium"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleExecuteDelete}
+                  disabled={
+                    deleteTipoMut.isPending ||
+                    deleteSubtipoMut.isPending ||
+                    deleteMut.isPending
+                  }
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl gap-2 shadow-xs"
+                >
+                  {(deleteTipoMut.isPending || deleteSubtipoMut.isPending || deleteMut.isPending) && (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  )}
+                  <Trash2 className="w-4 h-4" />
+                  Sim, Confirmar Exclusão
+                </Button>
+              </div>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

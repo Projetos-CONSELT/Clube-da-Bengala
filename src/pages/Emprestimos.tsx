@@ -58,6 +58,8 @@ export default function Emprestimos() {
     );
   };
 
+  const activeEmprestimos = (emprestimosQuery.data ?? []).filter((e) => !e.data_devolucao_realizada);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -65,68 +67,89 @@ export default function Emprestimos() {
         <Button onClick={() => setModalOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Nova retirada</Button>
       </div>
 
-      <Card>
-        <CardContent className="p-0 divide-y">
-          {(emprestimosQuery.data ?? []).map((e) => (
-            <div key={e.id} className="p-4 flex flex-wrap justify-between gap-3 items-center">
-              <div>
-                <p className="font-medium">{e.equipamento?.codigo_patrimonio}</p>
-                <p className="text-sm text-slate-500">
-                  Sol. #{e.solicitacao?.protocolo} • Retirada {moment(e.data_retirada).format('DD/MM/YYYY')}
-                  {e.data_prevista_devolucao && ` • Devolução ${moment(e.data_prevista_devolucao).format('DD/MM/YYYY')}`}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1"
-                  disabled={renovarMut.isPending && renovarMut.variables?.id === e.id}
-                  onClick={() =>
-                    renovarMut.mutate(
-                      { id: e.id },
-                      { 
-                        onSuccess: () => toast({ title: 'Renovado com sucesso' }),
-                        onError: (err) => {
-                          const msg = err.message.toLowerCase();
-                          if (msg.includes('limite') || msg.includes('renova')) {
-                            toast({ variant: 'destructive', title: 'Aviso', description: 'Limite de renovações atingido para este equipamento.' });
-                          } else {
-                            toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível renovar o empréstimo.' });
+      {activeEmprestimos.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12 text-slate-500">
+            <Truck className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="font-medium text-slate-700">Nenhum empréstimo ativo no momento</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Todos os equipamentos foram devolvidos ou não há retiradas ativas registradas.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0 divide-y">
+            {activeEmprestimos.map((e) => (
+              <div key={e.id} className="p-4 flex flex-wrap justify-between gap-3 items-center">
+                <div>
+                  <p className="font-medium">{e.equipamento?.codigo_patrimonio}</p>
+                  <p className="text-sm text-slate-500">
+                    Sol. #{e.solicitacao?.protocolo} • Retirada {moment(e.data_retirada).format('DD/MM/YYYY')}
+                    {e.data_prevista_devolucao && ` • Devolução prevista ${moment(e.data_prevista_devolucao).format('DD/MM/YYYY')}`}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    disabled={renovarMut.isPending && renovarMut.variables?.id === e.id}
+                    onClick={() =>
+                      renovarMut.mutate(
+                        { id: e.id },
+                        { 
+                          onSuccess: () => toast({ title: 'Renovado com sucesso' }),
+                          onError: (err) => {
+                            const msg = err.message.toLowerCase();
+                            if (msg.includes('limite') || msg.includes('renova')) {
+                              toast({ variant: 'destructive', title: 'Aviso', description: 'Limite de renovações atingido para este equipamento.' });
+                            } else {
+                              toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível renovar o empréstimo.' });
+                            }
                           }
                         }
-                      }
-                    )
-                  }
-                >
-                  {renovarMut.isPending && renovarMut.variables?.id === e.id ? (
-                    <RotateCcw className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RotateCcw className="w-3 h-3" />
-                  )}
-                  Renovar
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    devolverMut.mutate(
-                      {
-                        emprestimoId: e.id,
-                        equipamentoId: e.equipamento_id,
-                        solicitacaoId: e.solicitacao_id,
-                        solicitanteId: e.solicitacao?.solicitante_id,
-                      },
-                      { onSuccess: () => toast({ title: 'Devolução registrada' }) }
-                    )
-                  }
-                >
-                  Devolver
-                </Button>
+                      )
+                    }
+                  >
+                    {renovarMut.isPending && renovarMut.variables?.id === e.id ? (
+                      <RotateCcw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-3 h-3" />
+                    )}
+                    Renovar
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={devolverMut.isPending && devolverMut.variables?.emprestimoId === e.id}
+                    onClick={() =>
+                      devolverMut.mutate(
+                        {
+                          emprestimoId: e.id,
+                          equipamentoId: e.equipamento_id,
+                          solicitacaoId: e.solicitacao_id,
+                          solicitanteId: e.solicitacao?.solicitante_id,
+                        },
+                        {
+                          onSuccess: () =>
+                            toast({
+                              title: 'Devolução registrada',
+                              description: 'O equipamento foi devolvido e o empréstimo concluído foi removido da lista.',
+                            }),
+                          onError: (err) =>
+                            toast({ variant: 'destructive', title: 'Erro ao devolver', description: err.message }),
+                        }
+                      )
+                    }
+                  >
+                    Devolver
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>

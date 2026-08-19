@@ -17,6 +17,7 @@ export function useEmprestimosQuery() {
         .select(
           '*, solicitacao:solicitacoes(*, solicitante:usuarios(*), beneficiario:beneficiarios(*)), equipamento:equipamentos(*, tipo:tipos_equipamento(*))'
         )
+        .is('data_devolucao_realizada', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as EmprestimoComRelacoes[];
@@ -121,16 +122,41 @@ export function useDevolverEmprestimo() {
       solicitanteId?: string | null;
       marcarInadimplente?: boolean;
     }) => {
-      await supabase.from('equipamentos').update({ status: 'disponivel' }).eq('id', equipamentoId);
+      // 1. Marcar data_devolucao_realizada no empréstimo
+      const { error: empError } = await supabase
+        .from('emprestimos')
+        .update({ data_devolucao_realizada: new Date().toISOString() })
+        .eq('id', emprestimoId);
+      if (empError) throw empError;
+
+      // 2. Atualizar o equipamento de volta para disponível
+      const { error: eqError } = await supabase
+        .from('equipamentos')
+        .update({ status: 'disponivel' })
+        .eq('id', equipamentoId);
+      if (eqError) throw eqError;
+
+      // 3. Encerrar a solicitação se houver
       if (solicitacaoId) {
-        await supabase.from('solicitacoes').update({ status: 'encerrada' }).eq('id', solicitacaoId);
+        const { error: solError } = await supabase
+          .from('solicitacoes')
+          .update({ status: 'encerrada' })
+          .eq('id', solicitacaoId);
+        if (solError) throw solError;
       }
+
+      // 4. Limpar marcação de inadimplente se selecionado
       if (marcarInadimplente && solicitanteId) {
         await supabase.from('usuarios').update({ is_inadimplente: false }).eq('id', solicitanteId);
       }
+
       return emprestimoId;
     },
-    onSuccess: () => {
+    onSuccess: (emprestimoId) => {
+      qc.setQueryData(EMPRESTIMOS_KEY, (old: EmprestimoComRelacoes[] | undefined) => {
+        if (!old) return old;
+        return old.filter((e) => e.id !== emprestimoId);
+      });
       void qc.invalidateQueries({ queryKey: EMPRESTIMOS_KEY });
       void qc.invalidateQueries({ queryKey: ['equipamentos'] });
       void qc.invalidateQueries({ queryKey: ['solicitacoes'] });

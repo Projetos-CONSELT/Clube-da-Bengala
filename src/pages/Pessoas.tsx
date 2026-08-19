@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useUsuariosQuery, useUpdateUsuarioPapel, useUpdateUsuario } from '@/hooks/useUsuarios';
 import {
   useBeneficiariosQuery,
@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
 import type { UserRole } from '@/types/database.types';
-import { Loader2, Plus, Trash2, UserCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, Plus, Trash2, UserCheck, ShieldAlert, Folder, ChevronDown, ChevronUp, Edit, Users, Search } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { isBackOfficeRole } from '@/types/domain';
 
@@ -50,6 +51,56 @@ export default function Pessoas() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const canManageSolicitantes = isBackOfficeRole(currentUserRole);
+
+  const [expandedSolicitanteFolders, setExpandedSolicitanteFolders] = useState<Record<string, boolean>>({});
+  const [solicitanteSearchTerms, setSolicitanteSearchTerms] = useState<Record<string, string>>({});
+
+  const toggleSolicitanteFolderExpand = (solicitanteId: string) => {
+    setExpandedSolicitanteFolders((prev) => ({
+      ...prev,
+      [solicitanteId]: !prev[solicitanteId],
+    }));
+  };
+
+  const groupedBeneficiariosBySolicitante = useMemo(() => {
+    const allBenef = beneficiariosQuery.data ?? [];
+    const search = searchTerm.trim().toLowerCase();
+
+    const filtered = allBenef.filter((b: any) => {
+      if (!search) return true;
+      const nome = b.nome_completo?.toLowerCase() || '';
+      const cpf = b.cpf?.toLowerCase() || '';
+      const solNome = b.solicitante?.nome_completo?.toLowerCase() || '';
+      const solEmail = b.solicitante?.email?.toLowerCase() || '';
+      return nome.includes(search) || cpf.includes(search) || solNome.includes(search) || solEmail.includes(search);
+    });
+
+    const map = new Map<string, {
+      solicitanteId: string;
+      solicitanteNome: string;
+      solicitanteEmail?: string;
+      items: typeof filtered;
+    }>();
+
+    for (const b of filtered) {
+      const solId = b.solicitante_id || 'sem_solicitante';
+      const solNome = b.solicitante?.nome_completo || (b.solicitante_id ? 'Solicitante não identificado' : 'Sem Solicitante Vinculado');
+      const solEmail = b.solicitante?.email;
+
+      if (!map.has(solId)) {
+        map.set(solId, {
+          solicitanteId: solId,
+          solicitanteNome: solNome,
+          solicitanteEmail: solEmail || undefined,
+          items: [],
+        });
+      }
+
+      map.get(solId)!.items.push(b);
+    }
+
+    return Array.from(map.values());
+  }, [beneficiariosQuery.data, searchTerm]);
 
   // Filtro estrito: Apenas usuários com o cargo de solicitante
   const apenasSolicitantes = (usuariosQuery.data ?? []).filter(
@@ -550,71 +601,217 @@ export default function Pessoas() {
           </TabsContent>
         )}
 
-        <TabsContent value="beneficiarios" className="mt-4 space-y-4">
-          <Button onClick={openNewBenef} className="gap-2"><Plus className="w-4 h-4" /> Novo beneficiário</Button>
-          <Card>
-            <CardContent className="p-0 divide-y">
-              {(beneficiariosQuery.data ?? []).map((b: any) => (
-                <div key={b.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="font-semibold text-slate-900">{b.nome_completo}</p>
-                    <p className="text-sm text-slate-500">CPF: {b.cpf || 'Não informado'}</p>
-                    <p className="text-xs text-slate-600 flex items-center gap-1.5 pt-0.5">
-                      <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Solicitante responsável:</span>
-                      <strong className="text-slate-800 font-medium">
-                        {b.solicitante?.nome_completo || b.solicitante?.email || 'Não vinculado'}
-                      </strong>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
-                    {canManageSolicitantes && (
-                      <div className="flex items-center gap-1.5">
-                        <Label className="text-xs text-slate-500 hidden md:inline">Alterar Solicitante:</Label>
-                        <Select
-                          value={b.solicitante_id || ''}
-                          onValueChange={(newSolId) => handlePromptChangeSolicitante(b, newSolId)}
+        <TabsContent value="beneficiarios" className="mt-4 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <Button onClick={openNewBenef} className="gap-2 bg-blue-600 hover:bg-blue-700 font-semibold rounded-xl">
+              <Plus className="w-4 h-4" /> Novo beneficiário
+            </Button>
+            <p className="text-xs text-slate-500 font-medium">
+              Agrupados em pastas por Solicitante responsável
+            </p>
+          </div>
+
+          {groupedBeneficiariosBySolicitante.length === 0 ? (
+            <Card className="border border-slate-200">
+              <CardContent className="text-center py-12 text-slate-500">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-400" />
+                <p className="font-medium text-slate-700">Nenhum beneficiário encontrado</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {groupedBeneficiariosBySolicitante.map((folder) => {
+                const innerSearch = (solicitanteSearchTerms[folder.solicitanteId] || '').trim().toLowerCase();
+                const filteredItems = innerSearch
+                  ? folder.items.filter((b: any) => {
+                      const nome = b.nome_completo?.toLowerCase() || '';
+                      const cpf = b.cpf?.toLowerCase() || '';
+                      return nome.includes(innerSearch) || cpf.includes(innerSearch);
+                    })
+                  : folder.items;
+
+                const totalCount = folder.items.length;
+                const hasMoreThanOne = totalCount > 1;
+                const isExpanded = expandedSolicitanteFolders[folder.solicitanteId] ?? false;
+                const visibleItems = (hasMoreThanOne && !isExpanded && !innerSearch)
+                  ? filteredItems.slice(0, 1)
+                  : filteredItems;
+
+                return (
+                  <Card key={folder.solicitanteId} className="overflow-hidden border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      {/* Cabeçalho do Solicitante / Pasta */}
+                      <div
+                        className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
+                        onClick={() => hasMoreThanOne && !innerSearch && toggleSolicitanteFolderExpand(folder.solicitanteId)}
+                        title={hasMoreThanOne ? (isExpanded ? 'Clique para recolher' : 'Clique para expandir') : undefined}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                            <Folder className="w-4 h-4 fill-amber-400" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                              {folder.solicitanteNome}
+                            </h3>
+                            {folder.solicitanteEmail && (
+                              <p className="text-[11px] text-slate-400 font-normal">{folder.solicitanteEmail}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-slate-800 text-slate-200 border border-slate-700 font-medium text-xs">
+                            <Users className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                            {totalCount} {totalCount === 1 ? 'beneficiário' : 'beneficiários'}
+                          </Badge>
+                          {hasMoreThanOne && !innerSearch && (
+                            <Badge
+                              className={`text-[10px] font-bold cursor-pointer transition-colors ${
+                                isExpanded
+                                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                  : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
+                              }`}
+                            >
+                              {isExpanded ? (
+                                <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Expandido</span>
+                              ) : (
+                                <span className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Recolhido (+{totalCount - 1})</span>
+                              )}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Conteúdo da Pasta */}
+                      <CardContent className="p-4 space-y-3 bg-slate-50/50">
+                        {/* Barra de Pesquisa Específica do Solicitante */}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                          <Input
+                            placeholder={`Pesquisar beneficiário deste solicitante...`}
+                            value={solicitanteSearchTerms[folder.solicitanteId] || ''}
+                            onChange={(e) =>
+                              setSolicitanteSearchTerms((prev) => ({
+                                ...prev,
+                                [folder.solicitanteId]: e.target.value,
+                              }))
+                            }
+                            className="pl-8 text-xs h-8 bg-white border-slate-200 focus:bg-white shadow-2xs"
+                          />
+                        </div>
+
+                        {/* Lista de Beneficiários Filtrados */}
+                        {visibleItems.length === 0 ? (
+                          <div className="text-center py-6 text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                            Nenhum beneficiário encontrado neste solicitante com o termo &quot;{innerSearch}&quot;
+                          </div>
+                        ) : (
+                          visibleItems.map((b: any) => (
+                            <div
+                              key={b.id}
+                              className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs space-y-2.5 hover:shadow-xs transition-shadow"
+                            >
+                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <p className="font-bold text-slate-900 text-sm">{b.nome_completo}</p>
+                                  <p className="text-xs text-slate-500">CPF: {b.cpf || 'Não informado'}</p>
+                                  {(b.altura_cm || b.peso_kg || b.tamanho_calcado) && (
+                                    <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600 flex-wrap">
+                                      {b.altura_cm && (
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-medium">
+                                          Alt: {b.altura_cm}cm
+                                        </span>
+                                      )}
+                                      {b.peso_kg && (
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-medium">
+                                          Peso: {b.peso_kg}kg
+                                        </span>
+                                      )}
+                                      {b.tamanho_calcado && (
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-medium">
+                                          Calçado: {b.tamanho_calcado}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                                  {canManageSolicitantes && (
+                                    <Select
+                                      value={b.solicitante_id || ''}
+                                      onValueChange={(newSolId) => handlePromptChangeSolicitante(b, newSolId)}
+                                    >
+                                      <SelectTrigger className="w-40 text-xs h-8 bg-white border-slate-200">
+                                        <SelectValue placeholder="Alterar Solicitante" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {apenasSolicitantes.map((u) => (
+                                          <SelectItem key={u.id} value={u.id} className="text-xs">
+                                            {u.nome_completo || u.email}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs font-semibold rounded-xl"
+                                    onClick={() => openEditBenef(b)}
+                                  >
+                                    <Edit className="w-3.5 h-3.5 mr-1" /> Editar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl"
+                                    title="Excluir beneficiário"
+                                    onClick={() =>
+                                      setDeleteConfirm({
+                                        open: true,
+                                        beneficiarioId: b.id,
+                                        beneficiarioNome: b.nome_completo,
+                                      })
+                                    }
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </div>
+
+                    {/* Botão de Expandir / Recolher se houver mais de 1 beneficiário e não houver busca ativa */}
+                    {hasMoreThanOne && !innerSearch && (
+                      <div className="p-4 pt-0 bg-slate-50/50">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => toggleSolicitanteFolderExpand(folder.solicitanteId)}
+                          className="w-full border-amber-300 bg-amber-50/90 hover:bg-amber-100 text-amber-900 font-semibold text-xs flex items-center justify-center gap-1.5 rounded-xl py-2 shadow-2xs transition-colors"
                         >
-                          <SelectTrigger className="w-44 text-xs h-8">
-                            <SelectValue placeholder="Selecione Solicitante" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {apenasSolicitantes.map((u) => (
-                              <SelectItem key={u.id} value={u.id} className="text-xs">
-                                {u.nome_completo || u.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="w-4 h-4 text-amber-700" /> Recolher beneficiários
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="w-4 h-4 text-amber-700" /> Expandir para ver todos os {totalCount} beneficiários (+{totalCount - 1} ocultos)
+                            </>
+                          )}
+                        </Button>
                       </div>
                     )}
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditBenef(b)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Excluir beneficiário"
-                      onClick={() =>
-                        setDeleteConfirm({
-                          open: true,
-                          beneficiarioId: b.id,
-                          beneficiarioNome: b.nome_completo,
-                        })
-                      }
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

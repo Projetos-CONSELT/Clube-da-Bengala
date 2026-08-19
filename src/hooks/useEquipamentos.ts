@@ -70,7 +70,14 @@ export function useDeleteEquipamento() {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('equipamentos').delete().eq('id', id);
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+          throw new Error(
+            'Não é possível excluir este equipamento pois ele está vinculado a empréstimos, solicitações ou manutenções ativas.'
+          );
+        }
+        throw error;
+      }
       return id;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: EQUIPAMENTOS_KEY }),
@@ -79,8 +86,12 @@ export function useDeleteEquipamento() {
 
 export function useCreateTipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async (payload: TipoEquipamentoInsert) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para criar tipos de equipamento.');
+      }
       const { data, error } = await supabase
         .from('tipos_equipamento')
         .insert(payload)
@@ -95,8 +106,12 @@ export function useCreateTipoEquipamento() {
 
 export function useUpdateTipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<TipoEquipamentoInsert> }) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para editar tipos de equipamento.');
+      }
       const { data, error } = await supabase
         .from('tipos_equipamento')
         .update(patch)
@@ -112,10 +127,21 @@ export function useUpdateTipoEquipamento() {
 
 export function useDeleteTipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para excluir tipos de equipamento.');
+      }
       const { error } = await supabase.from('tipos_equipamento').delete().eq('id', id);
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
+          throw new Error(
+            'Não é possível excluir este tipo de equipamento pois existem equipamentos vinculados a ele. Exclua ou reatribua os equipamentos antes de excluir este tipo.'
+          );
+        }
+        throw error;
+      }
       return id;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
@@ -124,6 +150,7 @@ export function useDeleteTipoEquipamento() {
 
 export function useAddSubtipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async ({
       tipoId,
@@ -137,6 +164,9 @@ export function useAddSubtipoEquipamento() {
         categorias?: CategoriaSubtipo[];
       };
     }) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para criar subtipos e tags de equipamento.');
+      }
       const { data: tipo, error: fetchErr } = await supabase
         .from('tipos_equipamento')
         .select('*')
@@ -171,6 +201,7 @@ export function useAddSubtipoEquipamento() {
 
 export function useUpdateSubtipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async ({
       tipoId,
@@ -186,6 +217,9 @@ export function useUpdateSubtipoEquipamento() {
         categorias?: CategoriaSubtipo[];
       };
     }) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para editar subtipos e tags de equipamento.');
+      }
       const { data: tipo, error: fetchErr } = await supabase
         .from('tipos_equipamento')
         .select('*')
@@ -222,8 +256,12 @@ export function useUpdateSubtipoEquipamento() {
 
 export function useDeleteSubtipoEquipamento() {
   const qc = useQueryClient();
+  const { role } = useAuth();
   return useMutation({
     mutationFn: async ({ tipoId, subtipoId }: { tipoId: string; subtipoId: string }) => {
+      if (role !== 'gerente' && role !== 'ceo') {
+        throw new Error('Apenas gerentes possuem permissão para excluir subtipos de equipamento.');
+      }
       const { data: tipo, error: fetchErr } = await supabase
         .from('tipos_equipamento')
         .select('*')

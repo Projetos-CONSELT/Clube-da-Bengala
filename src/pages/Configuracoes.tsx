@@ -73,6 +73,7 @@ export default function Configuracoes() {
   // Queries e Mutations auxiliares para Gestão de Usuários / Tipos
   const usuariosQuery = useUsuariosQuery();
   const tiposQuery = useTiposEquipamentoQuery();
+  const tipos = tiposQuery.data ?? [];
   const updatePapel = useUpdateUsuarioPapel();
   const createTipo = useCreateTipoEquipamento();
   const deleteTipo = useDeleteTipoEquipamento();
@@ -245,11 +246,11 @@ export default function Configuracoes() {
   // Funções dinâmicas para limites por tipo (JSONB)
   const handleAddLimiteItem = () => {
     if (!isEditable) return;
-    if (!novoTipoNome.trim()) {
+    if (!novoTipoNome.trim() || novoTipoNome === '_empty') {
       toast({
         variant: 'destructive',
-        title: 'Nome obrigatório',
-        description: 'Digite o nome do equipamento para cadastrar o limite.',
+        title: 'Seleção obrigatória',
+        description: 'Selecione um tipo de equipamento válido para cadastrar o limite.',
       });
       return;
     }
@@ -485,14 +486,25 @@ export default function Configuracoes() {
                       <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Adicionar Novo Limite por Equipamento</p>
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                         <div className="sm:col-span-6 space-y-1">
-                          <Label htmlFor="novoTipoNome" className="text-xs text-slate-600">Nome do Equipamento (Chave)</Label>
-                          <Input
-                            id="novoTipoNome"
-                            placeholder="Ex: Cadeira de Rodas, Muleta..."
-                            value={novoTipoNome}
-                            onChange={(e) => setNovoTipoNome(e.target.value)}
-                            className="bg-white text-sm h-9 border-slate-200"
-                          />
+                          <Label htmlFor="novoTipoNome" className="text-xs text-slate-600">Tipo de Equipamento (Chave)</Label>
+                          <Select value={novoTipoNome} onValueChange={setNovoTipoNome}>
+                            <SelectTrigger id="novoTipoNome" className="bg-white text-sm h-9 border-slate-200">
+                              <SelectValue placeholder="Selecione o tipo de equipamento..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {tipos.length === 0 ? (
+                                <SelectItem value="_empty">
+                                  Nenhum tipo cadastrado na página de equipamentos
+                                </SelectItem>
+                              ) : (
+                                tipos.map((t) => (
+                                  <SelectItem key={t.id} value={t.nome}>
+                                    {t.nome}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="sm:col-span-4 space-y-1">
                           <Label htmlFor="novoTipoLimite" className="text-xs text-slate-600">Limite de Renovações (Valor)</Label>
@@ -510,7 +522,7 @@ export default function Configuracoes() {
                           <Button
                             type="button"
                             onClick={handleAddLimiteItem}
-                            disabled={!novoTipoNome.trim()}
+                            disabled={!novoTipoNome.trim() || novoTipoNome === '_empty'}
                             className="w-full h-9 bg-slate-800 hover:bg-slate-900 text-white text-xs gap-1.5"
                           >
                             <Plus className="w-4 h-4" /> Adicionar
