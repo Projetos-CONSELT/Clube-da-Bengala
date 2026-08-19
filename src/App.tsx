@@ -73,7 +73,7 @@ const AuthenticatedApp = () => {
         element={
           <ProtectedRoute
             unauthenticatedElement={unauthenticated}
-            allowedRoles={PAGE_ROLES[mainPageKey] || ALL_ROLES}
+            allowedRoles={ALL_ROLES}
           />
         }
       >

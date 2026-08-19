@@ -506,7 +506,7 @@ export default function Solicitacoes() {
                   variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 flex items-center gap-1 border border-indigo-100 rounded"
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent) => {
                     e.stopPropagation();
                     navigator.clipboard.writeText(s.link_boleto_ressarcimento || '');
                     toast({ title: 'Copiado!', description: 'Link da fatura copiado para a área de transferência.' });

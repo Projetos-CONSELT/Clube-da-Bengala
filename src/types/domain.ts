@@ -70,10 +70,42 @@ export function getStatusEquipamentoUi(status: string | null | undefined): Statu
   return { label: status || '—', className: 'bg-gray-100 text-gray-700' };
 }
 
+export interface CategoriaSubtipo {
+  id: string;
+  nome: string;
+  tipo_dado: 'booleano' | 'numero';
+  obrigatorio?: boolean;
+}
+
+export interface SubtipoEquipamento {
+  id: string;
+  nome: string;
+  descricao?: string;
+  imagem_url?: string;
+  categorias?: CategoriaSubtipo[];
+  created_at?: string;
+}
+
+export function getSubtiposTipo(schema: Json | null | undefined): SubtipoEquipamento[] {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return [];
+  }
+  const obj = schema as { subtipos?: SubtipoEquipamento[] };
+  return Array.isArray(obj.subtipos) ? obj.subtipos : [];
+}
+
+export function setSubtiposTipo(schema: Json | null | undefined, subtipos: SubtipoEquipamento[]): Json {
+  const currentObj = (schema && typeof schema === 'object' && !Array.isArray(schema)) ? (schema as Record<string, Json>) : {};
+  return { ...currentObj, subtipos: subtipos as unknown as Json };
+}
+
 export interface AtributosEquipamento {
   estado_conservacao?: string;
   localizacao?: string;
   observacoes?: string;
+  subtipo_id?: string;
+  subtipo_nome?: string;
+  valores_categorias?: Record<string, boolean | number | string>;
   [key: string]: Json | undefined;
 }
 

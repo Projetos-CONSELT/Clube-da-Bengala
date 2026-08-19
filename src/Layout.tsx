@@ -171,7 +171,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
       >
         <div className="flex flex-col h-full">
           <div className="px-6 py-6 border-b border-slate-700/50">
-            <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
                 <span className="text-white font-bold text-lg">CB</span>
               </div>
@@ -179,7 +179,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                 <h1 className="text-white font-semibold text-lg tracking-tight">Clube da Bengala</h1>
                 <p className="text-slate-400 text-xs">Sistema de Gestão</p>
               </div>
-            </div>
+            </Link>
           </div>
 
           <nav className="flex-1 px-3 py-4 overflow-y-auto">

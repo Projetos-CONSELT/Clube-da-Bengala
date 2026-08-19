@@ -30,6 +30,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { isBackOfficeRole } from '@/types/domain';
 
 const ROLE_LEVELS: Record<UserRole, number> = {
+  ceo: 5,
   gerente: 4,
   coordenador: 3,
   atendente: 2,
@@ -457,7 +458,7 @@ export default function Pessoas() {
                 const renderUserItem = (u: any) => {
                   const isSelectDisabled = 
                     currentUserRole !== 'gerente' && 
-                    (currentUserRole !== 'coordenador' || (u.papel ? ROLE_LEVELS[u.papel] : 0) >= 3);
+                    (currentUserRole !== 'coordenador' || (u.papel && u.papel in ROLE_LEVELS ? ROLE_LEVELS[u.papel as UserRole] : 0) >= 3);
 
                   const getAllowedRoles = () => {
                     if (currentUserRole === 'gerente') {

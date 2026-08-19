@@ -187,7 +187,7 @@ export function useUpdateSolicitacao() {
 
 export function useCreateSolicitacao() {
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   return useMutation({
     mutationFn: async ({
       beneficiario_id,

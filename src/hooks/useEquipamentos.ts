@@ -2,7 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { EquipamentoInsert, EquipamentoUpdate, TipoEquipamentoInsert } from '@/types/database.types';
-import type { AtributosEquipamento } from '@/types/domain';
+import type { AtributosEquipamento, SubtipoEquipamento } from '@/types/domain';
+import { getSubtiposTipo, setSubtiposTipo } from '@/types/domain';
 
 export const EQUIPAMENTOS_KEY = ['equipamentos'] as const;
 export const TIPOS_KEY = ['tipos_equipamento'] as const;
@@ -116,6 +117,132 @@ export function useDeleteTipoEquipamento() {
       const { error } = await supabase.from('tipos_equipamento').delete().eq('id', id);
       if (error) throw error;
       return id;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+  });
+}
+
+export function useAddSubtipoEquipamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      tipoId,
+      subtipo,
+    }: {
+      tipoId: string;
+      subtipo: {
+        nome: string;
+        descricao?: string;
+        imagem_url?: string;
+        categorias?: CategoriaSubtipo[];
+      };
+    }) => {
+      const { data: tipo, error: fetchErr } = await supabase
+        .from('tipos_equipamento')
+        .select('*')
+        .eq('id', tipoId)
+        .single();
+      if (fetchErr || !tipo) throw fetchErr || new Error('Tipo de equipamento não encontrado.');
+
+      const currentSubtipos = getSubtiposTipo(tipo.schema_especificacoes);
+      const newSubtipo: SubtipoEquipamento = {
+        id: crypto.randomUUID(),
+        nome: subtipo.nome.trim(),
+        descricao: subtipo.descricao?.trim() || undefined,
+        imagem_url: subtipo.imagem_url?.trim() || undefined,
+        categorias: subtipo.categorias || [],
+        created_at: new Date().toISOString(),
+      };
+      const updatedSubtipos = [...currentSubtipos, newSubtipo];
+      const updatedSchema = setSubtiposTipo(tipo.schema_especificacoes, updatedSubtipos);
+
+      const { data, error } = await supabase
+        .from('tipos_equipamento')
+        .update({ schema_especificacoes: updatedSchema })
+        .eq('id', tipoId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+  });
+}
+
+export function useUpdateSubtipoEquipamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      tipoId,
+      subtipoId,
+      patch,
+    }: {
+      tipoId: string;
+      subtipoId: string;
+      patch: {
+        nome: string;
+        descricao?: string;
+        imagem_url?: string;
+        categorias?: CategoriaSubtipo[];
+      };
+    }) => {
+      const { data: tipo, error: fetchErr } = await supabase
+        .from('tipos_equipamento')
+        .select('*')
+        .eq('id', tipoId)
+        .single();
+      if (fetchErr || !tipo) throw fetchErr || new Error('Tipo não encontrado.');
+
+      const currentSubtipos = getSubtiposTipo(tipo.schema_especificacoes);
+      const updatedSubtipos = currentSubtipos.map((s) =>
+        s.id === subtipoId
+          ? {
+              ...s,
+              nome: patch.nome.trim(),
+              descricao: patch.descricao?.trim() || undefined,
+              imagem_url: patch.imagem_url?.trim() || undefined,
+              categorias: patch.categorias || [],
+            }
+          : s
+      );
+      const updatedSchema = setSubtiposTipo(tipo.schema_especificacoes, updatedSubtipos);
+
+      const { data, error } = await supabase
+        .from('tipos_equipamento')
+        .update({ schema_especificacoes: updatedSchema })
+        .eq('id', tipoId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+  });
+}
+
+export function useDeleteSubtipoEquipamento() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tipoId, subtipoId }: { tipoId: string; subtipoId: string }) => {
+      const { data: tipo, error: fetchErr } = await supabase
+        .from('tipos_equipamento')
+        .select('*')
+        .eq('id', tipoId)
+        .single();
+      if (fetchErr || !tipo) throw fetchErr || new Error('Tipo não encontrado.');
+
+      const currentSubtipos = getSubtiposTipo(tipo.schema_especificacoes);
+      const updatedSubtipos = currentSubtipos.filter((s) => s.id !== subtipoId);
+      const updatedSchema = setSubtiposTipo(tipo.schema_especificacoes, updatedSubtipos);
+
+      const { data, error } = await supabase
+        .from('tipos_equipamento')
+        .update({ schema_especificacoes: updatedSchema })
+        .eq('id', tipoId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
   });
