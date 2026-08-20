@@ -1,11 +1,72 @@
 -- ====================================================================================
--- SCRIPT DE ATUALIZAÇÃO - FUNÇÕES DE COBRANÇA PÚBLICA SEGURA
+-- SCRIPT DE ATUALIZAÇÃO - FUNÇÕES DE COBRANÇA PÚBLICA SEGURA E CONTROLE DE ACESSO (RLS)
 -- Execute este script no SQL Editor do seu painel do Supabase
--- para permitir a visualização de faturas e confirmação de pagamento sem login, 
--- mediante validação de CPF.
+-- para configurar controle de acesso por papéis (Gerente/CEO vs Atendente)
+-- e funções seguras de faturamento.
 -- ====================================================================================
 
--- 1. Função para obter detalhes da cobrança de forma segura
+-- 0. Remove versões anteriores das funções para evitar erro 42P13 (cannot change return type)
+DROP TRIGGER IF EXISTS trg_validar_permissao_faturamento ON public.solicitacoes;
+DROP FUNCTION IF EXISTS public.validar_permissao_faturamento_update() CASCADE;
+DROP FUNCTION IF EXISTS public.obter_detalhes_cobranca(UUID, TEXT);
+DROP FUNCTION IF EXISTS public.confirmar_pagamento_fatura(UUID, TEXT);
+DROP FUNCTION IF EXISTS public.is_manager();
+
+-- 1. Função auxiliar para verificar se o usuário atual é Gestor (Gerente ou CEO)
+CREATE OR REPLACE FUNCTION public.is_manager() 
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT (
+    -- 1. Verifica papel/role presente no JWT
+    COALESCE(
+      (auth.jwt() -> 'app_metadata' ->> 'role') IN ('gerente', 'ceo'),
+      (auth.jwt() -> 'user_metadata' ->> 'role') IN ('gerente', 'ceo'),
+      (auth.jwt() -> 'user_metadata' ->> 'papel') IN ('gerente', 'ceo'),
+      (auth.jwt() ->> 'role') IN ('gerente', 'ceo'),
+      FALSE
+    )
+    OR
+    -- 2. Verifica papel registrado na tabela usuarios
+    public.get_user_role() IN ('gerente'::public.user_role, 'ceo'::public.user_role)
+  );
+$$;
+
+-- 2. Trigger de proteção no nível de banco de dados para impedir UPDATE em colunas de faturamento por não-gestores
+CREATE OR REPLACE FUNCTION public.validar_permissao_faturamento_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Verifica se alguma coluna financeira / de boleto foi alterada
+    IF (
+        NEW.valor_boleto_ressarcimento IS DISTINCT FROM OLD.valor_boleto_ressarcimento OR
+        NEW.prazo_vencimento_boleto IS DISTINCT FROM OLD.prazo_vencimento_boleto OR
+        NEW.link_boleto_ressarcimento IS DISTINCT FROM OLD.link_boleto_ressarcimento OR
+        NEW.texto_notificacao_boleto IS DISTINCT FROM OLD.texto_notificacao_boleto OR
+        NEW.pagamento_ressarcimento_realizado IS DISTINCT FROM OLD.pagamento_ressarcimento_realizado OR
+        NEW.data_pagamento_ressarcimento IS DISTINCT FROM OLD.data_pagamento_ressarcimento
+    ) THEN
+        -- Se a requisição partiu de um usuário autenticado (JWT presente)
+        -- e esse usuário NÃO for Gestor (Gerente ou CEO), rejeitar a operação.
+        IF auth.uid() IS NOT NULL AND NOT public.is_manager() THEN
+            RAISE EXCEPTION 'Acesso negado: Apenas usuários com nível de acesso GERENTE ou CEO possuem permissão para alterar ou registrar dados de faturamento e boletos.'
+            USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_validar_permissao_faturamento
+    BEFORE UPDATE ON public.solicitacoes
+    FOR EACH ROW
+    EXECUTE FUNCTION public.validar_permissao_faturamento_update();
+
+-- 3. Função para obter detalhes da cobrança de forma segura
 CREATE OR REPLACE FUNCTION public.obter_detalhes_cobranca(
     p_solicitacao_id UUID,
     p_cpf TEXT
@@ -50,7 +111,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 2. Função para simular/confirmar pagamento da cobrança de forma segura
+-- 4. Função para simular/confirmar pagamento da cobrança de forma segura
 CREATE OR REPLACE FUNCTION public.confirmar_pagamento_fatura(
     p_solicitacao_id UUID,
     p_cpf TEXT
@@ -82,7 +143,11 @@ BEGIN
     JOIN public.usuarios u ON u.id = s.solicitante_id
     JOIN public.tipos_equipamento t ON t.id = s.tipo_equipamento_id
     WHERE s.id = p_solicitacao_id 
-      AND REPLACE(REPLACE(REPLACE(u.cpf, '.', ''), '-', ''), ' ', '') = REPLACE(REPLACE(REPLACE(p_cpf, '.', ''), '-', ''), ' ', '');
+      AND (
+          p_cpf IS NULL 
+          OR p_cpf = ''
+          OR REPLACE(REPLACE(REPLACE(u.cpf, '.', ''), '-', ''), ' ', '') = REPLACE(REPLACE(REPLACE(p_cpf, '.', ''), '-', ''), ' ', '')
+      );
 
     IF v_solicitante_id IS NULL THEN
         RETURN FALSE;

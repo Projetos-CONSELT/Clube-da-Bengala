@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { createAuditLog } from '@/lib/audit';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,31 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  CreditCard, CheckCircle2, Clock, AlertCircle, Copy, Check, QrCode, ArrowLeft, Loader2, Sparkles
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  CreditCard,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Copy,
+  Check,
+  QrCode,
+  ArrowLeft,
+  Loader2,
+  Sparkles,
+  Edit3,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
+  Calendar,
+  DollarSign,
+  RefreshCw,
 } from 'lucide-react';
 import moment from 'moment';
 
@@ -22,9 +47,11 @@ interface FaturaDetalhes {
   valor_boleto_ressarcimento: number;
   prazo_vencimento_boleto: string;
   link_boleto_ressarcimento: string;
+  texto_notificacao_boleto?: string;
   pagamento_ressarcimento_realizado: boolean;
   data_pagamento_ressarcimento: string | null;
   solicitante_nome: string;
+  solicitante_cpf?: string;
   equipamento_nome: string;
 }
 
@@ -32,6 +59,7 @@ export default function FaturaPagamento() {
   const { solicitacaoId } = useParams<{ solicitacaoId: string }>();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user, role, isAuthenticated, isLoadingAuth } = useAuth();
 
   const [cpf, setCpf] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -40,6 +68,76 @@ export default function FaturaPagamento() {
   const [copiedPix, setCopiedPix] = useState(false);
   const [copiedBoleto, setCopiedBoleto] = useState(false);
   const [isSimulatingPayment, setIsSimulatingPayment] = useState(false);
+
+  // Estados para Edição de Cobrança (Apenas Gerentes / CEO)
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editValor, setEditValor] = useState('');
+  const [editVencimento, setEditVencimento] = useState('');
+  const [editLink, setEditLink] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Permissões por papel
+  const isManager = role === 'gerente' || role === 'ceo';
+  const isAtendente = role === 'atendente';
+  const isBackOffice = isManager || isAtendente || role === 'coordenador';
+
+  // Se o usuário já estiver logado e for back-office, carrega automaticamente os dados
+  useEffect(() => {
+    if (!isLoadingAuth && isAuthenticated && isBackOffice && solicitacaoId) {
+      void carregarFaturaComoBackOffice();
+    }
+  }, [isLoadingAuth, isAuthenticated, isBackOffice, solicitacaoId]);
+
+  const carregarFaturaComoBackOffice = async () => {
+    if (!solicitacaoId) return;
+    setIsVerifying(true);
+    try {
+      const { data, error } = await supabase
+        .from('solicitacoes')
+        .select(`
+          id,
+          protocolo,
+          status,
+          solicitante_id,
+          valor_boleto_ressarcimento,
+          prazo_vencimento_boleto,
+          link_boleto_ressarcimento,
+          texto_notificacao_boleto,
+          pagamento_ressarcimento_realizado,
+          data_pagamento_ressarcimento,
+          solicitante:usuarios!solicitante_id(nome_completo, cpf),
+          equipamento:tipos_equipamento!tipo_equipamento_id(nome)
+        `)
+        .eq('id', solicitacaoId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        const faturaFormatada: FaturaDetalhes = {
+          id: data.id,
+          protocolo: data.protocolo,
+          status: data.status || 'em_cobranca',
+          solicitante_id: data.solicitante_id,
+          valor_boleto_ressarcimento: Number(data.valor_boleto_ressarcimento || 0),
+          prazo_vencimento_boleto: data.prazo_vencimento_boleto || '',
+          link_boleto_ressarcimento: data.link_boleto_ressarcimento || '',
+          texto_notificacao_boleto: data.texto_notificacao_boleto || '',
+          pagamento_ressarcimento_realizado: !!data.pagamento_ressarcimento_realizado,
+          data_pagamento_ressarcimento: data.data_pagamento_ressarcimento || null,
+          solicitante_nome: (data.solicitante as any)?.nome_completo || 'Solicitante',
+          solicitante_cpf: (data.solicitante as any)?.cpf || '',
+          equipamento_nome: (data.equipamento as any)?.nome || 'Equipamento',
+        };
+        setFatura(faturaFormatada);
+        setCpfVerified(true);
+      }
+    } catch (err: any) {
+      console.warn('[FaturaPagamento] Erro ao carregar dados como backoffice:', err.message);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   // Mock Pix copia e cola e Barcode baseados no ID e Valor
   const pixCopiaCola = fatura
@@ -56,10 +154,10 @@ export default function FaturaPagamento() {
 
     setIsVerifying(true);
     try {
-      // Tenta chamar a função obter_detalhes_cobranca no Supabase
+      // Chama a função obter_detalhes_cobranca no Supabase
       const { data, error } = await supabase.rpc('obter_detalhes_cobranca', {
         p_solicitacao_id: solicitacaoId,
-        p_cpf: cpf
+        p_cpf: cpf,
       });
 
       if (error) throw error;
@@ -72,7 +170,7 @@ export default function FaturaPagamento() {
         toast({
           variant: 'destructive',
           title: 'Não encontrado',
-          description: 'CPF incorreto ou fatura não localizada para esta solicitação.'
+          description: 'CPF incorreto ou fatura não localizada para esta solicitação.',
         });
       }
     } catch (err: any) {
@@ -80,22 +178,152 @@ export default function FaturaPagamento() {
       toast({
         variant: 'destructive',
         title: 'Erro de conexão',
-        description: 'Não foi possível verificar seus dados no momento.'
+        description: 'Não foi possível verificar seus dados no momento.',
       });
     } finally {
       setIsVerifying(false);
     }
   };
 
+  const handleAbrirEdicao = () => {
+    if (!fatura) return;
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Restrito',
+        description: 'Apenas usuários com perfil GERENTE ou CEO possuem permissão para alterar dados de cobrança.',
+      });
+      return;
+    }
+    setEditValor(fatura.valor_boleto_ressarcimento.toString());
+    setEditVencimento(
+      fatura.prazo_vencimento_boleto
+        ? moment(fatura.prazo_vencimento_boleto).format('YYYY-MM-DD')
+        : moment().add(7, 'days').format('YYYY-MM-DD')
+    );
+    setEditLink(fatura.link_boleto_ressarcimento || window.location.href);
+    setEditModalOpen(true);
+  };
+
+  const handleGerarNovoLink = () => {
+    const origin = window.location.origin;
+    const novoLink = `${origin}/fatura/${fatura?.id || solicitacaoId}`;
+    setEditLink(novoLink);
+    toast({ title: 'Link Gerado', description: 'Link do portal de faturamento atualizado.' });
+  };
+
+  const handleSalvarEdicao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fatura || !solicitacaoId) return;
+
+    if (!isManager) {
+      toast({
+        variant: 'destructive',
+        title: 'Permissão Negada',
+        description: 'Apenas usuários Gerente ou CEO podem editar a cobrança.',
+      });
+      return;
+    }
+
+    const valorNum = parseFloat(editValor);
+    if (isNaN(valorNum) || valorNum <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Valor Inválido',
+        description: 'Informe um valor de cobrança válido maior que zero.',
+      });
+      return;
+    }
+
+    if (!editVencimento) {
+      toast({
+        variant: 'destructive',
+        title: 'Data Inválida',
+        description: 'Informe uma data de vencimento válida.',
+      });
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const dataVencimentoIso = new Date(`${editVencimento}T23:59:59`).toISOString();
+      const patch = {
+        valor_boleto_ressarcimento: valorNum,
+        prazo_vencimento_boleto: dataVencimentoIso,
+        link_boleto_ressarcimento: editLink.trim(),
+      };
+
+      const { error } = await supabase
+        .from('solicitacoes')
+        .update(patch)
+        .eq('id', solicitacaoId);
+
+      if (error) throw error;
+
+      // Auditoria da alteração
+      await createAuditLog({
+        requestId: solicitacaoId,
+        userId: user?.id,
+        actionType: 'UPDATED',
+        details: {
+          acao: 'alteracao_faturamento_boleto',
+          protocolo: fatura.protocolo,
+          valor_anterior: fatura.valor_boleto_ressarcimento,
+          novo_valor: valorNum,
+          vencimento_anterior: fatura.prazo_vencimento_boleto,
+          novo_vencimento: dataVencimentoIso,
+          alterado_por_papel: role,
+        },
+      });
+
+      // Atualiza estado local
+      setFatura((prev) =>
+        prev
+          ? {
+              ...prev,
+              valor_boleto_ressarcimento: valorNum,
+              prazo_vencimento_boleto: dataVencimentoIso,
+              link_boleto_ressarcimento: editLink.trim(),
+            }
+          : null
+      );
+
+      setEditModalOpen(false);
+      toast({
+        title: 'Cobrança Atualizada',
+        description: 'Os valores e prazos do boleto/fatura foram salvos com sucesso.',
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao Salvar',
+        description: err.message || 'Falha ao atualizar cobrança no banco de dados.',
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const handleSimularPagamento = async () => {
     if (!solicitacaoId || !fatura) return;
+
+    // Se estiver logado como Atendente, bloqueia alteração
+    if (isAuthenticated && isAtendente) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Usuários com nível Atendente não podem confirmar ou dar baixa em cobranças.',
+      });
+      return;
+    }
 
     setIsSimulatingPayment(true);
     try {
       // Chama RPC seguro para atualizar o pagamento
       const { data, error } = await supabase.rpc('confirmar_pagamento_fatura', {
         p_solicitacao_id: solicitacaoId,
-        p_cpf: cpf
+        p_cpf: cpf || fatura.solicitante_cpf || '',
       });
 
       if (error) throw error;
@@ -103,13 +331,14 @@ export default function FaturaPagamento() {
       if (data) {
         const audit = await createAuditLog({
           requestId: solicitacaoId,
-          userId: fatura.solicitante_id,
+          userId: user?.id || fatura.solicitante_id,
           actionType: 'PAYMENT_APPROVED',
           details: {
             protocolo: fatura.protocolo,
             valor_pago: fatura.valor_boleto_ressarcimento,
             cpf_verificado: true,
-            origem: 'fatura_publica',
+            origem: isAuthenticated ? 'painel_gestao' : 'fatura_publica',
+            operador_papel: role || 'publico',
           },
         });
 
@@ -119,21 +348,25 @@ export default function FaturaPagamento() {
 
         toast({
           title: 'Pagamento Confirmado',
-          description: 'A cobrança foi baixada no sistema e o solicitante liberado.'
+          description: 'A cobrança foi baixada no sistema e o solicitante liberado.',
         });
-        
+
         // Atualiza estado local da fatura
-        setFatura(prev => prev ? {
-          ...prev,
-          pagamento_ressarcimento_realizado: true,
-          data_pagamento_ressarcimento: new Date().toISOString(),
-          status: 'encerrada'
-        } : null);
+        setFatura((prev) =>
+          prev
+            ? {
+                ...prev,
+                pagamento_ressarcimento_realizado: true,
+                data_pagamento_ressarcimento: new Date().toISOString(),
+                status: 'encerrada',
+              }
+            : null
+        );
       } else {
         toast({
           variant: 'destructive',
           title: 'Erro na simulação',
-          description: 'Não foi possível registrar o pagamento.'
+          description: 'Não foi possível registrar o pagamento.',
         });
       }
     } catch (err: any) {
@@ -141,7 +374,7 @@ export default function FaturaPagamento() {
       toast({
         variant: 'destructive',
         title: 'Erro de Conexão',
-        description: err.message || 'Falha ao processar simulação.'
+        description: err.message || 'Falha ao processar simulação.',
       });
     } finally {
       setIsSimulatingPayment(false);
@@ -212,28 +445,92 @@ export default function FaturaPagamento() {
   const vencido = !fatura?.pagamento_ressarcimento_realizado && moment(fatura?.prazo_vencimento_boleto).isBefore(moment());
 
   return (
-    <div className="min-h-screen bg-slate-900 py-12 px-4 flex flex-col items-center justify-center text-white">
-      <div className="w-full max-w-2xl space-y-6">
-        <div className="flex justify-between items-center px-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-white" />
+    <div className="min-h-screen bg-slate-900 py-8 px-4 flex flex-col items-center text-white">
+      <div className="w-full max-w-3xl space-y-6">
+        {/* Barra superior de status e contexto */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
+          <div className="flex items-center gap-3">
+            {isAuthenticated && isBackOffice && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/Solicitacoes')}
+                className="text-slate-300 hover:text-white hover:bg-slate-800 -ml-2"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Voltar ao Painel
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
+                <CreditCard className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-bold text-slate-200">Clube da Bengala</span>
             </div>
-            <span className="font-bold text-slate-200">Clube da Bengala</span>
           </div>
-          <Badge className="bg-slate-800 text-slate-400 border border-slate-700 font-mono text-xs">
-            Fatura #{fatura?.protocolo || fatura?.id.substring(0, 8)}
-          </Badge>
+
+          <div className="flex items-center gap-2">
+            {isAuthenticated && (
+              <Badge
+                className={`text-xs px-2.5 py-1 font-medium ${
+                  isManager
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : isAtendente
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                } border`}
+              >
+                {isManager ? (
+                  <span className="flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    Gestor ({role?.toUpperCase()})
+                  </span>
+                ) : isAtendente ? (
+                  <span className="flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3 text-amber-400" />
+                    Atendente (Leitura)
+                  </span>
+                ) : (
+                  <span>{role || 'Usuário'}</span>
+                )}
+              </Badge>
+            )}
+            <Badge className="bg-slate-800 text-slate-400 border border-slate-700 font-mono text-xs">
+              Fatura #{fatura?.protocolo || fatura?.id.substring(0, 8)}
+            </Badge>
+          </div>
         </div>
+
+        {/* Alerta informativo para nível ATENDENTE */}
+        {isAuthenticated && isAtendente && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3.5 flex items-center gap-3 text-amber-300 text-xs">
+            <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+            <p>
+              <strong>Modo de Visualização:</strong> Como Atendente, você possui acesso para consultar os dados da fatura. As opções de alteração de valores e emissão de boletos são exclusivas para usuários com perfil <strong>Gerente</strong> ou <strong>CEO</strong>.
+            </p>
+          </div>
+        )}
 
         <Card className="bg-slate-800/80 border-slate-700 shadow-2xl backdrop-blur-md overflow-hidden">
           {/* Header Fatura */}
           <div className="p-6 border-b border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800/40">
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Valor Total</p>
-              <h1 className="text-3xl font-black text-white mt-1">
-                R$ {fatura?.valor_boleto_ressarcimento.toFixed(2)}
-              </h1>
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Valor Total da Cobrança</p>
+              <div className="flex items-center gap-3 mt-1">
+                <h1 className="text-3xl font-black text-white">
+                  R$ {fatura?.valor_boleto_ressarcimento.toFixed(2)}
+                </h1>
+                {/* Botão de Edição Condicional: apenas para Gerentes / CEO */}
+                {isManager && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAbrirEdicao}
+                    className="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border-indigo-500/40 text-xs h-7 px-2.5 flex items-center gap-1.5"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> Editar Cobrança
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               {fatura?.pagamento_ressarcimento_realizado ? (
@@ -268,9 +565,19 @@ export default function FaturaPagamento() {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Data de Vencimento</p>
-                <p className="font-semibold text-slate-200 mt-0.5">
-                  {fatura?.prazo_vencimento_boleto ? moment(fatura.prazo_vencimento_boleto).format('DD/MM/YYYY') : '—'}
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="font-semibold text-slate-200">
+                    {fatura?.prazo_vencimento_boleto ? moment(fatura.prazo_vencimento_boleto).format('DD/MM/YYYY') : '—'}
+                  </p>
+                  {isManager && (
+                    <button
+                      onClick={handleAbrirEdicao}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+                    >
+                      Alterar
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Status no Sistema</p>
@@ -278,19 +585,22 @@ export default function FaturaPagamento() {
               </div>
             </div>
 
-            {/* Abas de Pagamento */}
+            {/* Abas de Pagamento (PIX e Boleto) */}
             {!fatura?.pagamento_ressarcimento_realizado && (
               <Tabs defaultValue="pix" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 bg-slate-900 p-1 border border-slate-700/50 rounded-lg">
-                  <TabsTrigger value="pix" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md text-slate-400">PIX Instantâneo</TabsTrigger>
-                  <TabsTrigger value="boleto" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md text-slate-400">Boleto Bancário</TabsTrigger>
+                  <TabsTrigger value="pix" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md text-slate-400">
+                    PIX Instantâneo
+                  </TabsTrigger>
+                  <TabsTrigger value="boleto" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md text-slate-400">
+                    Boleto Bancário
+                  </TabsTrigger>
                 </TabsList>
 
                 {/* Aba PIX */}
                 <TabsContent value="pix" className="space-y-4 pt-4">
                   <div className="flex flex-col items-center justify-center p-6 bg-slate-850 rounded-lg border border-slate-700/50 space-y-4">
                     <div className="relative p-4 bg-white rounded-xl shadow-inner flex items-center justify-center">
-                      {/* Simulação de QR Code */}
                       <QrCode className="w-40 h-40 text-slate-900" />
                       <div className="absolute inset-0 flex items-center justify-center bg-indigo-600/10 backdrop-blur-[1px] rounded-xl">
                         <span className="bg-indigo-600 text-white font-bold text-[10px] px-2 py-1 rounded-full flex items-center gap-1 shadow-md">
@@ -299,7 +609,7 @@ export default function FaturaPagamento() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-400 text-center max-w-sm">
-                      Abra o app do seu banco, escolha "Pagar com QR Code / PIX" e aponte a câmera para a imagem acima.
+                      Abra o app do seu banco, escolha &quot;Pagar com QR Code / PIX&quot; e aponte a câmera para a imagem acima.
                     </p>
                   </div>
 
@@ -325,7 +635,6 @@ export default function FaturaPagamento() {
                 {/* Aba Boleto */}
                 <TabsContent value="boleto" className="space-y-4 pt-4">
                   <div className="p-6 bg-slate-850 rounded-lg border border-slate-700/50 flex flex-col items-center space-y-4">
-                    {/* Visualização de barras */}
                     <div className="w-full h-12 bg-slate-900 border border-slate-700/50 rounded flex items-center justify-around overflow-hidden px-4 select-none opacity-80">
                       {Array.from({ length: 42 }).map((_, i) => (
                         <div
@@ -380,8 +689,8 @@ export default function FaturaPagamento() {
               </div>
             )}
 
-            {/* Sandbox Simulation Box */}
-            {!fatura?.pagamento_ressarcimento_realizado && (
+            {/* Sandbox Simulation Box - Exibido apenas para Gestores ou em teste público (oculto para atendentes) */}
+            {!fatura?.pagamento_ressarcimento_realizado && !isAtendente && (
               <div className="pt-4 border-t border-slate-700/50 space-y-3">
                 <div className="bg-slate-900 border border-indigo-500/20 rounded-lg p-4 flex flex-col md:flex-row items-center justify-between gap-4">
                   <div className="space-y-1">
@@ -389,7 +698,9 @@ export default function FaturaPagamento() {
                       Área de Teste (Gateway)
                     </span>
                     <p className="text-xs text-slate-400 mt-1">
-                      Deseja testar a baixa automática e reconciliação bancária imediatamente no ambiente simulado?
+                      {isManager
+                        ? 'Como Gestor, você pode testar a conciliação bancária e baixar o faturamento manualmente.'
+                        : 'Deseja testar a baixa automática e conciliação bancária imediatamente no ambiente simulado?'}
                     </p>
                   </div>
                   <Button
@@ -416,6 +727,95 @@ export default function FaturaPagamento() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal de Edição de Cobrança (Apenas Gestores / CEO) */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="bg-slate-800 text-white border-slate-700 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-indigo-400">
+              <Edit3 className="w-5 h-5" /> Editar Cobrança de Ressarcimento
+            </DialogTitle>
+            <DialogDescription className="text-slate-400 text-xs">
+              Atualize os valores, prazos e parâmetros de faturamento vinculados a esta solicitação.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarEdicao} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-slate-300 text-xs flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5 text-indigo-400" /> Valor do Boleto / Ressarcimento (R$) *
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={editValor}
+                onChange={(e) => setEditValor(e.target.value)}
+                placeholder="0.00"
+                className="bg-slate-900 border-slate-700 text-white focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-slate-300 text-xs flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Data Limite de Vencimento *
+              </Label>
+              <Input
+                type="date"
+                required
+                value={editVencimento}
+                onChange={(e) => setEditVencimento(e.target.value)}
+                className="bg-slate-900 border-slate-700 text-white focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label className="text-slate-300 text-xs">Link da Fatura / Boleto</Label>
+                <button
+                  type="button"
+                  onClick={handleGerarNovoLink}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" /> Gerar Link
+                </button>
+              </div>
+              <Input
+                type="url"
+                required
+                value={editLink}
+                onChange={(e) => setEditLink(e.target.value)}
+                className="bg-slate-900 border-slate-700 text-white focus:border-indigo-500 text-xs font-mono"
+              />
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-slate-700/60 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditModalOpen(false)}
+                className="bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSavingEdit}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...
+                  </>
+                ) : (
+                  'Salvar Alterações'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

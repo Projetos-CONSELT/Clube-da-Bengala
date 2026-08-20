@@ -511,6 +511,7 @@ export default function Solicitacoes() {
   const { toast } = useToast();
   const { role, user } = useAuth();
   const isBackOffice = isBackOfficeRole(role);
+  const isManager = role === 'gerente' || role === 'ceo';
 
   const [viewMode, setViewMode] = useState<'normal' | 'historico'>('normal');
   const [historicoPage, setHistoricoPage] = useState(0);
@@ -875,7 +876,7 @@ export default function Solicitacoes() {
             Registrar Devolução
           </Button>
         )}
-        {isBackOffice && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
+        {isManager && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
           <Button
             variant="outline"
             size="sm"
@@ -896,7 +897,7 @@ export default function Solicitacoes() {
             <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
               <Eye className="w-4 h-4 mr-2" /> Visualizar
             </DropdownMenuItem>
-            {isBackOffice && s.status === 'aguardando_retirada' && (
+            {isManager && s.status === 'aguardando_retirada' && (
               <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
                 <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
               </DropdownMenuItem>
