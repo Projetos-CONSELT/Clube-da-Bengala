@@ -1,8 +1,7 @@
 -- ====================================================================================
--- SCRIPT DE ATUALIZAÇÃO - FUNÇÕES DE COBRANÇA PÚBLICA SEGURA E CONTROLE DE ACESSO (RLS)
--- Execute este script no SQL Editor do seu painel do Supabase
--- para configurar controle de acesso por papéis (Gerente/CEO vs Atendente)
--- e funções seguras de faturamento.
+-- CLUBE DA BENGALA - SCRIPT DE ATUALIZAÇÃO (FATURAMENTO & CONTROLE RLS)
+-- Desenvolvido por: CONSELT (https://github.com/Projetos-CONSELT)
+-- Licença: Licença Proprietária CONSELT. Todos os direitos reservados.
 -- ====================================================================================
 
 -- 0. Remove versões anteriores das funções para evitar erro 42P13 (cannot change return type)

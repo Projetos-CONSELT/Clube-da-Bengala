@@ -1,3 +1,9 @@
+/**
+ * Clube da Bengala — Portal de Faturamento e Cobrança
+ * Desenvolvido por: CONSELT (https://github.com/Projetos-CONSELT)
+ * Licença: Licença Proprietária CONSELT
+ */
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';

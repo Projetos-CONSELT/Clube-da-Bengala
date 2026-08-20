@@ -1,3 +1,9 @@
+/**
+ * Clube da Bengala — Cliente e Integração Supabase
+ * Desenvolvido por: CONSELT (https://github.com/Projetos-CONSELT)
+ * Licença: Licença Proprietária CONSELT
+ */
+
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database.types';
 

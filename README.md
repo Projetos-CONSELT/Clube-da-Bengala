@@ -4,12 +4,17 @@
   <p><strong>Plataforma Web para Gestão de Empréstimos, Vistorias e Doações de Equipamentos de Apoio à Mobilidade</strong></p>
 
   <p>
+    <a href="https://github.com/Projetos-CONSELT">
+      <img src="https://img.shields.io/badge/Desenvolvido%20por-CONSELT-003366?style=for-the-badge&logo=github" alt="Desenvolvido por CONSELT" />
+    </a>
+  </p>
+
+  <p>
     <img src="https://img.shields.io/badge/React-18.x-blue?logo=react" alt="React" />
     <img src="https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Vite-6.x-purple?logo=vite" alt="Vite" />
     <img src="https://img.shields.io/badge/TailwindCSS-3.x-38bdf8?logo=tailwindcss" alt="Tailwind CSS" />
     <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ecf8e?logo=supabase" alt="Supabase" />
-    <img src="https://img.shields.io/badge/Desenvolvido%20por-CONSELT-003366?style=flat-square" alt="Desenvolvido por CONSELT" />
   </p>
 </div>
 
@@ -114,13 +119,16 @@ O sistema integra controle de fila de solicitações, inventário patrimonial in
 ## ⚡ Desenvolvimento & Assinatura
 
 <div align="center">
-  <p>Projeto desenvolvido com excelência técnica por:</p>
-  <h3>🏢 <strong>CONSELT — Consultoria e Projetos Elétricos e Tecnológicos</strong></h3>
+  <p>Projeto concebido e desenvolvido pela equipe técnica da:</p>
+  <h3>🏢 <strong><a href="https://github.com/Projetos-CONSELT" target="_blank">CONSELT — Consultoria e Projetos Elétricos e Tecnológicos</a></strong></h3>
   <p><em>Empresa Júnior dos Cursos de Engenharia Elétrica, Biomédica e Computação da Universidade Federal de Uberlândia (UFU)</em></p>
+  <p>
+    🌐 GitHub Organization: <a href="https://github.com/Projetos-CONSELT"><strong>https://github.com/Projetos-CONSELT</strong></a>
+  </p>
 </div>
 
 ---
 
 ## 📜 Licença e Propriedade Intelectual
 
-Este software e seu código-fonte são de propriedade e titularidade exclusiva sob a **Licença CONSELT**. Todos os direitos reservados. Qualquer reprodução, distribuição, modificação ou uso comercial/institucional não autorizado previamente pela CONSELT e pela entidade gestora é estritamente proibido.
+Este software e seu código-fonte são de titularidade exclusiva sob a **Licença CONSELT**. Todos os direitos reservados à [CONSELT](https://github.com/Projetos-CONSELT) e à entidade parceira. Qualquer reprodução, distribuição, modificação ou uso comercial/institucional não autorizado previamente é estritamente proibido.

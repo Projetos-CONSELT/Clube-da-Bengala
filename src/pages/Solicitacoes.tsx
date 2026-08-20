@@ -1,3 +1,9 @@
+/**
+ * Clube da Bengala — Gestão de Solicitações, Triagem e Faturamento
+ * Desenvolvido por: CONSELT (https://github.com/Projetos-CONSELT)
+ * Licença: Licença Proprietária CONSELT
+ */
+
 import { useMemo, useState } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,

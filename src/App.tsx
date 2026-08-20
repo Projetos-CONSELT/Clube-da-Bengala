@@ -1,3 +1,10 @@
+/**
+ * Clube da Bengala — Sistema de Apoio à Mobilidade e Empréstimos
+ * Desenvolvido por: CONSELT (Consultoria e Projetos Elétricos e Tecnológicos - UFU)
+ * Organização: https://github.com/Projetos-CONSELT
+ * Licença: Licença Proprietária CONSELT
+ */
+
 import { Toaster } from '@/components/ui/toaster';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client';
