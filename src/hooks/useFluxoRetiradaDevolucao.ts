@@ -427,6 +427,12 @@ export function useMarcarInadimplente() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ solicitacaoId, solicitanteId }: { solicitacaoId: string; solicitanteId: string }) => {
+      const { data: current } = await supabase
+        .from('solicitacoes')
+        .select('status, protocolo')
+        .eq('id', solicitacaoId)
+        .maybeSingle();
+
       // Marcar solicitante como inadimplente
       const { error: usError } = await supabase
         .from('usuarios')
@@ -440,6 +446,20 @@ export function useMarcarInadimplente() {
         .update({ status: 'encerrada' as StatusSolicitacao })
         .eq('id', solicitacaoId);
       if (solError) throw solError;
+
+      const audit = await createAuditLog({
+        requestId: solicitacaoId,
+        actionType: 'STATUS_CHANGED',
+        details: {
+          from_status: current?.status ?? null,
+          to_status: 'encerrada',
+          protocolo: current?.protocolo ?? null,
+          motivo: 'Solicitante marcado como inadimplente por vencimento do boleto',
+        },
+      });
+      if (audit.error) {
+        console.warn('[audit] não foi possível registrar marcação de inadimplência:', audit.error.message);
+      }
 
       return { success: true };
     },

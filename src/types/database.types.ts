@@ -507,6 +507,43 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          solicitacao_id: string;
+          usuario_id: string;
+          tipo: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
+          titulo: string;
+          descricao?: string | null;
+          lido?: boolean;
+          link_acao?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          solicitacao_id?: string;
+          usuario_id?: string;
+          tipo?: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
+          titulo?: string;
+          descricao?: string | null;
+          lido?: boolean;
+          link_acao?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notificacoes_solicitacao_id_fkey';
+            columns: ['solicitacao_id'];
+            isOneToOne: false;
+            referencedRelation: 'solicitacoes';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notificacoes_usuario_id_fkey';
+            columns: ['usuario_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       audit_logs: {
         Row: {
           id: string;
@@ -573,43 +610,6 @@ export type Database = {
           },
         ];
       };
-          solicitacao_id: string;
-          usuario_id: string;
-          tipo: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
-          titulo: string;
-          descricao?: string | null;
-          lido?: boolean;
-          link_acao?: string | null;
-          created_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          solicitacao_id?: string;
-          usuario_id?: string;
-          tipo?: 'boleto' | 'pagamento' | 'inadimplencia' | 'retirada' | 'devolucao';
-          titulo?: string;
-          descricao?: string | null;
-          lido?: boolean;
-          link_acao?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'notificacoes_solicitacao_id_fkey';
-            columns: ['solicitacao_id'];
-            isOneToOne: false;
-            referencedRelation: 'solicitacoes';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'notificacoes_usuario_id_fkey';
-            columns: ['usuario_id'];
-            isOneToOne: false;
-            referencedRelation: 'usuarios';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
       configuracoes: {
         Row: {
           id: number;
@@ -642,7 +642,38 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      registrar_auditoria: {
+        Args: {
+          p_request_id: string;
+          p_user_id: string;
+          p_action_type: string;
+          p_details?: Json;
+        };
+        Returns: Database['public']['Tables']['audit_logs']['Row'];
+      };
+      renovar_emprestimo: {
+        Args: {
+          p_emprestimo_id: string;
+          p_dias_adicionais: number;
+        };
+        Returns: Json;
+      };
+      obter_detalhes_cobranca: {
+        Args: {
+          p_solicitacao_id: string;
+          p_cpf: string;
+        };
+        Returns: Json[];
+      };
+      confirmar_pagamento_fatura: {
+        Args: {
+          p_solicitacao_id: string;
+          p_cpf: string;
+        };
+        Returns: Json;
+      };
+    };
     Enums: {
       user_role: 'ceo' | 'gerente' | 'coordenador' | 'atendente' | 'solicitante';
       status_equipamento:

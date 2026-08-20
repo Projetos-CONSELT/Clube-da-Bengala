@@ -36,6 +36,7 @@ import {
   useReservarEquipamento,
 } from '@/hooks/useSolicitacoes';
 import { useBeneficiariosQuery } from '@/hooks/useBeneficiarios';
+import { useAuditLogsQuery } from '@/hooks/useAuditLogs';
 import { useImagensRetiradaQuery, useUploadImagemRetirada, useDeleteImagemRetirada } from '@/hooks/useImagensRetirada';
 import {
   useImagensDevolucaoQuery, useUploadImagemDevolucao, useDeleteImagemDevolucao
@@ -50,6 +51,7 @@ import {
 } from '@/hooks/useFluxoRetiradaDevolucao';
 import {
   getStatusSolicitacaoUi,
+  getSubtiposTipo,
   isBackOfficeRole,
   STATUS_SOLICITACAO_UI,
   type SolicitacaoComRelacoes,
@@ -72,55 +74,252 @@ const beneficiarioName = (s: SolicitacaoComRelacoes) =>
   s?.beneficiario?.nome_completo || 'Mesmo responsável';
 const tipoName = (s: SolicitacaoComRelacoes) => s?.tipo?.nome || '—';
 
-function ImagensRetiradaTab({ solicitacaoId, isBackOffice }: { solicitacaoId: string; isBackOffice: boolean }) {
+function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelacoes }) {
+  const { user, profile } = useAuth();
+  const { data: logs = [] } = useAuditLogsQuery(solicitacao.id);
+
+  const aprovacaoLog = useMemo(() => {
+    return logs.find((l) => {
+      const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      const fromStatus = String(details?.from_status || '');
+      return (
+        toStatus === 'aguardando_retirada' ||
+        toStatus === 'aguardando_documentacao' ||
+        toStatus === 'equipamento_emprestado' ||
+        fromStatus === 'triagem' ||
+        details?.triageDecision === 'aprovado'
+      );
+    });
+  }, [logs]);
+
+  const prazoLog = useMemo(() => {
+    return logs.find((l) => {
+      const details = l.details as any;
+      return Boolean(
+        details?.prazo_retirada ||
+          details?.patch?.prazo_retirada ||
+          details?.prazo_limite_retirada ||
+          details?.alteracoes?.prazo_retirada ||
+          details?.alteracoes?.prazo_limite_retirada
+      );
+    });
+  }, [logs]);
+
+  const isAprovado = solicitacao.status !== 'triagem';
+  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
+  const quemAprovouNome =
+    aprovacaoLog?.usuario?.nome_completo ||
+    aprovacaoLog?.usuario?.email ||
+    (isAprovado ? currentUserDisplayName : null);
+
+  const dataAprovacao = aprovacaoLog
+    ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : isAprovado
+    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : null;
+
+  const temPrazo = Boolean(solicitacao.prazo_retirada || solicitacao.prazo_limite_retirada || prazoLog);
+  const quemDefiniuPrazoNome =
+    prazoLog?.usuario?.nome_completo ||
+    prazoLog?.usuario?.email ||
+    (temPrazo ? currentUserDisplayName : null);
+
+  const dataDefinicaoPrazo = prazoLog
+    ? moment(prazoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : aprovacaoLog
+    ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : temPrazo && solicitacao.created_at
+    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : null;
+
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <p className="text-sm text-slate-500">Solicitante</p>
+        <p className="font-medium">{solicitanteName(solicitacao)}</p>
+      </div>
+      <div>
+        <p className="text-sm text-slate-500">Beneficiário</p>
+        <p className="font-medium">{beneficiarioName(solicitacao)}</p>
+      </div>
+      <div>
+        <p className="text-sm text-slate-500">Tipo de Equipamento</p>
+        <p className="font-medium">{tipoName(solicitacao)}</p>
+      </div>
+      <div>
+        <p className="text-sm text-slate-500">Data da Solicitação</p>
+        <p className="font-medium">
+          {moment(solicitacao.created_at).format('DD/MM/YYYY HH:mm')}
+        </p>
+      </div>
+
+      <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
+        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Aprovado Por</p>
+        {quemAprovouNome ? (
+          <div className="mt-1">
+            <p className="font-semibold text-slate-900">{quemAprovouNome}</p>
+            <p className="text-xs text-slate-500">{dataAprovacao}</p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 mt-1">Aguardando aprovação</p>
+        )}
+      </div>
+
+      <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl">
+        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider">Prazo Definido Por</p>
+        {quemDefiniuPrazoNome ? (
+          <div className="mt-1">
+            <p className="font-semibold text-slate-900">{quemDefiniuPrazoNome}</p>
+            <p className="text-xs text-slate-500">{dataDefinicaoPrazo}</p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 mt-1">Aguardando definição de prazo</p>
+        )}
+      </div>
+
+      {solicitacao.prazo_limite_retirada && (
+        <div>
+          <p className="text-sm text-slate-500">Limite para Retirada</p>
+          <p className="font-medium">
+            {moment(solicitacao.prazo_limite_retirada).format('DD/MM/YYYY')}
+          </p>
+        </div>
+      )}
+      {solicitacao.prazo_retirada && (
+        <div>
+          <p className="text-sm text-slate-500">Prazo Definido para Retirada</p>
+          <p className="font-medium">
+            {moment(solicitacao.prazo_retirada).format('DD/MM/YYYY')}
+          </p>
+        </div>
+      )}
+      {solicitacao.motivo_solicitacao && (
+        <div className="col-span-2">
+          <p className="text-sm text-slate-500">Motivo da solicitação</p>
+          <p className="font-medium">{solicitacao.motivo_solicitacao}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImagensRetiradaTab({
+  solicitacaoId,
+  isBackOffice,
+  solicitacao,
+}: {
+  solicitacaoId: string;
+  isBackOffice: boolean;
+  solicitacao?: SolicitacaoComRelacoes;
+}) {
+  const { user, profile } = useAuth();
   const { data: imagens = [], isLoading } = useImagensRetiradaQuery(solicitacaoId);
+  const { data: logs = [] } = useAuditLogsQuery(solicitacaoId);
   const deleteImagemMutation = useDeleteImagemRetirada();
   const { toast } = useToast();
+
+  const retiradaLog = useMemo(() => {
+    return logs.find((l) => {
+      const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      return (
+        toStatus === 'equipamento_emprestado' ||
+        Boolean(details?.data_retirada_realizada) ||
+        (l.action_type === 'FILE_UPLOADED' && details?.bucket === 'imagens-retirada')
+      );
+    });
+  }, [logs]);
+
+  const foiRetirado = Boolean(solicitacao?.data_retirada_realizada || retiradaLog || solicitacao?.status === 'equipamento_emprestado');
+  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
+
+  const registrouNome =
+    retiradaLog?.usuario?.nome_completo ||
+    retiradaLog?.usuario?.email ||
+    (foiRetirado ? currentUserDisplayName : null);
+
+  const dataHoraRegistro = retiradaLog
+    ? moment(retiradaLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : foiRetirado && solicitacao?.data_retirada_realizada
+    ? moment(solicitacao.data_retirada_realizada).format('DD/MM/YYYY [às] HH:mm')
+    : null;
+
+  const dataRetiradaRealizada = solicitacao?.data_retirada_realizada
+    ? moment(solicitacao.data_retirada_realizada).format('DD/MM/YYYY [às] HH:mm')
+    : dataHoraRegistro;
 
   if (isLoading) {
     return <Skeleton className="h-48" />;
   }
 
-  if (imagens.length === 0) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
-        <p>Nenhuma imagem anexada</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      {imagens.map((imagem: any) => (
-        <div key={imagem.id} className="relative group">
-          <img
-            src={imagem.url_imagem}
-            alt="retirada"
-            className="w-full h-32 object-cover rounded-lg"
-          />
-          {isBackOffice && (
-            <button
-              onClick={() => {
-                deleteImagemMutation.mutate(
-                  { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
-                  {
-                    onSuccess: () => toast({ title: 'Imagem removida' }),
-                    onError: (err: any) =>
-                      toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
-                  }
-                );
-              }}
-              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-          {imagem.descricao && (
-            <p className="text-xs text-slate-500 mt-1 truncate">{imagem.descricao}</p>
-          )}
+    <div className="space-y-4">
+      {/* Banner de informações de Retirada */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+          <Package className="w-4 h-4 text-blue-600" /> Registro de Retirada do Equipamento
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+          <div>
+            <span className="text-slate-500 font-semibold block">Quando foi retirado:</span>
+            <span className="font-bold text-slate-800 text-sm">
+              {dataRetiradaRealizada || 'Pendente de retirada'}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 font-semibold block">Registrado por (com data/hora):</span>
+            <span className="font-medium text-slate-800">
+              {registrouNome ? (
+                <>
+                  {registrouNome} {dataHoraRegistro ? `(${dataHoraRegistro})` : ''}
+                </>
+              ) : (
+                'Pendente de registro'
+              )}
+            </span>
+          </div>
         </div>
-      ))}
+      </div>
+
+      {imagens.length === 0 ? (
+        <div className="text-center py-8 text-slate-500 border border-dashed rounded-xl">
+          <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>Nenhuma imagem de retirada anexada</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {imagens.map((imagem: any) => (
+            <div key={imagem.id} className="relative group">
+              <img
+                src={imagem.url_imagem}
+                alt="retirada"
+                className="w-full h-32 object-cover rounded-lg border"
+              />
+              {isBackOffice && (
+                <button
+                  onClick={() => {
+                    deleteImagemMutation.mutate(
+                      { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
+                      {
+                        onSuccess: () => toast({ title: 'Imagem removida' }),
+                        onError: (err: any) =>
+                          toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
+                      }
+                    );
+                  }}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {imagem.descricao && (
+                <p className="text-xs text-slate-500 mt-1 truncate">{imagem.descricao}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -128,61 +327,116 @@ function ImagensRetiradaTab({ solicitacaoId, isBackOffice }: { solicitacaoId: st
 interface ImagensDevolucaoTabProps {
   solicitacaoId: string;
   isBackOffice: boolean;
+  solicitacao?: SolicitacaoComRelacoes;
 }
 
-function ImagensDevolucaoTab({ solicitacaoId, isBackOffice }: ImagensDevolucaoTabProps) {
+function ImagensDevolucaoTab({ solicitacaoId, isBackOffice, solicitacao }: ImagensDevolucaoTabProps) {
+  const { user, profile } = useAuth();
   const { data: imagens = [], isLoading } = useImagensDevolucaoQuery(solicitacaoId);
+  const { data: logs = [] } = useAuditLogsQuery(solicitacaoId);
   const deleteImagemMutation = useDeleteImagemDevolucao();
   const { toast } = useToast();
+
+  const devolucaoLog = useMemo(() => {
+    return logs.find((l) => {
+      const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      return (
+        toStatus === 'encerrada' ||
+        toStatus === 'em_devolucao' ||
+        Boolean(details?.novo_estado_conservacao) ||
+        (l.action_type === 'FILE_UPLOADED' && details?.bucket === 'imagens-devolucao')
+      );
+    });
+  }, [logs]);
+
+  const foiDevolvido = Boolean(devolucaoLog || solicitacao?.status === 'encerrada' || solicitacao?.status === 'em_devolucao');
+  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
+
+  const registrouNome =
+    devolucaoLog?.usuario?.nome_completo ||
+    devolucaoLog?.usuario?.email ||
+    (foiDevolvido ? currentUserDisplayName : null);
+
+  const dataHoraRegistro = devolucaoLog
+    ? moment(devolucaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : foiDevolvido && solicitacao?.created_at
+    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+    : null;
 
   if (isLoading) {
     return <Skeleton className="h-48" />;
   }
 
-  if (imagens.length === 0) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
-        <p>Nenhuma imagem de devolução anexada</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {imagens.map((imagem: any) => (
-          <div key={imagem.id} className="relative group">
-            <img
-              src={imagem.url_imagem}
-              alt="devolucao"
-              className="w-full h-32 object-cover rounded-lg"
-            />
-            {isBackOffice && (
-              <button
-                onClick={() => {
-                  deleteImagemMutation.mutate(
-                    { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
-                    {
-                      onSuccess: () => toast({ title: 'Imagem removida' }),
-                      onError: (err: any) =>
-                        toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
-                    }
-                  );
-                }}
-                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-            {imagem.estado_conservacao && (
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 rounded-b-lg">
-                {imagem.estado_conservacao}
-              </div>
-            )}
+      {/* Banner de informações de Devolução */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+          <RefreshCw className="w-4 h-4 text-emerald-600" /> Registro de Devolução do Equipamento
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+          <div>
+            <span className="text-slate-500 font-semibold block">Quando foi devolvido:</span>
+            <span className="font-bold text-slate-800 text-sm">
+              {dataHoraRegistro || 'Pendente de devolução'}
+            </span>
           </div>
-        ))}
+          <div>
+            <span className="text-slate-500 font-semibold block">Registrado por (com data/hora):</span>
+            <span className="font-medium text-slate-800">
+              {registrouNome ? (
+                <>
+                  {registrouNome} {dataHoraRegistro ? `(${dataHoraRegistro})` : ''}
+                </>
+              ) : (
+                'Pendente de registro'
+              )}
+            </span>
+          </div>
+        </div>
       </div>
+
+      {imagens.length === 0 ? (
+        <div className="text-center py-8 text-slate-500 border border-dashed rounded-xl">
+          <Image className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>Nenhuma imagem de devolução anexada</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {imagens.map((imagem: any) => (
+            <div key={imagem.id} className="relative group">
+              <img
+                src={imagem.url_imagem}
+                alt="devolucao"
+                className="w-full h-32 object-cover rounded-lg border"
+              />
+              {isBackOffice && (
+                <button
+                  onClick={() => {
+                    deleteImagemMutation.mutate(
+                      { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
+                      {
+                        onSuccess: () => toast({ title: 'Imagem removida' }),
+                        onError: (err: any) =>
+                          toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
+                      }
+                    );
+                  }}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {imagem.estado_conservacao && (
+                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs p-1 rounded-b-lg">
+                  {imagem.estado_conservacao}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -287,6 +541,8 @@ export default function Solicitacoes() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [tipoFilter, setTipoFilter] = useState('todos');
+  const [dateFilter, setDateFilter] = useState('todas');
+  const [selectedDate, setSelectedDate] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -319,6 +575,7 @@ export default function Solicitacoes() {
   const [formData, setFormData] = useState({
     beneficiario_id: '',
     tipo_equipamento_id: '',
+    subtipo_id: '',
     motivo_solicitacao: '',
   });
 
@@ -326,6 +583,12 @@ export default function Solicitacoes() {
   const tipos = tiposQuery.data ?? [];
   const equipamentos = equipamentosQuery.data ?? [];
   const beneficiarios = beneficiariosQuery.data ?? [];
+
+  const availableSubtipos = useMemo(() => {
+    if (!formData.tipo_equipamento_id) return [];
+    const tipoObj = tipos.find((t) => t.id === formData.tipo_equipamento_id);
+    return tipoObj ? getSubtiposTipo(tipoObj.schema_especificacoes) : [];
+  }, [tipos, formData.tipo_equipamento_id]);
 
   const filtered = useMemo(() => {
     let list = [...solicitacoes];
@@ -340,8 +603,34 @@ export default function Solicitacoes() {
     }
     if (statusFilter !== 'todos') list = list.filter((s) => s.status === statusFilter);
     if (tipoFilter !== 'todos') list = list.filter((s) => s.tipo_equipamento_id === tipoFilter);
+
+    if (dateFilter !== 'todas') {
+      const now = moment();
+      list = list.filter((s) => {
+        if (!s.created_at) return false;
+        const itemDate = moment(s.created_at);
+
+        if (dateFilter === 'hoje') {
+          return itemDate.isSame(now, 'day');
+        }
+        if (dateFilter === 'ultimos_7_dias') {
+          return itemDate.isAfter(moment().subtract(7, 'days'));
+        }
+        if (dateFilter === 'ultimos_30_dias') {
+          return itemDate.isAfter(moment().subtract(30, 'days'));
+        }
+        if (dateFilter === 'este_mes') {
+          return itemDate.isSame(now, 'month');
+        }
+        if (dateFilter === 'especifica' && selectedDate) {
+          return itemDate.isSame(moment(selectedDate), 'day');
+        }
+        return true;
+      });
+    }
+
     return list;
-  }, [solicitacoes, searchTerm, statusFilter, tipoFilter]);
+  }, [solicitacoes, searchTerm, statusFilter, tipoFilter, dateFilter, selectedDate]);
 
   const counts = useMemo(
     () => ({
@@ -355,26 +644,37 @@ export default function Solicitacoes() {
   );
 
   const openNewModal = () => {
-    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', motivo_solicitacao: '' });
+    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', subtipo_id: '', motivo_solicitacao: '' });
     setModalOpen(true);
   };
 
   const handleCreate = () => {
     if (!formData.tipo_equipamento_id || !formData.beneficiario_id) return;
+    if (availableSubtipos.length > 0 && !formData.subtipo_id) {
+      toast({ variant: 'destructive', title: 'Selecione o subtipo de equipamento' });
+      return;
+    }
+
+    const selectedSubtipoObj = availableSubtipos.find((s) => s.id === formData.subtipo_id);
+    const motivoFinal = selectedSubtipoObj
+      ? `[Subtipo: ${selectedSubtipoObj.nome}] ${formData.motivo_solicitacao.trim()}`.trim()
+      : formData.motivo_solicitacao.trim();
+
     createMutation.mutate(
       {
         beneficiario_id: formData.beneficiario_id,
         tipo_equipamento_id: formData.tipo_equipamento_id,
-        motivo_solicitacao: formData.motivo_solicitacao,
+        motivo_solicitacao: motivoFinal || undefined,
       },
       {
-      onSuccess: () => {
-        toast({ title: 'Solicitação criada' });
-        setModalOpen(false);
-      },
-      onError: (err) =>
-        toast({ variant: 'destructive', title: 'Erro ao criar', description: err.message }),
-    });
+        onSuccess: () => {
+          toast({ title: 'Solicitação criada com sucesso' });
+          setModalOpen(false);
+        },
+        onError: (err) =>
+          toast({ variant: 'destructive', title: 'Erro ao criar', description: err.message }),
+      }
+    );
   };
 
   const updateStatus = (sol: SolicitacaoComRelacoes, newStatus: StatusSolicitacao, motivo?: string) => {
@@ -649,15 +949,50 @@ export default function Solicitacoes() {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-4 justify-between">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <Input
-            placeholder="Buscar por protocolo, responsável..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+      <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+        <div className="flex flex-1 flex-col sm:flex-row gap-3 max-w-2xl">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Buscar por protocolo, responsável..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 text-sm"
+            />
+          </div>
+
+          {/* Filtro por Data ao lado da Barra de Pesquisa */}
+          <div className="flex items-center gap-2">
+            <Select
+              value={dateFilter}
+              onValueChange={(v) => {
+                setDateFilter(v);
+                if (v !== 'especifica') setSelectedDate('');
+              }}
+            >
+              <SelectTrigger className="w-[170px] text-sm bg-white">
+                <Calendar className="w-4 h-4 mr-2 text-blue-600 shrink-0" />
+                <SelectValue placeholder="Filtrar por data" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as datas</SelectItem>
+                <SelectItem value="hoje">Criadas Hoje</SelectItem>
+                <SelectItem value="ultimos_7_dias">Últimos 7 dias</SelectItem>
+                <SelectItem value="ultimos_30_dias">Últimos 30 dias</SelectItem>
+                <SelectItem value="este_mes">Este mês</SelectItem>
+                <SelectItem value="especifica">Data específica...</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {dateFilter === 'especifica' && (
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-[155px] text-sm bg-white"
+              />
+            )}
+          </div>
         </div>
         <div className="flex gap-3 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -732,7 +1067,7 @@ export default function Solicitacoes() {
               <div className="px-4 py-3 border-b bg-emerald-50/70 text-emerald-900 flex items-center justify-between">
                 <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <span>Concluídos / Encerrados</span>
+                  <span>Concluídos</span>
                   <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
                     {concluidas.length}
                   </span>
@@ -794,8 +1129,14 @@ export default function Solicitacoes() {
             <div>
               <Label>Tipo de Equipamento *</Label>
               <Select
-                value={formData.tipo_equipamento_id}
-                onValueChange={(v) => setFormData({ ...formData, tipo_equipamento_id: v })}
+                value={formData.tipo_equipamento_id || 'none'}
+                onValueChange={(v) =>
+                  setFormData({
+                    ...formData,
+                    tipo_equipamento_id: v === 'none' ? '' : v,
+                    subtipo_id: '',
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o tipo" />
@@ -806,6 +1147,38 @@ export default function Solicitacoes() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Subtipo de Equipamento {availableSubtipos.length > 0 ? '*' : ''}</Label>
+              {availableSubtipos.length > 0 ? (
+                <Select
+                  value={formData.subtipo_id || 'none'}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, subtipo_id: v === 'none' ? '' : v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o subtipo de equipamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSubtipos.map((st) => (
+                      <SelectItem key={st.id} value={st.id}>
+                        {st.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  disabled
+                  value={
+                    formData.tipo_equipamento_id
+                      ? 'Nenhum subtipo específico cadastrado'
+                      : 'Selecione primeiro o tipo de equipamento'
+                  }
+                  className="bg-slate-50 text-slate-500 text-xs cursor-not-allowed"
+                />
+              )}
             </div>
             <div>
               <Label>Motivo da solicitação</Label>
@@ -820,7 +1193,12 @@ export default function Solicitacoes() {
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button
               onClick={handleCreate}
-              disabled={createMutation.isPending || !formData.tipo_equipamento_id || !formData.beneficiario_id}
+              disabled={
+                createMutation.isPending ||
+                !formData.tipo_equipamento_id ||
+                !formData.beneficiario_id ||
+                (availableSubtipos.length > 0 && !formData.subtipo_id)
+              }
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Criar Solicitação
@@ -840,68 +1218,23 @@ export default function Solicitacoes() {
           </DialogHeader>
           {selected && (
             <Tabs defaultValue="dados" className="mt-4">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
                 <TabsTrigger value="imagens">Retirada</TabsTrigger>
                 <TabsTrigger value="devolucao">Devolução</TabsTrigger>
                 <TabsTrigger value="recibo">Recibo</TabsTrigger>
-                <TabsTrigger value="historico">Histórico</TabsTrigger>
               </TabsList>
               <TabsContent value="dados" className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-slate-500">Solicitante</p>
-                    <p className="font-medium">{solicitanteName(selected)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">Beneficiário</p>
-                    <p className="font-medium">{beneficiarioName(selected)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">Tipo de Equipamento</p>
-                    <p className="font-medium">{tipoName(selected)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">Data da Solicitação</p>
-                    <p className="font-medium">
-                      {moment(selected.created_at).format('DD/MM/YYYY HH:mm')}
-                    </p>
-                  </div>
-                  {selected.prazo_limite_retirada && (
-                    <div>
-                      <p className="text-sm text-slate-500">Limite para Retirada</p>
-                      <p className="font-medium">
-                        {moment(selected.prazo_limite_retirada).format('DD/MM/YYYY')}
-                      </p>
-                    </div>
-                  )}
-                  {selected.prazo_retirada && (
-                    <div>
-                      <p className="text-sm text-slate-500">Prazo Definido</p>
-                      <p className="font-medium">
-                        {moment(selected.prazo_retirada).format('DD/MM/YYYY')}
-                      </p>
-                    </div>
-                  )}
-                  {selected.motivo_solicitacao && (
-                    <div className="col-span-2">
-                      <p className="text-sm text-slate-500">Motivo da solicitação</p>
-                      <p className="font-medium">{selected.motivo_solicitacao}</p>
-                    </div>
-                  )}
-                </div>
+                <DadosSolicitacaoTab solicitacao={selected} />
               </TabsContent>
               <TabsContent value="imagens" className="mt-4">
-                <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} />
+                <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
               </TabsContent>
               <TabsContent value="devolucao" className="mt-4">
-                <ImagensDevolucaoTab solicitacaoId={selected.id} isBackOffice={isBackOffice} />
+                <ImagensDevolucaoTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
               </TabsContent>
               <TabsContent value="recibo" className="mt-4">
                 <RecibosTab solicitacaoId={selected.id} />
-              </TabsContent>
-              <TabsContent value="historico" className="mt-4">
-                <RequestHistoryTimeline requestId={selected.id} />
               </TabsContent>
             </Tabs>
           )}
@@ -1253,11 +1586,11 @@ export default function Solicitacoes() {
               </div>
             )}
             <div>
-              <Label>Data da Retirada *</Label>
-              <DatePicker
-                value={retiradaData}
-                onChange={setRetiradaData}
-                placeholder="Selecione a data da retirada"
+              <Label>Data da Retirada</Label>
+              <Input
+                disabled
+                value={`Hoje (${moment().format('DD/MM/YYYY')})`}
+                className="bg-slate-100 cursor-not-allowed font-medium text-slate-700"
               />
             </div>
             <div>
@@ -1273,7 +1606,7 @@ export default function Solicitacoes() {
             <Button variant="outline" onClick={() => setRetiradaModalOpen(false)}>Cancelar</Button>
             <Button
               onClick={() => {
-                if (!selected || !retiradaData || !retiradaEquipamento) return;
+                if (!selected || !retiradaEquipamento) return;
                 const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
                 if (!eqId) {
                   toast({
@@ -1304,7 +1637,6 @@ export default function Solicitacoes() {
               }}
               disabled={
                 registrarRetiradaMutation.isPending || 
-                !retiradaData || 
                 !retiradaEquipamento || 
                 (!selected?.equipamento_reservado_id && !retiradaEquipamentoId)
               }

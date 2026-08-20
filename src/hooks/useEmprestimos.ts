@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 import type { EmprestimoInsert } from '@/types/database.types';
 import { isBackOfficeRole, type EmprestimoComRelacoes } from '@/types/domain';
 
@@ -38,7 +39,29 @@ export function useCreateEmprestimo() {
 
       await supabase.from('equipamentos').update({ status: 'emprestado' }).eq('id', payload.equipamento_id);
       if (payload.solicitacao_id) {
+        const { data: current } = await supabase
+          .from('solicitacoes')
+          .select('status, protocolo')
+          .eq('id', payload.solicitacao_id)
+          .maybeSingle();
+
         await supabase.from('solicitacoes').update({ status: 'encerrada' }).eq('id', payload.solicitacao_id);
+
+        const audit = await createAuditLog({
+          requestId: payload.solicitacao_id,
+          actionType: 'STATUS_CHANGED',
+          details: {
+            from_status: current?.status ?? null,
+            to_status: 'encerrada',
+            protocolo: current?.protocolo ?? null,
+            motivo: 'Empréstimo direto criado',
+            equipamento_id: payload.equipamento_id,
+          },
+        });
+        if (audit.error) {
+          console.warn('[audit] não foi possível registrar encerramento por criação de empréstimo:', audit.error.message);
+        }
+        void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(payload.solicitacao_id) });
       }
       return data;
     },
@@ -138,11 +161,33 @@ export function useDevolverEmprestimo() {
 
       // 3. Encerrar a solicitação se houver
       if (solicitacaoId) {
+        const { data: current } = await supabase
+          .from('solicitacoes')
+          .select('status, protocolo')
+          .eq('id', solicitacaoId)
+          .maybeSingle();
+
         const { error: solError } = await supabase
           .from('solicitacoes')
           .update({ status: 'encerrada' })
           .eq('id', solicitacaoId);
         if (solError) throw solError;
+
+        const audit = await createAuditLog({
+          requestId: solicitacaoId,
+          actionType: 'STATUS_CHANGED',
+          details: {
+            from_status: current?.status ?? null,
+            to_status: 'encerrada',
+            protocolo: current?.protocolo ?? null,
+            motivo: 'Devolução de empréstimo concluída',
+            equipamento_id: equipamentoId,
+          },
+        });
+        if (audit.error) {
+          console.warn('[audit] não foi possível registrar encerramento por devolução de empréstimo:', audit.error.message);
+        }
+        void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(solicitacaoId) });
       }
 
       // 4. Limpar marcação de inadimplente se selecionado

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
-import type { SolicitacaoInsert, SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
+import type { Json, SolicitacaoInsert, SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
 import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
 
 export const SOLICITACOES_KEY = ['solicitacoes'] as const;
@@ -123,6 +123,9 @@ export function useUpdateSolicitacaoStatus() {
           to_status: status,
           protocolo: current?.protocolo ?? null,
           motivo: motivo ?? null,
+          alteracoes: {
+            status: { de: current?.status ?? null, para: status },
+          },
         },
       });
       if (audit.error) {
@@ -143,11 +146,11 @@ export function useUpdateSolicitacao() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: SolicitacaoUpdate }) => {
-      const shouldTrackStatusChange = typeof patch.status !== 'undefined';
-      const { data: current, error: currentError } = shouldTrackStatusChange
-        ? await supabase.from('solicitacoes').select('status, protocolo').eq('id', id).single()
-        : { data: null, error: null };
-      if (currentError) throw currentError;
+      const { data: current } = await supabase
+        .from('solicitacoes')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
       const { data, error } = await supabase
         .from('solicitacoes')
@@ -157,20 +160,29 @@ export function useUpdateSolicitacao() {
         .single();
       if (error) throw error;
 
+      const shouldTrackStatusChange = typeof patch.status !== 'undefined';
+      const alteracoes: Record<string, { de: Json; para: Json }> = {};
+      if (current) {
+        (Object.keys(patch) as (keyof SolicitacaoUpdate)[]).forEach((key) => {
+          if (current[key] !== patch[key]) {
+            alteracoes[key] = {
+              de: (current[key] ?? null) as Json,
+              para: (patch[key] ?? null) as Json,
+            };
+          }
+        });
+      }
+
       const audit = await createAuditLog({
         requestId: id,
         actionType: shouldTrackStatusChange ? 'STATUS_CHANGED' : 'UPDATED',
-        details: shouldTrackStatusChange
-          ? {
-              from_status: current?.status ?? null,
-              to_status: patch.status ?? null,
-              protocolo: current?.protocolo ?? null,
-              patch,
-            }
-          : {
-              protocolo: data?.protocolo ?? null,
-              patch,
-            },
+        details: {
+          from_status: current?.status ?? null,
+          to_status: patch.status ?? current?.status ?? null,
+          protocolo: current?.protocolo ?? data?.protocolo ?? null,
+          patch,
+          alteracoes,
+        },
       });
       if (audit.error) {
         console.warn('[audit] não foi possível registrar atualização da solicitação:', audit.error.message);

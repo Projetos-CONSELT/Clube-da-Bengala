@@ -26,6 +26,7 @@ interface RequestAuditLogUser {
   nome_completo: string;
   email: string | null;
   papel: string;
+  nucleo_id?: string | null;
 }
 
 export interface RequestAuditLogItem extends AuditLog {
@@ -117,20 +118,24 @@ export function describeAuditLogDetails(actionType: AuditLogActionType, details:
   if (actionType === 'STATUS_CHANGED') {
     const fromStatus = resolveStatusLabel(record?.from_status ?? record?.previous_status ?? record?.from);
     const toStatus = resolveStatusLabel(record?.to_status ?? record?.new_status ?? record?.to);
+    const motivo = toText(record?.motivo);
 
+    let text = 'Status alterado.';
     if (fromStatus && toStatus) {
-      return `Status alterado de ${fromStatus} para ${toStatus}.`;
+      text = `Status alterado de "${fromStatus}" para "${toStatus}".`;
+    } else if (toStatus) {
+      text = `Status alterado para "${toStatus}".`;
     }
 
-    if (toStatus) {
-      return `Status alterado para ${toStatus}.`;
+    if (motivo) {
+      text += ` Motivo: ${motivo}`;
     }
 
-    return 'Status alterado.';
+    return text;
   }
 
   if (actionType === 'MESSAGE_SENT') {
-    const message = toText(record?.message ?? record?.description ?? record?.text);
+    const message = toText(record?.message ?? record?.mensagem ?? record?.description ?? record?.text);
     return message ? `Mensagem registrada: ${message}` : 'Mensagem enviada.';
   }
 
@@ -205,11 +210,27 @@ export async function createAuditLog(input: CreateAuditLogInput): Promise<Create
     };
   }
 
+  const detailsObj: Record<string, Json> = isRecord(input.details) ? { ...input.details } : {};
+  if (!('nucleo_id' in detailsObj) || detailsObj.nucleo_id === undefined) {
+    try {
+      const { data: solData } = await supabase
+        .from('solicitacoes')
+        .select('nucleo_id')
+        .eq('id', requestId)
+        .maybeSingle();
+      if (solData?.nucleo_id) {
+        detailsObj.nucleo_id = solData.nucleo_id;
+      }
+    } catch {
+      // Ignora erro de busca secundária de núcleo
+    }
+  }
+
   const { data, error } = await supabase.rpc('registrar_auditoria', {
     p_request_id: requestId,
     p_user_id: userId,
     p_action_type: actionType,
-    p_details: input.details ?? {},
+    p_details: detailsObj,
   });
 
   if (error) {
@@ -231,7 +252,7 @@ export async function createAuditLog(input: CreateAuditLogInput): Promise<Create
 export async function fetchRequestAuditLogs(requestId: string): Promise<RequestAuditLogItem[]> {
   const { data, error } = await supabase
     .from('audit_logs')
-    .select('id, request_id, user_id, action_type, details, created_at, usuario:usuarios(id, nome_completo, email, papel)')
+    .select('id, request_id, user_id, action_type, details, created_at, usuario:usuarios(id, nome_completo, email, papel, nucleo_id)')
     .eq('request_id', requestId)
     .order('created_at', { ascending: false });
 
