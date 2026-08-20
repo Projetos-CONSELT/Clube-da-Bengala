@@ -29,7 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-import { downloadReceiptPdf } from '@/lib/receiptPdf';
+import { downloadReceiptPdf, downloadTermoRetiradaPdf } from '@/lib/receiptPdf';
 import RequestHistoryTimeline from '@/components/solicitacoes/RequestHistoryTimeline';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
@@ -294,36 +294,71 @@ function ImagensRetiradaTab({
           <p>Nenhuma imagem de retirada anexada</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {imagens.map((imagem: any) => (
-            <div key={imagem.id} className="relative group">
-              <img
-                src={imagem.url_imagem}
-                alt="retirada"
-                className="w-full h-32 object-cover rounded-lg border"
-              />
-              {isBackOffice && (
-                <button
-                  onClick={() => {
-                    deleteImagemMutation.mutate(
-                      { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
-                      {
-                        onSuccess: () => toast({ title: 'Imagem removida' }),
-                        onError: (err: any) =>
-                          toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
-                      }
-                    );
-                  }}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-              {imagem.descricao && (
-                <p className="text-xs text-slate-500 mt-1 truncate">{imagem.descricao}</p>
-              )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {imagens.map((imagem: any) => (
+              <div key={imagem.id} className="relative group">
+                <img
+                  src={imagem.url_imagem}
+                  alt="retirada"
+                  className="w-full h-32 object-cover rounded-lg border"
+                />
+                {isBackOffice && (
+                  <button
+                    onClick={() => {
+                      deleteImagemMutation.mutate(
+                        { id: imagem.id, solicitacaoId, urlImagem: imagem.url_imagem },
+                        {
+                          onSuccess: () => toast({ title: 'Imagem removida' }),
+                          onError: (err: any) =>
+                            toast({ variant: 'destructive', title: 'Erro ao remover', description: err.message }),
+                        }
+                      );
+                    }}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+                {imagem.descricao && (
+                  <p className="text-xs text-slate-500 mt-1 truncate">{imagem.descricao}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {foiRetirado && solicitacao && (
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs flex items-center gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+                onClick={() => {
+                  const details = retiradaLog?.details as any;
+                  downloadTermoRetiradaPdf({
+                    solicitacao_id: solicitacao.id,
+                    protocolo: solicitacao.protocolo,
+                    nome_solicitante: solicitacao.solicitante?.nome_completo || 'Solicitante',
+                    cpf_solicitante: solicitacao.solicitante?.cpf,
+                    nome_beneficiario: solicitacao.beneficiario?.nome_completo,
+                    cpf_beneficiario: solicitacao.beneficiario?.cpf,
+                    descricao_equipamento: solicitacao.tipo_equipamento?.nome || 'Equipamento',
+                    codigo_patrimonio: solicitacao.equipamento_reservado?.codigo_patrimonio,
+                    data_retirada: solicitacao.data_retirada_realizada || retiradaLog?.created_at || new Date(),
+                    data_prevista_devolucao: details?.data_prevista_devolucao || moment().add(30, 'days').toDate(),
+                    nome_responsavel: details?.nome_responsavel || registrouNome || 'Clube da Bengala',
+                    nome_retirador: details?.nome_retirador || solicitacao.solicitante?.nome_completo || 'Solicitante',
+                    cpf_retirador: details?.cpf_retirador || solicitacao.solicitante?.cpf,
+                    parentesco_retirador: details?.parentesco_retirador || 'Próprio Solicitante',
+                    observacoes: details?.observacoes,
+                    imagens_retirada_urls: imagens.map((img: any) => img.url_imagem),
+                  });
+                }}
+              >
+                <FileText className="w-3.5 h-3.5" /> Baixar Termo de Retirada (PDF)
+              </Button>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -571,6 +606,13 @@ export default function Solicitacoes() {
   const [retiradaData, setRetiradaData] = useState('');
   const [retiradaEquipamento, setRetiradaEquipamento] = useState('');
   const [retiradaEquipamentoId, setRetiradaEquipamentoId] = useState('');
+  const [retiradaResponsavel, setRetiradaResponsavel] = useState('');
+  const [retiradaNomeRetirador, setRetiradaNomeRetirador] = useState('');
+  const [retiradaCpfRetirador, setRetiradaCpfRetirador] = useState('');
+  const [retiradaParentesco, setRetiradaParentesco] = useState('Próprio Solicitante');
+  const [retiradaObservacoes, setRetiradaObservacoes] = useState('');
+  const [retiradaFiles, setRetiradaFiles] = useState<File[]>([]);
+  const [uploadingRetirada, setUploadingRetirada] = useState(false);
   const [devolucaoFiles, setDevolucaoFiles] = useState<File[]>([]);
   const [devolucaoEstado, setDevolucaoEstado] = useState('bom');
   const [boletoLink, setBoletoLink] = useState('');
@@ -863,6 +905,13 @@ export default function Solicitacoes() {
             onClick={() => {
               setSelected(s);
               setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
+              setRetiradaResponsavel(user?.full_name || '');
+              setRetiradaNomeRetirador(s.solicitante?.nome_completo || s.beneficiario?.nome_completo || '');
+              setRetiradaCpfRetirador(s.solicitante?.cpf || s.beneficiario?.cpf || '');
+              setRetiradaParentesco('Próprio Solicitante');
+              setRetiradaObservacoes('');
+              setRetiradaFiles([]);
+              setRetiradaEquipamento(moment().add(30, 'days').format('YYYY-MM-DD'));
               setRetiradaModalOpen(true);
             }}
             className="text-blue-600 border-blue-200"
@@ -1553,66 +1602,232 @@ export default function Solicitacoes() {
       </Dialog>
 
       <Dialog open={retiradaModalOpen} onOpenChange={setRetiradaModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Registrar Retirada do Equipamento</DialogTitle>
-            <DialogDescription>Confirme a data e data prevista de devolução</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <Package className="w-5 h-5 text-blue-600" /> Registrar Retirada e Vistoria do Equipamento
+            </DialogTitle>
+            <DialogDescription>
+              Preencha os dados do responsável pela entrega, da pessoa que está retirando e anexe as fotos da vistoria.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {(!selected?.equipamento_reservado_id) ? (
+
+          <div className="space-y-4 py-3">
+            {/* Seção 1: Equipamento & Prazos */}
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">1. Equipamento & Prazos</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {(!selected?.equipamento_reservado_id) ? (
+                  <div>
+                    <Label className="text-xs">Selecionar Equipamento *</Label>
+                    <Select
+                      value={retiradaEquipamentoId}
+                      onValueChange={setRetiradaEquipamentoId}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Selecione um equipamento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {equipamentos
+                          .filter((e) => e.status === 'disponivel' && e.tipo_id === selected?.tipo_equipamento_id)
+                          .map((eq) => (
+                            <SelectItem key={eq.id} value={eq.id}>
+                              {eq.codigo_patrimonio} ({eq.estado_conservacao || 'Bom'})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div>
+                    <Label className="text-xs">Equipamento Reservado</Label>
+                    <Input
+                      disabled
+                      className="mt-1 bg-white font-medium"
+                      value={
+                        equipamentos.find((e) => e.id === selected.equipamento_reservado_id)
+                          ?.codigo_patrimonio || 'Equipamento Reservado'
+                      }
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <Label className="text-xs">Data da Retirada</Label>
+                  <Input
+                    disabled
+                    value={`Hoje (${moment().format('DD/MM/YYYY')})`}
+                    className="mt-1 bg-slate-100 cursor-not-allowed font-medium text-slate-700"
+                  />
+                </div>
+              </div>
+
               <div>
-                <Label>Selecionar Equipamento *</Label>
-                <Select
-                  value={retiradaEquipamentoId}
-                  onValueChange={setRetiradaEquipamentoId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um equipamento" />
+                <Label className="text-xs">Data Prevista de Devolução *</Label>
+                <div className="mt-1">
+                  <DatePicker
+                    value={retiradaEquipamento}
+                    onChange={setRetiradaEquipamento}
+                    placeholder="Selecione a data prevista de devolução"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Seção 2: Responsável pelo Atendimento */}
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">2. Responsável pelo Atendimento</h4>
+              <div>
+                <Label className="text-xs">Nome do Responsável / Atendente (Entrega) *</Label>
+                <Input
+                  className="mt-1 bg-white"
+                  placeholder="Nome do atendente ou gestor que realizou a entrega"
+                  value={retiradaResponsavel}
+                  onChange={(e) => setRetiradaResponsavel(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Seção 3: Dados da Pessoa que Retira */}
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">3. Dados de Quem Está Retirando</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Nome da Pessoa que Retira *</Label>
+                  <Input
+                    className="mt-1 bg-white"
+                    placeholder="Nome completo do portador"
+                    value={retiradaNomeRetirador}
+                    onChange={(e) => setRetiradaNomeRetirador(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">CPF de Quem Retira</Label>
+                  <Input
+                    className="mt-1 bg-white"
+                    placeholder="000.000.000-00"
+                    value={retiradaCpfRetirador}
+                    onChange={(e) => setRetiradaCpfRetirador(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Vínculo / Parentesco com o Beneficiário</Label>
+                <Select value={retiradaParentesco} onValueChange={setRetiradaParentesco}>
+                  <SelectTrigger className="mt-1 bg-white">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {equipamentos
-                      .filter((e) => e.status === 'disponivel' && e.tipo_id === selected?.tipo_equipamento_id)
-                      .map((eq) => (
-                        <SelectItem key={eq.id} value={eq.id}>
-                          {eq.codigo_patrimonio} ({eq.estado_conservacao || 'Bom'})
-                        </SelectItem>
-                      ))}
+                    <SelectItem value="Próprio Solicitante">Próprio Solicitante</SelectItem>
+                    <SelectItem value="Próprio Beneficiário">Próprio Beneficiário</SelectItem>
+                    <SelectItem value="Familiar / Parente (Filho, Cônjuge, etc.)">Familiar / Parente</SelectItem>
+                    <SelectItem value="Representante Legal / Procurador">Representante Legal</SelectItem>
+                    <SelectItem value="Cuidador / Acompanhante">Cuidador / Acompanhante</SelectItem>
+                    <SelectItem value="Vizinho / Amigo Autorizado">Vizinho / Amigo Autorizado</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            ) : (
-              <div>
-                <Label>Equipamento Reservado</Label>
-                <Input
-                  disabled
-                  value={
-                    equipamentos.find((e) => e.id === selected.equipamento_reservado_id)
-                      ?.codigo_patrimonio || 'Equipamento Reservado'
-                  }
-                />
-              </div>
-            )}
-            <div>
-              <Label>Data da Retirada</Label>
-              <Input
-                disabled
-                value={`Hoje (${moment().format('DD/MM/YYYY')})`}
-                className="bg-slate-100 cursor-not-allowed font-medium text-slate-700"
-              />
             </div>
+
+            {/* Seção 4: Fotos da Vistoria de Retirada */}
+            <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-3">
+              <div className="flex justify-between items-center">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">4. Vistoria Fotográfica da Entrega</h4>
+                <span className="text-[11px] text-slate-500">{retiradaFiles.length}/5 fotos</span>
+              </div>
+              <div
+                className="border-2 border-dashed border-slate-300 rounded-lg p-5 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors bg-white"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+                }}
+                onDragLeave={(e) => {
+                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+                  const files = Array.from(e.dataTransfer.files);
+                  if (files.length + retiradaFiles.length <= 5) {
+                    setRetiradaFiles([...retiradaFiles, ...files]);
+                  } else {
+                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  }
+                }}
+                onClick={() => document.getElementById('retirada-file-input')?.click()}
+              >
+                <Upload className="w-7 h-7 mx-auto mb-1.5 text-slate-400" />
+                <p className="text-xs font-semibold text-slate-700">Clique ou arraste fotos do equipamento aqui</p>
+                <p className="text-[10px] text-slate-500">Fotos do estado atual no momento da entrega (armazenadas com segurança)</p>
+              </div>
+              <input
+                id="retirada-file-input"
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length + retiradaFiles.length <= 5) {
+                    setRetiradaFiles([...retiradaFiles, ...files]);
+                  } else {
+                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  }
+                }}
+              />
+
+              {retiradaFiles.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2">
+                  {retiradaFiles.map((file, idx) => (
+                    <div key={idx} className="relative group rounded-md overflow-hidden border border-slate-200">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`preview-${idx}`}
+                        className="w-full h-16 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRetiradaFiles((prev) => prev.filter((_, i) => i !== idx));
+                        }}
+                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-0.5 opacity-80 hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Seção 5: Observações */}
             <div>
-              <Label>Data Prevista de Devolução *</Label>
-              <DatePicker
-                value={retiradaEquipamento}
-                onChange={setRetiradaEquipamento}
-                placeholder="Selecione a data prevista de devolução"
+              <Label className="text-xs">Observações da Vistoria / Entrega</Label>
+              <Textarea
+                placeholder="Observações adicionais sobre o estado do equipamento, acessórios entregues, etc."
+                value={retiradaObservacoes}
+                onChange={(e) => setRetiradaObservacoes(e.target.value)}
+                className="mt-1 text-xs"
+                rows={2}
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRetiradaModalOpen(false)}>Cancelar</Button>
+
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
-              onClick={() => {
+              variant="outline"
+              onClick={() => setRetiradaModalOpen(false)}
+              disabled={uploadingRetirada || registrarRetiradaMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
                 if (!selected || !retiradaEquipamento) return;
                 const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
                 if (!eqId) {
@@ -1623,33 +1838,117 @@ export default function Solicitacoes() {
                   });
                   return;
                 }
-                registrarRetiradaMutation.mutate(
-                  {
-                    solicitacaoId: selected.id,
-                    equipamentoId: eqId,
-                    dataPrevistaDevolucao: new Date(retiradaEquipamento),
-                  },
-                  {
-                    onSuccess: () => {
-                      toast({ title: 'Retirada registrada com sucesso' });
-                      setRetiradaModalOpen(false);
-                      setRetiradaData('');
-                      setRetiradaEquipamento('');
-                      setRetiradaEquipamentoId('');
-                    },
-                    onError: (err: any) =>
-                      toast({ variant: 'destructive', title: 'Erro', description: err.message }),
+
+                setUploadingRetirada(true);
+                const uploadedUrls: string[] = [];
+
+                try {
+                  // 1. Upload de cada foto para o Supabase Storage via useUploadImagemRetirada
+                  for (const file of retiradaFiles) {
+                    await new Promise((resolve, reject) => {
+                      uploadImagemRetiradaMutation.mutate(
+                        {
+                          solicitacaoId: selected.id,
+                          file,
+                          descricao: `Vistoria de Retirada - ${file.name}`,
+                        },
+                        {
+                          onSuccess: (resData: any) => {
+                            if (resData?.url_imagem) {
+                              uploadedUrls.push(resData.url_imagem);
+                            }
+                            resolve(null);
+                          },
+                          onError: reject,
+                        }
+                      );
+                    });
                   }
-                );
+
+                  // 2. Registrar a Retirada persistindo dados completos
+                  registrarRetiradaMutation.mutate(
+                    {
+                      solicitacaoId: selected.id,
+                      equipamentoId: eqId,
+                      dataPrevistaDevolucao: new Date(retiradaEquipamento),
+                      nomeResponsavel: retiradaResponsavel.trim(),
+                      nomeRetirador: retiradaNomeRetirador.trim(),
+                      cpfRetirador: retiradaCpfRetirador.trim(),
+                      parentescoRetirador: retiradaParentesco,
+                      observacoes: retiradaObservacoes.trim(),
+                      imagensUrls: uploadedUrls,
+                    },
+                    {
+                      onSuccess: () => {
+                        toast({
+                          title: 'Retirada registrada com sucesso!',
+                          description: 'O empréstimo foi iniciado e o termo PDF gerado.',
+                        });
+
+                        // 3. Gerar e baixar automaticamente o Termo de Retirada em PDF
+                        try {
+                          const eqObj = equipamentos.find((e) => e.id === eqId);
+                          downloadTermoRetiradaPdf({
+                            solicitacao_id: selected.id,
+                            protocolo: selected.protocolo,
+                            nome_solicitante: selected.solicitante?.nome_completo || 'Solicitante',
+                            cpf_solicitante: selected.solicitante?.cpf,
+                            nome_beneficiario: selected.beneficiario?.nome_completo,
+                            cpf_beneficiario: selected.beneficiario?.cpf,
+                            descricao_equipamento: selected.tipo_equipamento?.nome || 'Equipamento',
+                            codigo_patrimonio: eqObj?.codigo_patrimonio,
+                            data_retirada: new Date(),
+                            data_prevista_devolucao: new Date(retiradaEquipamento),
+                            nome_responsavel: retiradaResponsavel.trim() || user?.full_name || 'Clube da Bengala',
+                            nome_retirador: retiradaNomeRetirador.trim() || selected.solicitante?.nome_completo || 'Solicitante',
+                            cpf_retirador: retiradaCpfRetirador.trim() || selected.solicitante?.cpf,
+                            parentesco_retirador: retiradaParentesco,
+                            observacoes: retiradaObservacoes.trim(),
+                            imagens_retirada_urls: uploadedUrls,
+                          });
+                        } catch (pdfErr) {
+                          console.warn('[PDF] Erro ao baixar termo de retirada:', pdfErr);
+                        }
+
+                        setRetiradaModalOpen(false);
+                        setRetiradaData('');
+                        setRetiradaEquipamento('');
+                        setRetiradaEquipamentoId('');
+                        setRetiradaResponsavel('');
+                        setRetiradaNomeRetirador('');
+                        setRetiradaCpfRetirador('');
+                        setRetiradaFiles([]);
+                        setRetiradaObservacoes('');
+                        setUploadingRetirada(false);
+                      },
+                      onError: (err: any) => {
+                        setUploadingRetirada(false);
+                        toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                      },
+                    }
+                  );
+                } catch (uploadErr: any) {
+                  setUploadingRetirada(false);
+                  toast({
+                    variant: 'destructive',
+                    title: 'Erro no Upload das Fotos',
+                    description: uploadErr.message || 'Falha ao enviar fotos da vistoria.',
+                  });
+                }
               }}
               disabled={
-                registrarRetiradaMutation.isPending || 
-                !retiradaEquipamento || 
+                uploadingRetirada ||
+                registrarRetiradaMutation.isPending ||
+                !retiradaEquipamento ||
+                !retiradaNomeRetirador ||
                 (!selected?.equipamento_reservado_id && !retiradaEquipamentoId)
               }
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {registrarRetiradaMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Confirmar Retirada
+              {(uploadingRetirada || registrarRetiradaMutation.isPending) && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              {uploadingRetirada ? 'Enviando Fotos...' : 'Confirmar Retirada & Gerar Termo'}
             </Button>
           </DialogFooter>
         </DialogContent>

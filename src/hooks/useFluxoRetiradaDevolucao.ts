@@ -60,10 +60,22 @@ export function useRegistrarRetirada() {
       solicitacaoId,
       equipamentoId,
       dataPrevistaDevolucao,
+      nomeResponsavel,
+      nomeRetirador,
+      cpfRetirador,
+      parentescoRetirador,
+      observacoes,
+      imagensUrls,
     }: {
       solicitacaoId: string;
       equipamentoId: string;
       dataPrevistaDevolucao: Date;
+      nomeResponsavel?: string;
+      nomeRetirador?: string;
+      cpfRetirador?: string;
+      parentescoRetirador?: string;
+      observacoes?: string;
+      imagensUrls?: string[];
     }) => {
       const { data: current, error: currentError } = await supabase
         .from('solicitacoes')
@@ -89,6 +101,15 @@ export function useRegistrarRetirada() {
         .eq('id', equipamentoId);
       if (eqError) throw eqError;
 
+      const reciboTextoInfo = JSON.stringify({
+        nome_responsavel: nomeResponsavel || null,
+        nome_retirador: nomeRetirador || null,
+        cpf_retirador: cpfRetirador || null,
+        parentesco_retirador: parentescoRetirador || null,
+        observacoes: observacoes || null,
+        imagens_urls: imagensUrls || [],
+      });
+
       // Criar registro de empréstimo
       const { data: empreData, error: empreError } = await supabase
         .from('emprestimos')
@@ -97,6 +118,7 @@ export function useRegistrarRetirada() {
           equipamento_id: equipamentoId,
           data_retirada: new Date().toISOString(),
           data_prevista_devolucao: dataPrevistaDevolucao.toISOString(),
+          recibo_texto_customizado: reciboTextoInfo,
         })
         .select()
         .single();
@@ -111,6 +133,12 @@ export function useRegistrarRetirada() {
           protocolo: current?.protocolo ?? null,
           equipamento_id: equipamentoId,
           data_prevista_devolucao: dataPrevistaDevolucao.toISOString(),
+          nome_responsavel: nomeResponsavel || null,
+          nome_retirador: nomeRetirador || null,
+          cpf_retirador: cpfRetirador || null,
+          parentesco_retirador: parentescoRetirador || null,
+          observacoes: observacoes || null,
+          imagens_count: imagensUrls?.length || 0,
         },
       });
       if (audit.error) {
