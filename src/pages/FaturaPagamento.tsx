@@ -169,7 +169,7 @@ export default function FaturaPagamento() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setFatura(data[0] as FaturaDetalhes);
+        setFatura(data[0] as unknown as FaturaDetalhes);
         setCpfVerified(true);
         toast({ title: 'Acesso liberado', description: 'Dados da fatura carregados com sucesso.' });
       } else {
