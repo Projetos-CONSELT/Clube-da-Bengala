@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/badge/Vite-6.x-purple?logo=vite" alt="Vite" />
     <img src="https://img.shields.io/badge/TailwindCSS-3.x-38bdf8?logo=tailwindcss" alt="Tailwind CSS" />
     <img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ecf8e?logo=supabase" alt="Supabase" />
-    <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
+    <img src="https://img.shields.io/badge/Desenvolvido%20por-CONSELT-003366?style=flat-square" alt="Desenvolvido por CONSELT" />
   </p>
 </div>
 
@@ -17,9 +17,9 @@
 
 ## 📌 Visão Geral do Sistema
 
-O **Clube da Bengala** é uma aplicação web corporativa e de impacto social projetada para centralizar e digitalizar o ciclo de vida do comodato de equipamentos de mobilidade e suporte ortopédico (cadeiras de rodas, muletas, andadores, camas hospitalares, entre outros).
+O **Clube da Bengala** é uma aplicação web corporativa e de impacto social desenvolvida para centralizar, digitalizar e assegurar rastreabilidade ao ciclo de vida do comodato de equipamentos de mobilidade e suporte ortopédico (como cadeiras de rodas, muletas, andadores e camas hospitalares).
 
-A solução integra controle de fila de pedidos, inventário patrimonial individualizado, auditoria com registro fotográfico, faturamento seguro de ressarcimento e controle de acesso baseado em níveis de autorização.
+O sistema integra controle de fila de solicitações, inventário patrimonial individualizado, auditoria com registro fotográfico de vistorias, faturamento seguro de ressarcimento e controle de acesso baseado em níveis de autorização (RBAC).
 
 ---
 
@@ -111,6 +111,16 @@ A solução integra controle de fila de pedidos, inventário patrimonial individ
 
 ---
 
-## 📄 Licença
+## ⚡ Desenvolvimento & Assinatura
 
-Este projeto é distribuído sob a licença [MIT](LICENSE).
+<div align="center">
+  <p>Projeto desenvolvido com excelência técnica por:</p>
+  <h3>🏢 <strong>CONSELT — Consultoria e Projetos Elétricos e Tecnológicos</strong></h3>
+  <p><em>Empresa Júnior dos Cursos de Engenharia Elétrica, Biomédica e Computação da Universidade Federal de Uberlândia (UFU)</em></p>
+</div>
+
+---
+
+## 📜 Licença e Propriedade Intelectual
+
+Este software e seu código-fonte são de propriedade e titularidade exclusiva sob a **Licença CONSELT**. Todos os direitos reservados. Qualquer reprodução, distribuição, modificação ou uso comercial/institucional não autorizado previamente pela CONSELT e pela entidade gestora é estritamente proibido.
