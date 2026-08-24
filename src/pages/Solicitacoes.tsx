@@ -67,6 +67,11 @@ import moment from 'moment';
 import 'moment/locale/pt-br';
 import { History } from 'lucide-react';
 
+import { useViaCEP } from '@/hooks/useViaCEP';
+import { useGeocoding } from '@/hooks/useGeocoding';
+import { MapSelector, type Nucleo } from '@/components/MapSelector';
+import { supabase } from '@/lib/supabase';
+
 moment.locale('pt-br');
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
@@ -628,6 +633,68 @@ export default function Solicitacoes() {
     motivo_solicitacao: '',
   });
 
+  const { data: cepData, loading: cepLoading, error: cepError, fetchCEP } = useViaCEP();
+  const { coordinates, loading: geoLoading, error: geoError, fetchCoordinates } = useGeocoding();
+  const [cepInput, setCepInput] = useState('');
+  const [nucleosProximos, setNucleosProximos] = useState<Nucleo[]>([]);
+  const [loadingNucleos, setLoadingNucleos] = useState(false);
+  const [selectedNucleoId, setSelectedNucleoId] = useState<string>('');
+  const [fallbackMode, setFallbackMode] = useState(false);
+
+  const handleCepBlur = async () => {
+    if (cepInput.length >= 8) {
+      const data = await fetchCEP(cepInput);
+      if (data) {
+        const enderecoCompleto = `${data.logradouro}, ${data.bairro}, ${data.localidade}, ${data.uf}, Brasil`;
+        const coords = await fetchCoordinates(enderecoCompleto);
+        
+        if (coords) {
+          buscarNucleosProximos(coords.latitude, coords.longitude);
+        } else {
+          setFallbackMode(true);
+          buscarTodosNucleosFallback();
+        }
+      }
+    }
+  };
+
+  const buscarNucleosProximos = async (lat: number, lon: number) => {
+    setLoadingNucleos(true);
+    try {
+      const { data, error } = await supabase.rpc('buscar_nucleos_proximos' as any, {
+        user_lat: lat,
+        user_lon: lon,
+        raio_km: 50
+      });
+      if (error) throw error;
+      
+      const nucleos = (data as unknown as Nucleo[]) || [];
+      setNucleosProximos(nucleos);
+      if (!nucleos.find((n: Nucleo) => n.id === selectedNucleoId)) {
+        setSelectedNucleoId('');
+      }
+    } catch (err) {
+      console.error("Erro ao buscar núcleos próximos", err);
+      setFallbackMode(true);
+      buscarTodosNucleosFallback();
+    } finally {
+      setLoadingNucleos(false);
+    }
+  };
+
+  const buscarTodosNucleosFallback = async () => {
+    setLoadingNucleos(true);
+    try {
+      const { data, error } = await supabase.from('nucleos').select('*');
+      const nucleosFallback = (data as unknown as Nucleo[]) || [];
+      setNucleosProximos(nucleosFallback);
+    } catch (err) {
+      console.error("Erro fallback de núcleos", err);
+    } finally {
+      setLoadingNucleos(false);
+    }
+  };
+
   const solicitacoes = solicitacoesQuery.data ?? [];
   const tipos = tiposQuery.data ?? [];
   const equipamentos = equipamentosQuery.data ?? [];
@@ -694,6 +761,10 @@ export default function Solicitacoes() {
 
   const openNewModal = () => {
     setFormData({ beneficiario_id: '', tipo_equipamento_id: '', subtipo_id: '', motivo_solicitacao: '' });
+    setCepInput('');
+    setSelectedNucleoId('');
+    setNucleosProximos([]);
+    setFallbackMode(false);
     setModalOpen(true);
   };
 
@@ -714,6 +785,7 @@ export default function Solicitacoes() {
         beneficiario_id: formData.beneficiario_id,
         tipo_equipamento_id: formData.tipo_equipamento_id,
         motivo_solicitacao: motivoFinal || undefined,
+        nucleo_id: selectedNucleoId || undefined,
       },
       {
         onSuccess: () => {
@@ -1158,7 +1230,7 @@ export default function Solicitacoes() {
 
       {/* Nova Solicitação */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nova Solicitação</DialogTitle>
             <DialogDescription>Preencha os dados para criar uma solicitação</DialogDescription>
@@ -1244,6 +1316,107 @@ export default function Solicitacoes() {
                 placeholder="Descreva o motivo..."
               />
             </div>
+            
+            {/* INÍCIO DO FLUXO DE ENDEREÇO E NÚCLEO */}
+            <div className="border-t pt-4 mt-6">
+              <h4 className="font-semibold text-lg mb-4">Endereço e Seleção de Núcleo</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>CEP</Label>
+                  <div className="relative">
+                    <Input 
+                      type="text"
+                      value={cepInput}
+                      onChange={e => setCepInput(e.target.value)}
+                      onBlur={handleCepBlur}
+                      placeholder="00000-000"
+                      maxLength={9}
+                    />
+                    {cepLoading && <Loader2 className="w-4 h-4 absolute right-3 top-3 animate-spin text-slate-400" />}
+                  </div>
+                  {cepError && <span className="text-red-500 text-xs mt-1 block">{cepError}</span>}
+                </div>
+                
+                <div>
+                  <Label>Rua</Label>
+                  <Input readOnly value={cepData?.logradouro || ''} className="bg-slate-50 text-slate-500" />
+                </div>
+                
+                <div>
+                  <Label>Bairro</Label>
+                  <Input readOnly value={cepData?.bairro || ''} className="bg-slate-50 text-slate-500" />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Cidade</Label>
+                    <Input readOnly value={cepData?.localidade || ''} className="bg-slate-50 text-slate-500" />
+                  </div>
+                  <div>
+                    <Label>UF</Label>
+                    <Input readOnly value={cepData?.uf || ''} className="bg-slate-50 text-slate-500" />
+                  </div>
+                </div>
+              </div>
+
+              {geoError && <div className="text-red-500 text-sm mt-2">{geoError}</div>}
+
+              {cepData && (
+                <div className="mt-6">
+                  <h5 className="font-medium text-slate-800 mb-3">Núcleo mais próximo</h5>
+                  
+                  {geoLoading && <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Localizando endereço...</p>}
+
+                  {!fallbackMode && coordinates ? (
+                    <>
+                      {nucleosProximos.length === 0 && !loadingNucleos && (
+                        <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg text-sm mb-4 border border-yellow-200">
+                          Nenhum núcleo encontrado em um raio de 50km.
+                        </div>
+                      )}
+                      <MapSelector 
+                        userLocation={coordinates}
+                        nucleos={nucleosProximos}
+                        selectedNucleoId={selectedNucleoId}
+                        onSelectNucleo={(n) => setSelectedNucleoId(n.id)}
+                        loading={loadingNucleos}
+                      />
+                    </>
+                  ) : fallbackMode ? (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-amber-50 text-amber-800 rounded border border-amber-200 text-sm">
+                        Mapa indisponível. Selecione o núcleo manualmente.
+                      </div>
+                      <Select value={selectedNucleoId} onValueChange={setSelectedNucleoId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um núcleo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nucleosProximos.map(n => (
+                            <SelectItem key={n.id} value={n.id}>
+                              {n.nome} ({n.endereco})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedNucleoId && (
+                        <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded text-sm mt-2">
+                          Núcleo selecionado com sucesso.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                  
+                  {!selectedNucleoId && !geoLoading && (
+                    <p className="text-sm text-red-500 mt-2 font-medium">
+                      * A seleção de um núcleo é obrigatória.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+            {/* FIM DO FLUXO DE ENDEREÇO E NÚCLEO */}
+            
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
@@ -1253,7 +1426,8 @@ export default function Solicitacoes() {
                 createMutation.isPending ||
                 !formData.tipo_equipamento_id ||
                 !formData.beneficiario_id ||
-                (availableSubtipos.length > 0 && !formData.subtipo_id)
+                (availableSubtipos.length > 0 && !formData.subtipo_id) ||
+                !selectedNucleoId
               }
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -1846,7 +2020,7 @@ export default function Solicitacoes() {
                   // 1. Upload de cada foto para o Supabase Storage via useUploadImagemRetirada
                   for (const file of retiradaFiles) {
                     await new Promise((resolve, reject) => {
-                      uploadImagemRetiradaMutation.mutate(
+                      uploadImagemMutation.mutate(
                         {
                           solicitacaoId: selected.id,
                           file,

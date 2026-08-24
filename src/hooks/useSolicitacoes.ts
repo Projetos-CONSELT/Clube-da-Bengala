@@ -205,10 +205,12 @@ export function useCreateSolicitacao() {
       beneficiario_id,
       tipo_equipamento_id,
       motivo_solicitacao,
+      nucleo_id,
     }: {
       beneficiario_id: string;
       tipo_equipamento_id: string;
       motivo_solicitacao?: string;
+      nucleo_id?: string;
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado.');
       
@@ -221,7 +223,9 @@ export function useCreateSolicitacao() {
         status: 'triagem',
       };
       
-      if (role === 'gerente' && user?.nucleo_id) {
+      if (nucleo_id) {
+        insertData.nucleo_id = nucleo_id;
+      } else if (role === 'gerente' && user?.nucleo_id) {
         insertData.nucleo_id = user.nucleo_id;
       }
 
