@@ -78,13 +78,15 @@ export default function Configuracoes() {
   const createTipo = useCreateTipoEquipamento();
   const deleteTipo = useDeleteTipoEquipamento();
 
-  // Estados de Recibo e Gateway Local Storage
+  // Estados de Recibo
   const [recibo, setRecibo] = useState(() => localStorage.getItem('recibo_template') || 'Recibo de empréstimo — Clube da Bengala');
   const [tipoForm, setTipoForm] = useState({ nome: '', descricao: '', limite_renovacoes: '3' });
-  const [gatewayProvider, setGatewayProvider] = useState(() => localStorage.getItem('gateway_provider') || 'simulado');
-  const [gatewayApiKey, setGatewayApiKey] = useState(() => localStorage.getItem('gateway_api_key') || '');
-  const [gatewayEnv, setGatewayEnv] = useState(() => localStorage.getItem('gateway_environment') || 'sandbox');
-  const [gatewayDefaultVal, setGatewayDefaultVal] = useState(() => localStorage.getItem('gateway_default_value') || '150');
+  
+  // Estados Gateway (Centralizados)
+  const [gatewayProvider, setGatewayProvider] = useState('simulado');
+  const [gatewayApiKey, setGatewayApiKey] = useState('');
+  const [gatewayEnv, setGatewayEnv] = useState('sandbox');
+  const [gatewayDefaultVal, setGatewayDefaultVal] = useState('150');
 
   // ==========================================
   // 1. CORREÇÃO DO FETCH - SUBST. .single() POR .maybeSingle()
@@ -141,13 +143,42 @@ export default function Configuracoes() {
     }
   };
 
+  // ==========================================
+  // FETCH DE CONFIGURAÇÕES FINANCEIRAS (SOMENTE CEO)
+  // ==========================================
+  const fetchConfiguracoesFinanceiras = async () => {
+    if (currentUserRole !== 'ceo') return;
+    try {
+      const { data, error } = await supabase
+        .from('configuracoes_financeiras')
+        .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[Configuracoes] Aviso no fetch financeiro:', error.message);
+      }
+      if (data) {
+        setGatewayProvider(data.gateway_provider || 'simulado');
+        setGatewayApiKey(data.gateway_api_key || '');
+        setGatewayEnv(data.gateway_environment || 'sandbox');
+        setGatewayDefaultVal(data.gateway_default_value?.toString() || '150');
+      }
+    } catch (err: any) {
+      console.error('[Configuracoes] Erro ao buscar config financeira:', err);
+    }
+  };
+
   useEffect(() => {
     if (isEditable) {
       void fetchConfiguracoes();
+      if (currentUserRole === 'ceo') {
+        void fetchConfiguracoesFinanceiras();
+      }
     } else {
       setIsLoading(false);
     }
-  }, [isEditable]);
+  }, [isEditable, currentUserRole]);
 
   // ==========================================
   // 2. CORREÇÃO DO UPDATE - ESTREITO .update().eq('id', 1) SEM .single()
@@ -293,13 +324,41 @@ export default function Configuracoes() {
     sonnerToast.success('Template de recibo salvo localmente');
   };
 
-  // Salvar Gateway Local
-  const saveGatewayConfigs = () => {
-    localStorage.setItem('gateway_provider', gatewayProvider);
-    localStorage.setItem('gateway_api_key', gatewayApiKey);
-    localStorage.setItem('gateway_environment', gatewayEnv);
-    localStorage.setItem('gateway_default_value', gatewayDefaultVal);
-    sonnerToast.success('Configurações da integração financeira salvas com sucesso');
+  // Salvar Gateway no Supabase (Apenas CEO)
+  const saveGatewayConfigs = async () => {
+    if (currentUserRole !== 'ceo') {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Restrito',
+        description: 'Apenas o CEO pode salvar as configurações financeiras.',
+      });
+      return;
+    }
+
+    try {
+      const payload = {
+        gateway_provider: gatewayProvider,
+        gateway_api_key: gatewayApiKey,
+        gateway_environment: gatewayEnv,
+        gateway_default_value: Number(gatewayDefaultVal) || 150,
+      };
+
+      const { error } = await supabase
+        .from('configuracoes_financeiras')
+        .update(payload)
+        .eq('id', 1);
+
+      if (error) throw error;
+
+      sonnerToast.success('Configurações financeiras salvas com sucesso');
+    } catch (err: any) {
+      console.error('Erro ao salvar config financeira:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar',
+        description: err?.message || 'Falha ao salvar integração.',
+      });
+    }
   };
 
   const addTipo = () => {
@@ -762,68 +821,84 @@ export default function Configuracoes() {
                 Gerencie os parâmetros de cobrança e o gateway de boletos de ressarcimento.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5 p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gatewayProvider">Provedor de Gateway</Label>
-                  <Select value={gatewayProvider} onValueChange={setGatewayProvider}>
-                    <SelectTrigger id="gatewayProvider" className="bg-white border-slate-200">
-                      <SelectValue placeholder="Selecione o gateway" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="simulado">Simulado (Ambiente de Testes)</SelectItem>
-                      <SelectItem value="asaas">Asaas (Boleto/Pix)</SelectItem>
-                      <SelectItem value="iugu">Iugu (Boleto/Pix)</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {currentUserRole === 'ceo' ? (
+              <CardContent className="space-y-5 p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gatewayProvider">Provedor de Gateway</Label>
+                    <Select value={gatewayProvider} onValueChange={setGatewayProvider}>
+                      <SelectTrigger id="gatewayProvider" className="bg-white border-slate-200">
+                        <SelectValue placeholder="Selecione o gateway" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="simulado">Simulado (Ambiente de Testes)</SelectItem>
+                        <SelectItem value="asaas">Asaas (Boleto/Pix)</SelectItem>
+                        <SelectItem value="iugu">Iugu (Boleto/Pix)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="gatewayEnv">Ambiente do Provedor</Label>
+                    <Select value={gatewayEnv} onValueChange={setGatewayEnv} disabled={gatewayProvider === 'simulado'}>
+                      <SelectTrigger id="gatewayEnv" className="bg-white border-slate-200">
+                        <SelectValue placeholder="Selecione o ambiente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sandbox">Sandbox / Homologação (Testes)</SelectItem>
+                        <SelectItem value="producao">Produção (Real)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="gatewayEnv">Ambiente do Provedor</Label>
-                  <Select value={gatewayEnv} onValueChange={setGatewayEnv} disabled={gatewayProvider === 'simulado'}>
-                    <SelectTrigger id="gatewayEnv" className="bg-white border-slate-200">
-                      <SelectValue placeholder="Selecione o ambiente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sandbox">Sandbox / Homologação (Testes)</SelectItem>
-                      <SelectItem value="producao">Produção (Real)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="gatewayApiKey">Chave de API / Token do Provedor</Label>
+                  <Input
+                    id="gatewayApiKey"
+                    type="password"
+                    disabled={gatewayProvider === 'simulado'}
+                    placeholder={gatewayProvider === 'simulado' ? 'Não é necessário chave para o gateway simulado' : 'Digite a chave secreta de API...'}
+                    value={gatewayApiKey}
+                    onChange={(e) => setGatewayApiKey(e.target.value)}
+                    className="bg-white border-slate-200"
+                  />
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="gatewayApiKey">Chave de API / Token do Provedor</Label>
-                <Input
-                  id="gatewayApiKey"
-                  type="password"
-                  disabled={gatewayProvider === 'simulado'}
-                  placeholder={gatewayProvider === 'simulado' ? 'Não é necessário chave para o gateway simulado' : 'Digite a chave secreta de API...'}
-                  value={gatewayApiKey}
-                  onChange={(e) => setGatewayApiKey(e.target.value)}
-                  className="bg-white border-slate-200"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gatewayDefaultVal">Valor Padrão de Ressarcimento (R$)</Label>
+                  <Input
+                    id="gatewayDefaultVal"
+                    type="number"
+                    step="0.01"
+                    placeholder="150.00"
+                    value={gatewayDefaultVal}
+                    onChange={(e) => setGatewayDefaultVal(e.target.value)}
+                    className="bg-white border-slate-200"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="gatewayDefaultVal">Valor Padrão de Ressarcimento (R$)</Label>
-                <Input
-                  id="gatewayDefaultVal"
-                  type="number"
-                  step="0.01"
-                  placeholder="150.00"
-                  value={gatewayDefaultVal}
-                  onChange={(e) => setGatewayDefaultVal(e.target.value)}
-                  className="bg-white border-slate-200"
-                />
-              </div>
-
-              <div className="pt-2">
-                <Button onClick={saveGatewayConfigs} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-                  Salvar Configurações Financeiras
-                </Button>
-              </div>
-            </CardContent>
+                <div className="pt-2">
+                  <Button onClick={saveGatewayConfigs} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                    Salvar Configurações Financeiras
+                  </Button>
+                </div>
+              </CardContent>
+            ) : (
+              <CardContent className="p-8">
+                <div className="flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
+                    <ShieldAlert className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">Acesso Restrito</h3>
+                    <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+                      A visualização e alteração da integração de pagamentos é exclusiva para o CEO.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            )}
           </Card>
 
           <Card className="border-slate-200/80 shadow-sm bg-white">

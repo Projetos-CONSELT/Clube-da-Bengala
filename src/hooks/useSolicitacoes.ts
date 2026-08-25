@@ -343,4 +343,32 @@ export function useReservarEquipamento() {
   });
 }
 
+export function useTransferirSolicitacao() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      solicitacaoId,
+      novoNucleoId,
+      motivo,
+    }: {
+      solicitacaoId: string;
+      novoNucleoId: string;
+      motivo: string;
+    }) => {
+      const { data, error } = await supabase.rpc('transferir_solicitacao', {
+        p_solicitacao_id: solicitacaoId,
+        p_novo_nucleo_id: novoNucleoId,
+        p_motivo: motivo,
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: SOLICITACOES_KEY });
+      void qc.invalidateQueries({ queryKey: buildAuditLogRequestKey(variables.solicitacaoId) });
+    },
+  });
+}
+
 export { FILA_STATUSES };

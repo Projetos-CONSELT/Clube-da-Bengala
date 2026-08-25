@@ -4,7 +4,7 @@
  * Licença: Licença Proprietária CONSELT
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
   CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard, Copy,
@@ -40,6 +40,7 @@ import {
   useUpdateSolicitacao,
   useDeleteSolicitacao,
   useReservarEquipamento,
+  useTransferirSolicitacao,
 } from '@/hooks/useSolicitacoes';
 import { useBeneficiariosQuery } from '@/hooks/useBeneficiarios';
 import { useAuditLogsQuery } from '@/hooks/useAuditLogs';
@@ -576,6 +577,7 @@ export default function Solicitacoes() {
   const updateMutation = useUpdateSolicitacao();
   const deleteMutation = useDeleteSolicitacao();
   const reservarMutation = useReservarEquipamento();
+  const transferirMutation = useTransferirSolicitacao();
   const uploadImagemMutation = useUploadImagemRetirada();
 
   const registrarPrazoMutation = useRegistrarPrazoRetirada();
@@ -601,6 +603,21 @@ export default function Solicitacoes() {
   const [devolucaoModalOpen, setDevolucaoModalOpen] = useState(false);
   const [boletoModalOpen, setBoletoModalOpen] = useState(false);
   const [pagamentoModalOpen, setPagamentoModalOpen] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferDestino, setTransferDestino] = useState('');
+  const [transferMotivo, setTransferMotivo] = useState('');
+  const [nucleosAtivos, setNucleosAtivos] = useState<Nucleo[]>([]);
+
+  useEffect(() => {
+    if (transferModalOpen) {
+      supabase.from('nucleos').select('*').eq('ativo', true).then(({ data }) => {
+        setNucleosAtivos((data || []) as Nucleo[]);
+      });
+    } else {
+      setTransferDestino('');
+      setTransferMotivo('');
+    }
+  }, [transferModalOpen]);
 
   const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
   const [triageDecision, setTriageDecision] = useState<'aprovado' | 'recusado' | null>(null);
@@ -1030,9 +1047,14 @@ export default function Solicitacoes() {
               </DropdownMenuItem>
             )}
             {isBackOffice && (
-              <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
-                <Edit className="w-4 h-4 mr-2" /> Triar
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
+                  <Edit className="w-4 h-4 mr-2" /> Triar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSelected(s); setTransferModalOpen(true); }}>
+                  <ArrowRight className="w-4 h-4 mr-2" /> Transferir de Núcleo
+                </DropdownMenuItem>
+              </>
             )}
             {(isBackOffice || s.solicitante_id === user?.id) && (
               <>
@@ -2293,9 +2315,6 @@ export default function Solicitacoes() {
                 <span className="text-xs font-semibold text-indigo-800 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-600" /> Geração Automática
                 </span>
-                <span className="text-[10px] text-slate-500 uppercase font-mono">
-                  Gateway: {localStorage.getItem('gateway_provider') || 'simulado'}
-                </span>
               </div>
               <p className="text-[11px] text-slate-600">
                 Gere o link de cobrança do Pix/Boleto integrado automaticamente a partir dos dados do solicitante.
@@ -2310,7 +2329,25 @@ export default function Solicitacoes() {
                   if (!selected) return;
                   setGenerandoCobranca(true);
                   try {
-                    const defaultVal = localStorage.getItem('gateway_default_value') || '150';
+                    // Consultar configuração centralizada do gateway
+                    const { data: configFin, error: configErr } = await supabase
+                      .from('configuracoes_financeiras')
+                      .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value')
+                      .eq('id', 1)
+                      .single();
+
+                    if (configErr || !configFin || !configFin.gateway_api_key) {
+                      toast({
+                        variant: 'destructive',
+                        title: 'Configuração Incompleta',
+                        description: 'A conta central de pagamentos ainda não foi configurada pelo Coordenador Geral.',
+                      });
+                      setGenerandoCobranca(false);
+                      return;
+                    }
+
+                    const defaultVal = configFin.gateway_default_value?.toString() || '150';
+
                     const res = await gerarCobrancaGateway({
                       solicitacaoId: selected.id,
                       nomeCliente: selected.solicitante?.nome_completo || 'Cliente',
@@ -2318,9 +2355,9 @@ export default function Solicitacoes() {
                       emailCliente: selected.solicitante?.email || '',
                       valor: parseFloat(boletoValor) || parseFloat(defaultVal),
                       prazoVencimento: boloPrazo ? new Date(boloPrazo) : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-                      provedor: (localStorage.getItem('gateway_provider') || 'simulado') as any,
-                      apiKey: localStorage.getItem('gateway_api_key') || undefined,
-                      ambiente: (localStorage.getItem('gateway_environment') || 'sandbox') as any,
+                      provedor: (configFin.gateway_provider || 'simulado') as any,
+                      apiKey: configFin.gateway_api_key,
+                      ambiente: (configFin.gateway_environment || 'sandbox') as any,
                     });
                     if (res.apiSuccess) {
                       setBoletoLink(res.linkBoleto);
@@ -2484,6 +2521,73 @@ export default function Solicitacoes() {
             >
               {registrarPagamentoMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar Pagamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={transferModalOpen} onOpenChange={setTransferModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferir Solicitação</DialogTitle>
+            <DialogDescription>
+              Transfira esta solicitação para outro núcleo. Informe o núcleo de destino e o motivo da transferência.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Núcleo de Destino</Label>
+              <Select value={transferDestino} onValueChange={setTransferDestino}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o núcleo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {nucleosAtivos
+                    .filter((n) => n.id !== selected?.nucleo_id)
+                    .map((nucleo) => (
+                      <SelectItem key={nucleo.id} value={nucleo.id}>
+                        {nucleo.nome}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo da Transferência</Label>
+              <Textarea
+                placeholder="Informe o motivo da transferência..."
+                value={transferMotivo}
+                onChange={(e) => setTransferMotivo(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferModalOpen(false)}>Cancelar</Button>
+            <Button
+              disabled={!transferDestino || transferirMutation.isPending}
+              onClick={() => {
+                if (!selected || !transferDestino) return;
+                transferirMutation.mutate(
+                  {
+                    solicitacaoId: selected.id,
+                    novoNucleoId: transferDestino,
+                    motivo: transferMotivo,
+                  },
+                  {
+                    onSuccess: () => {
+                      toast({ title: 'Solicitação transferida!' });
+                      setTransferModalOpen(false);
+                    },
+                    onError: (err: any) => {
+                      toast({ variant: 'destructive', title: 'Erro na transferência', description: err.message });
+                    }
+                  }
+                );
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {transferirMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Transferir solicitação
             </Button>
           </DialogFooter>
         </DialogContent>

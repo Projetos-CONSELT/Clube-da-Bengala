@@ -209,10 +209,31 @@ export default function Login() {
         setMode('signin');
       }
     } catch (err: unknown) {
+      let title = 'Erro';
+      let description = getErrorMessage(err);
+      
+      const errMsg = description.toLowerCase();
+      
+      if (
+        (err as any)?.code === 'user_already_exists' || 
+        errMsg.includes('already registered') || 
+        errMsg.includes('já está cadastrado') ||
+        errMsg.includes('email_exists') ||
+        (err as any)?.code === '23505' && errMsg.includes('email')
+      ) {
+        description = 'Este e-mail já está cadastrado. Por favor, faça login.';
+      } else if (
+        errMsg.includes('usuarios_cpf_key') || 
+        (err as any)?.constraint === 'usuarios_cpf_key' ||
+        ((err as any)?.code === '23505' && errMsg.includes('cpf'))
+      ) {
+        description = 'Este CPF já está vinculado a uma conta. Por favor, faça login em vez de criar um novo cadastro.';
+      }
+
       toast({
         variant: 'destructive',
-        title: 'Erro',
-        description: getErrorMessage(err),
+        title,
+        description,
       });
     } finally {
       setLoading(false);
