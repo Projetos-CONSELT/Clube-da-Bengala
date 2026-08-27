@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 import type { Json, SolicitacaoInsert, SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
 import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
@@ -17,9 +18,10 @@ interface SolicitacoesQueryOptions {
 
 export function useSolicitacoesQuery({ statuses, tipoId, includeEncerradas, page, pageSize }: SolicitacoesQueryOptions = {}) {
   const { user, role, isAuthenticated } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
 
   return useQuery({
-    queryKey: [...SOLICITACOES_KEY, { statuses, tipoId, includeEncerradas, page, pageSize, role, userId: user?.id }],
+    queryKey: [...SOLICITACOES_KEY, { statuses, tipoId, includeEncerradas, page, pageSize, role, userId: user?.id, nucleoId: selectedNucleusId }],
     enabled: isAuthenticated,
     queryFn: async (): Promise<SolicitacaoComRelacoes[]> => {
       let q = supabase
@@ -29,7 +31,12 @@ export function useSolicitacoesQuery({ statuses, tipoId, includeEncerradas, page
 
       if (statuses?.length) q = q.in('status', statuses);
       if (tipoId) q = q.eq('tipo_equipamento_id', tipoId);
-      if (role === 'solicitante' && user?.id) q = q.eq('solicitante_id', user.id);
+      
+      if (role === 'solicitante' && user?.id) {
+        q = q.eq('solicitante_id', user.id);
+      } else if (isBackOfficeRole(role) && selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
 
       if (!includeEncerradas && (!statuses || !statuses.includes('encerrada'))) {
         q = q.neq('status', 'encerrada');
@@ -50,13 +57,20 @@ export function useSolicitacoesQuery({ statuses, tipoId, includeEncerradas, page
 
 export function useEquipamentosQuery() {
   const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: ['equipamentos'],
+    queryKey: ['equipamentos', { nucleoId: selectedNucleusId }],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('equipamentos')
         .select('*, tipo:tipos_equipamento(*)');
+      
+      if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
+        
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },

@@ -19,6 +19,7 @@ import {
   ListOrdered,
   Send,
   Shield,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,9 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
 import { useNotificacoesComBadges } from '@/hooks/useNotificacoes';
+import { useCeoContext } from '@/lib/CeoContext';
+import { useNucleosQuery } from '@/hooks/useNucleos';
+import NucleoSelectorModal from '@/components/NucleoSelectorModal';
 
 interface LayoutProps {
   children: ReactNode;
@@ -74,7 +78,6 @@ const navigation: NavItem[] = [
 const roleBadgeStyles: Record<string, string> = {
   ceo: 'bg-indigo-900 text-white border-indigo-700',
   gerente: 'bg-purple-50 text-purple-700 border-purple-200',
-  coordenador: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   atendente: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   solicitante: 'bg-slate-100 text-slate-700 border-slate-200',
 };
@@ -85,8 +88,6 @@ const getRoleLabel = (r: string | undefined | null) => {
       return 'CEO';
     case 'gerente':
       return 'Gerente';
-    case 'coordenador':
-      return 'Coordenador';
     case 'atendente':
       return 'Atendente';
     case 'solicitante':
@@ -99,11 +100,17 @@ const getRoleLabel = (r: string | undefined | null) => {
 export default function Layout({ children, currentPageName }: LayoutProps) {
   const { user, profile, isLoadingAuth, logout, role, refreshProfile } = useAuth();
   const { unreadCount, alteracoesList, marcarTodasLidas } = useNotificacoesComBadges();
+  const { isCeo, selectedNucleusId } = useCeoContext();
+  const { data: nucleos = [] } = useNucleosQuery();
+  
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [roleRequestModalOpen, setRoleRequestModalOpen] = useState(false);
+  const [isChangeNucleusOpen, setIsChangeNucleusOpen] = useState(false);
   const [requestedRole, setRequestedRole] = useState<string>('atendente');
   const [submittingRoleRequest, setSubmittingRoleRequest] = useState(false);
   const { toast } = useToast();
+
+  const selectedNucleusName = nucleos.find(n => n.id === selectedNucleusId)?.nome;
 
   const handleRequestRole = async () => {
     if (!user?.id) return;
@@ -136,7 +143,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   const visibleNav = navigation.filter(
     (item) =>
       (!item.backOfficeOnly || isBackOfficeRole(role)) &&
-      (!item.managerOnly || role === 'gerente' || role === 'coordenador' || role === 'ceo') &&
+      (!item.managerOnly || role === 'gerente' || role === 'ceo') &&
       (!item.gerenteOnly || role === 'gerente' || role === 'ceo')
   );
 
@@ -252,9 +259,17 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
               >
                 <Menu className="w-5 h-5" />
               </Button>
-              <h2 className="text-lg font-semibold text-slate-800">
-                {navigation.find((n) => n.href === currentPageName)?.name || 'Painel'}
-              </h2>
+              <div className="flex flex-col">
+                <h2 className="text-lg font-semibold text-slate-800 leading-tight">
+                  {navigation.find((n) => n.href === currentPageName)?.name || 'Painel'}
+                </h2>
+                {isCeo && selectedNucleusName && (
+                  <span className="text-xs font-medium text-blue-600 flex items-center gap-1 mt-0.5">
+                    <Building2 className="w-3 h-3" />
+                    Núcleo: {selectedNucleusName}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -338,6 +353,15 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                     </span>
                   </div>
                   <DropdownMenuSeparator />
+                  {isCeo && (
+                    <>
+                      <DropdownMenuItem onClick={() => setIsChangeNucleusOpen(true)} className="cursor-pointer">
+                        <Building2 className="w-4 h-4 mr-2 text-blue-600" />
+                        Trocar Núcleo Ativo
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   {(role === 'gerente' || role === 'ceo') && (
                     <>
                       <DropdownMenuItem asChild>
@@ -401,7 +425,6 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="coordenador">Coordenador</SelectItem>
                   <SelectItem value="atendente">Atendente</SelectItem>
                   <SelectItem value="solicitante">Solicitante</SelectItem>
                 </SelectContent>
@@ -430,6 +453,14 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {isCeo && (
+        <NucleoSelectorModal
+          open={isChangeNucleusOpen}
+          onOpenChange={setIsChangeNucleusOpen}
+          forceBlocking={false}
+        />
+      )}
     </div>
   );
 }

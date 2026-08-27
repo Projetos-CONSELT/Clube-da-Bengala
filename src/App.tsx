@@ -13,11 +13,15 @@ import { pagesConfig } from '@/pages.config';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from '@/lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { CeoProvider, useCeoContext } from '@/lib/CeoContext';
+import NucleoSelectorModal from '@/components/NucleoSelectorModal';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
 import Termos from '@/pages/Termos';
 import ResetPassword from '@/pages/ResetPassword';
 import FaturaPagamento from '@/pages/FaturaPagamento';
+import QueroAjudar from '@/pages/QueroAjudar';
+import VerificarEmail from '@/pages/VerificarEmail';
 import type { UserRole } from '@/types/database.types';
 import type { ReactNode } from 'react';
 
@@ -37,8 +41,8 @@ const LayoutWrapper = ({ children, currentPageName }: LayoutWrapperProps) =>
     <>{children}</>
   );
 
-const BACK_OFFICE_ROLES: UserRole[] = ['ceo', 'gerente', 'coordenador', 'atendente'];
-const ALL_ROLES: UserRole[] = ['ceo', 'gerente', 'coordenador', 'atendente', 'solicitante'];
+const BACK_OFFICE_ROLES: UserRole[] = ['ceo', 'gerente', 'atendente'];
+const ALL_ROLES: UserRole[] = ['ceo', 'gerente', 'atendente', 'solicitante'];
 
 const PAGE_ROLES: Record<string, UserRole[]> = {
   Dashboard: BACK_OFFICE_ROLES,
@@ -47,7 +51,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Pessoas: ALL_ROLES,
   Equipamentos: BACK_OFFICE_ROLES,
   Emprestimos: BACK_OFFICE_ROLES,
-  Relatorios: ['gerente', 'coordenador'],
+  Relatorios: ['ceo', 'gerente'],
   Fila: BACK_OFFICE_ROLES,
   Doacoes: BACK_OFFICE_ROLES,
   Manutencao: BACK_OFFICE_ROLES,
@@ -58,6 +62,8 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authChecked, role } = useAuth();
+
+  const { isCeo, selectedNucleusId } = useCeoContext();
 
   if (isLoadingPublicSettings || (isLoadingAuth && !authChecked)) {
     return (
@@ -70,10 +76,20 @@ const AuthenticatedApp = () => {
   const unauthenticated = <Navigate to="/login" replace />;
 
   return (
-    <Routes>
+    <>
+      {isCeo && (
+        <NucleoSelectorModal 
+          open={!selectedNucleusId} 
+          onOpenChange={() => {}} 
+          forceBlocking={true} 
+        />
+      )}
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/termos" element={<Termos />} />
+      <Route path="/quero-ajudar" element={<QueroAjudar />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verificar-email" element={<VerificarEmail />} />
       <Route path="/fatura/:solicitacaoId" element={<FaturaPagamento />} />
 
       <Route
@@ -118,7 +134,8 @@ const AuthenticatedApp = () => {
       })}
 
       <Route path="*" element={<PageNotFound />} />
-    </Routes>
+      </Routes>
+    </>
   );
 };
 
@@ -126,10 +143,12 @@ function App() {
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <NavigationTracker />
-          <AuthenticatedApp />
-        </Router>
+        <CeoProvider>
+          <Router>
+            <NavigationTracker />
+            <AuthenticatedApp />
+          </Router>
+        </CeoProvider>
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>

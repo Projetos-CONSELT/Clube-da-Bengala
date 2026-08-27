@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 import type { EmprestimoInsert } from '@/types/database.types';
 import { isBackOfficeRole, type EmprestimoComRelacoes } from '@/types/domain';
@@ -9,17 +10,24 @@ export const EMPRESTIMOS_KEY = ['emprestimos'] as const;
 
 export function useEmprestimosQuery() {
   const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: EMPRESTIMOS_KEY,
+    queryKey: [...EMPRESTIMOS_KEY, { nucleoId: selectedNucleusId }],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async (): Promise<EmprestimoComRelacoes[]> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('emprestimos')
         .select(
           '*, solicitacao:solicitacoes(*, solicitante:usuarios(*), beneficiario:beneficiarios(*)), equipamento:equipamentos(*, tipo:tipos_equipamento(*))'
         )
         .is('data_devolucao_realizada', null)
         .order('created_at', { ascending: false });
+        
+      if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
+      
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as EmprestimoComRelacoes[];
     },
@@ -28,11 +36,11 @@ export function useEmprestimosQuery() {
 
 export function useCreateEmprestimo() {
   const qc = useQueryClient();
-  const { user, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useMutation({
     mutationFn: async (payload: EmprestimoInsert) => {
-      if (role === 'gerente' && user?.nucleo_id) {
-        payload.nucleo_id = user.nucleo_id;
+      if (selectedNucleusId) {
+        payload.nucleo_id = selectedNucleusId;
       }
       const { data, error } = await supabase.from('emprestimos').insert(payload).select().single();
       if (error) throw error;

@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import TermosContent from '@/components/TermosContent';
 
 type AuthMode = 'signin' | 'signup' | 'forgot';
 
@@ -206,13 +208,18 @@ export default function Login() {
           description: 'Verifique seu e-mail para confirmar a conta antes de entrar.',
         });
         resetSignupFields();
-        setMode('signin');
+        navigate(`/verificar-email?email=${encodeURIComponent(email)}`);
       }
     } catch (err: unknown) {
       let title = 'Erro';
       let description = getErrorMessage(err);
       
       const errMsg = description.toLowerCase();
+      
+      if (errMsg.includes('email not confirmed')) {
+        navigate(`/verificar-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       
       if (
         (err as any)?.code === 'user_already_exists' || 
@@ -447,15 +454,30 @@ export default function Login() {
                   onChange={(e) => setAcceptedTerms(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
                 />
-                <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none">
-                  Li e aceito os{' '}
-                  <Link
-                    to="/termos"
-                    className="text-blue-600 hover:underline font-semibold"
-                  >
-                    Termos de Serviço
-                  </Link>{' '}
-                  do Clube da Bengala.
+                <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none flex items-center gap-1">
+                  Li e aceito os
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button type="button" className="text-blue-600 hover:underline font-semibold ml-1 outline-none">
+                        Termos de Serviço
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                          Termos de Serviço
+                        </DialogTitle>
+                        <DialogDescription>
+                          Clube da Bengala
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4">
+                        <TermosContent />
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  {' '}do Clube da Bengala.
                 </Label>
               </div>
             )}

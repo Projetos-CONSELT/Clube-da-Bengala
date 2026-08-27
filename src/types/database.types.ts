@@ -26,6 +26,7 @@ export type Database = {
           created_at: string | null;
           solicitacao_papel: string | null;
           nucleo_id: string | null;
+          pode_criar_nucleos: boolean | null;
         };
         Insert: {
           id: string;
@@ -43,6 +44,7 @@ export type Database = {
           created_at?: string | null;
           solicitacao_papel?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Update: {
           id?: string;
@@ -60,6 +62,52 @@ export type Database = {
           created_at?: string | null;
           solicitacao_papel?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
+        };
+        Relationships: [];
+      };
+      nucleos: {
+        Row: {
+          id: string;
+          nome: string;
+          cep: string;
+          estado: string;
+          cidade: string;
+          bairro: string;
+          rua: string;
+          numero: string;
+          complemento: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          cep: string;
+          estado: string;
+          cidade: string;
+          bairro: string;
+          rua: string;
+          numero: string;
+          complemento?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          cep?: string;
+          estado?: string;
+          cidade?: string;
+          bairro?: string;
+          rua?: string;
+          numero?: string;
+          complemento?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          created_at?: string | null;
         };
         Relationships: [];
       };
@@ -142,6 +190,7 @@ export type Database = {
           doador_id: string | null;
           created_at: string | null;
           nucleo_id: string | null;
+          pode_criar_nucleos: boolean | null;
         };
         Insert: {
           id?: string;
@@ -153,6 +202,7 @@ export type Database = {
           doador_id?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Update: {
           id?: string;
@@ -164,6 +214,7 @@ export type Database = {
           doador_id?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Relationships: [
           {
@@ -204,6 +255,7 @@ export type Database = {
           data_pagamento_ressarcimento: string | null;
           created_at: string | null;
           nucleo_id: string | null;
+          pode_criar_nucleos: boolean | null;
         };
         Insert: {
           id?: string;
@@ -226,6 +278,7 @@ export type Database = {
           data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Update: {
           id?: string;
@@ -248,6 +301,7 @@ export type Database = {
           data_pagamento_ressarcimento?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Relationships: [
           {
@@ -330,6 +384,7 @@ export type Database = {
           recibo_texto_customizado: string | null;
           created_at: string | null;
           nucleo_id: string | null;
+          pode_criar_nucleos: boolean | null;
         };
         Insert: {
           id?: string;
@@ -342,6 +397,7 @@ export type Database = {
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Update: {
           id?: string;
@@ -354,6 +410,7 @@ export type Database = {
           recibo_texto_customizado?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
+          pode_criar_nucleos?: boolean | null;
         };
         Relationships: [
           {
@@ -675,7 +732,7 @@ export type Database = {
       };
     };
     Enums: {
-      user_role: 'ceo' | 'gerente' | 'coordenador' | 'atendente' | 'solicitante';
+      user_role: 'ceo' | 'gerente' | 'atendente' | 'solicitante';
       status_equipamento:
         | 'disponivel'
         | 'reservado'
@@ -736,6 +793,10 @@ export type ImagemRetiradaUpdate = Database['public']['Tables']['imagens_retirad
 export type ImagemDevolucao = Database['public']['Tables']['imagens_devolucao']['Row'];
 export type ImagemDevolucaoInsert = Database['public']['Tables']['imagens_devolucao']['Insert'];
 export type ImagemDevolucaoUpdate = Database['public']['Tables']['imagens_devolucao']['Update'];
+
+export type Nucleo = Database['public']['Tables']['nucleos']['Row'];
+export type NucleoInsert = Database['public']['Tables']['nucleos']['Insert'];
+export type NucleoUpdate = Database['public']['Tables']['nucleos']['Update'];
 
 export type Notificacao = Database['public']['Tables']['notificacoes']['Row'];
 export type NotificacaoInsert = Database['public']['Tables']['notificacoes']['Insert'];

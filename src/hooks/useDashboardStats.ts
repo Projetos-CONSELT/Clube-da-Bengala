@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 import { isBackOfficeRole } from '@/types/domain';
 
 export interface DashboardStats {
@@ -29,17 +30,32 @@ export interface OperacionalAlerta {
 
 export function useDashboardStats() {
   const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', { nucleoId: selectedNucleusId }],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async (): Promise<DashboardStats> => {
+      let qUsuarios = supabase.from('usuarios').select('id, is_inadimplente, nucleo_id');
+      let qBeneficiarios = supabase.from('beneficiarios').select('id');
+      let qEquipamentos = supabase.from('equipamentos').select('id, status, nucleo_id');
+      let qSolicitacoes = supabase.from('solicitacoes').select('id, status, valor_boleto_ressarcimento, pagamento_ressarcimento_realizado, nucleo_id');
+      let qEmprestimos = supabase.from('emprestimos').select('id, data_prevista_devolucao, data_devolucao_realizada, nucleo_id');
+      let qRecibos = supabase.from('recibos_pagamento').select('solicitacao_id, valor_pago');
+
+      if (selectedNucleusId) {
+        qUsuarios = qUsuarios.eq('nucleo_id', selectedNucleusId);
+        qEquipamentos = qEquipamentos.eq('nucleo_id', selectedNucleusId);
+        qSolicitacoes = qSolicitacoes.eq('nucleo_id', selectedNucleusId);
+        qEmprestimos = qEmprestimos.eq('nucleo_id', selectedNucleusId);
+      }
+
       const [usuarios, beneficiarios, equipamentos, solicitacoes, emprestimos, recibos] = await Promise.all([
-        supabase.from('usuarios').select('id, is_inadimplente'),
-        supabase.from('beneficiarios').select('id'),
-        supabase.from('equipamentos').select('id, status'),
-        supabase.from('solicitacoes').select('id, status, valor_boleto_ressarcimento, pagamento_ressarcimento_realizado'),
-        supabase.from('emprestimos').select('id, data_prevista_devolucao, data_devolucao_realizada'),
-        supabase.from('recibos_pagamento').select('solicitacao_id, valor_pago')
+        qUsuarios,
+        qBeneficiarios,
+        qEquipamentos,
+        qSolicitacoes,
+        qEmprestimos,
+        qRecibos
       ]);
 
       if (usuarios.error) throw usuarios.error;

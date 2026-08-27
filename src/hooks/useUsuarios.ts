@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 import type { UsuarioInsert, UsuarioUpdate, UserRole } from '@/types/database.types';
 import { isBackOfficeRole } from '@/types/domain';
 
@@ -8,14 +9,22 @@ export const USUARIOS_KEY = ['usuarios'] as const;
 
 export function useUsuariosQuery() {
   const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
+
   return useQuery({
-    queryKey: USUARIOS_KEY,
+    queryKey: [...USUARIOS_KEY, { nucleoId: selectedNucleusId }],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('usuarios')
         .select('*')
         .order('created_at', { ascending: false });
+        
+      if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
+      
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },

@@ -85,7 +85,7 @@ export default function FaturaPagamento() {
   // Permissões por papel
   const isManager = role === 'gerente' || role === 'ceo';
   const isAtendente = role === 'atendente';
-  const isBackOffice = isManager || isAtendente || role === 'coordenador';
+  const isBackOffice = isManager || isAtendente;
 
   // Se o usuário já estiver logado e for back-office, carrega automaticamente os dados
   useEffect(() => {

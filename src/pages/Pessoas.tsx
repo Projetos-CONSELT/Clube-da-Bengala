@@ -6,6 +6,7 @@ import {
   useUpdateBeneficiario,
   useDeleteBeneficiario,
 } from '@/hooks/useBeneficiarios';
+import { useColaboradoresQuery, useUpdateColaborador } from '@/hooks/useColaboradores';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,6 @@ import { isBackOfficeRole } from '@/types/domain';
 const ROLE_LEVELS: Record<UserRole, number> = {
   ceo: 5,
   gerente: 4,
-  coordenador: 3,
   atendente: 2,
   solicitante: 1,
 };
@@ -48,6 +48,8 @@ export default function Pessoas() {
   const createBenef = useCreateBeneficiario();
   const updateBenef = useUpdateBeneficiario();
   const deleteBenef = useDeleteBeneficiario();
+  const colaboradoresQuery = useColaboradoresQuery();
+  const updateColaborador = useUpdateColaborador();
 
   const [searchTerm, setSearchTerm] = useState('');
   const canManageSolicitantes = isBackOfficeRole(currentUserRole);
@@ -379,7 +381,7 @@ export default function Pessoas() {
     else createBenef.mutate(payload, cb);
   };
 
-  const showUsuariosTab = currentUserRole === 'gerente' || currentUserRole === 'coordenador';
+  const showUsuariosTab = currentUserRole === 'gerente' || currentUserRole === 'ceo';
 
   return (
     <div className="space-y-6">
@@ -390,6 +392,9 @@ export default function Pessoas() {
             <TabsTrigger value="usuarios">Usuários</TabsTrigger>
           )}
           <TabsTrigger value="beneficiarios">Beneficiários</TabsTrigger>
+          {canManageSolicitantes && (
+            <TabsTrigger value="voluntarios">Voluntários</TabsTrigger>
+          )}
         </TabsList>
 
         {showUsuariosTab && (
@@ -407,12 +412,7 @@ export default function Pessoas() {
             {(() => {
               const solicitacoesCargo = (usuariosQuery.data ?? []).filter((u) => {
                 if (!u.solicitacao_papel) return false;
-                if (currentUserRole === 'gerente') return true;
-                if (currentUserRole === 'coordenador') {
-                  const currentLevel = u.papel ? ROLE_LEVELS[u.papel] : 0;
-                  const requestedLevel = ROLE_LEVELS[u.solicitacao_papel as UserRole] || 0;
-                  return currentLevel < 3 && requestedLevel < 3;
-                }
+                if (currentUserRole === 'gerente' || currentUserRole === 'ceo') return true;
                 return false;
               });
               if (solicitacoesCargo.length === 0) return null;
@@ -500,23 +500,17 @@ export default function Pessoas() {
                 }
 
                 const roleSections = [
-                  { key: 'gerente', label: 'Gerentes', color: 'border-purple-200 bg-purple-50/50 text-purple-900', badge: 'bg-purple-100 text-purple-800' },
-                  { key: 'coordenador', label: 'Coordenadores', color: 'border-indigo-200 bg-indigo-50/50 text-indigo-900', badge: 'bg-indigo-100 text-indigo-800' },
-                  { key: 'atendente', label: 'Atendentes', color: 'border-emerald-200 bg-emerald-50/50 text-emerald-900', badge: 'bg-emerald-100 text-emerald-800' },
+                  { key: 'gerente', label: 'Gerentes', color: 'border-emerald-200 bg-emerald-50/50 text-emerald-900', badge: 'bg-emerald-100 text-emerald-800' },
+                  { key: 'atendente', label: 'Atendentes', color: 'border-sky-200 bg-sky-50/50 text-sky-900', badge: 'bg-sky-100 text-sky-800' },
                   { key: 'solicitante', label: 'Solicitantes', color: 'border-blue-200 bg-blue-50/50 text-blue-900', badge: 'bg-blue-100 text-blue-800' },
                 ];
 
                 const renderUserItem = (u: any) => {
-                  const isSelectDisabled = 
-                    currentUserRole !== 'gerente' && 
-                    (currentUserRole !== 'coordenador' || (u.papel && u.papel in ROLE_LEVELS ? ROLE_LEVELS[u.papel as UserRole] : 0) >= 3);
+                  const isSelectDisabled = currentUserRole !== 'gerente';
 
                   const getAllowedRoles = () => {
                     if (currentUserRole === 'gerente') {
-                      return ['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[];
-                    }
-                    if (currentUserRole === 'coordenador') {
-                      return ['atendente', 'solicitante'] as UserRole[];
+                      return ['gerente', 'atendente', 'solicitante'] as UserRole[];
                     }
                     return [] as UserRole[];
                   };
@@ -813,6 +807,97 @@ export default function Pessoas() {
             </div>
           )}
         </TabsContent>
+
+        {canManageSolicitantes && (
+          <TabsContent value="voluntarios" className="mt-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Input
+                placeholder="Pesquisar voluntários..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-md"
+              />
+            </div>
+            
+            {colaboradoresQuery.isLoading ? (
+              <div className="flex justify-center p-8">
+                <Loader2 className="animate-spin w-6 h-6 text-blue-600" />
+              </div>
+            ) : (
+              (() => {
+                const term = searchTerm.toLowerCase();
+                const filteredColaboradores = (colaboradoresQuery.data ?? []).filter((c) => 
+                  c.nome_completo?.toLowerCase().includes(term) ||
+                  (c.email ?? '').toLowerCase().includes(term) ||
+                  (c.cpf ?? '').toLowerCase().includes(term)
+                );
+
+                if (filteredColaboradores.length === 0) {
+                  return (
+                    <Card>
+                      <CardContent className="p-8 text-center text-slate-500">
+                        Nenhum voluntário encontrado.
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <div className="grid gap-4">
+                    {filteredColaboradores.map((c) => (
+                      <Card key={c.id} className="overflow-hidden border">
+                        <CardContent className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-bold text-slate-900">{c.nome_completo}</h4>
+                              {c.is_ativo ? (
+                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Ativo</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-slate-500">Inativo</Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-500">
+                              CPF: {c.cpf} • Whats: {c.whatsapp} {c.email ? `• E-mail: ${c.email}` : ''}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Endereço: {c.endereco_completo}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {c.modalidades?.map((mod: string) => (
+                                <Badge key={mod} variant="secondary" className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-100">
+                                  {mod}
+                                </Badge>
+                              ))}
+                            </div>
+                            {c.data_aceite_termo && (
+                              <p className="text-xs text-amber-700 mt-2 font-medium">
+                                Aceitou termo em: {new Date(c.data_aceite_termo).toLocaleString('pt-BR')}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex shrink-0">
+                            <Button
+                              variant={c.is_ativo ? 'outline' : 'default'}
+                              className={!c.is_ativo ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-red-600 border-red-200 hover:bg-red-50'}
+                              onClick={() => {
+                                updateColaborador.mutate({ id: c.id, patch: { is_ativo: !c.is_ativo } }, {
+                                  onSuccess: () => toast({ title: `Voluntário ${!c.is_ativo ? 'ativado' : 'desativado'} com sucesso` })
+                                })
+                              }}
+                              disabled={updateColaborador.isPending}
+                            >
+                              {c.is_ativo ? 'Desativar' : 'Aprovar / Ativar'}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                );
+              })()
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Modal Cadastro/Edição de Beneficiário */}

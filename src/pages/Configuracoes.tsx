@@ -53,8 +53,8 @@ export default function Configuracoes() {
   const { role: currentUserRole } = useAuth();
 
   // 2. CONTROLE DE ACESSO RESTRITO (RBAC ESTRITO):
-  // As configurações são exclusivas para quem tem o cargo 'gerente' ou 'coordenador'.
-  const isEditable = currentUserRole === 'gerente' || currentUserRole === 'coordenador';
+  // As configurações são exclusivas para quem tem o cargo 'gerente' ou 'ceo'.
+  const isEditable = currentUserRole === 'gerente' || currentUserRole === 'ceo';
 
   // State de carregamento inicial e de salvamento
   const [isLoading, setIsLoading] = useState(true);
@@ -188,7 +188,7 @@ export default function Configuracoes() {
       toast({
         variant: 'destructive',
         title: 'Ação não permitida',
-        description: 'Apenas Gerentes e Coordenadores podem salvar alterações nas configurações.',
+        description: 'Apenas Gerentes e CEOs podem salvar alterações nas configurações.',
       });
       return;
     }
@@ -254,7 +254,7 @@ export default function Configuracoes() {
             <div className="space-y-2 max-w-md">
               <h2 className="text-2xl font-bold text-slate-900">Acesso Restrito</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                Você está conectado com o cargo de <strong className="capitalize text-slate-900">{currentUserRole || 'Usuário'}</strong>. O painel de configurações é de acesso exclusivo para <strong>Gerentes</strong> e <strong>Coordenadores</strong>.
+                Você está conectado com o cargo de <strong className="capitalize text-slate-900">{currentUserRole || 'Usuário'}</strong>. O painel de configurações é de acesso exclusivo para <strong>Gerentes</strong> e <strong>CEOs</strong>.
               </p>
             </div>
             <a
@@ -690,7 +690,7 @@ export default function Configuracoes() {
             <CardHeader className="pb-4 border-b border-slate-100 bg-slate-50/50">
               <CardTitle className="text-lg font-semibold text-slate-800">Gestão de Permissões de Usuários</CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                Gerencie os papéis (Gerente, Coordenador, Atendente e Solicitante) de todos os usuários cadastrados. Apenas gerentes alteram papéis.
+                Gerencie os papéis (Gerente, Atendente e Solicitante) de todos os usuários cadastrados. Apenas gerentes alteram papéis.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -758,7 +758,7 @@ export default function Configuracoes() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {(['gerente', 'coordenador', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
+                                {(['gerente', 'atendente', 'solicitante'] as UserRole[]).map((p) => (
                                   <SelectItem key={p} value={p} className="capitalize text-sm">
                                     {p}
                                   </SelectItem>

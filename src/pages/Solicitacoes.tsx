@@ -2340,7 +2340,7 @@ export default function Solicitacoes() {
                       toast({
                         variant: 'destructive',
                         title: 'Configuração Incompleta',
-                        description: 'A conta central de pagamentos ainda não foi configurada pelo Coordenador Geral.',
+                        description: 'A conta central de pagamentos ainda não foi configurada pelo Gerente.',
                       });
                       setGenerandoCobranca(false);
                       return;
