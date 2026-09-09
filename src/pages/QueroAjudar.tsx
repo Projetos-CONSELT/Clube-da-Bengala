@@ -130,9 +130,12 @@ export default function QueroAjudar() {
             <p className="text-slate-600">
               Muito obrigado por querer ajudar o Clube da Bengala. Nossa equipe analisará seu cadastro e entrará em contato em breve pelo WhatsApp informado.
             </p>
+            <p className="text-sm font-semibold text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
+              Cadastro concluído! Seu Ponto de Arrecadação passará por análise e aparecerá no mapa em breve.
+            </p>
             <div className="pt-4">
-              <Button onClick={() => window.location.href = '/'} className="w-full bg-slate-900 hover:bg-slate-800">
-                Voltar para o Início
+              <Button onClick={() => window.location.href = '/login'} className="w-full bg-slate-900 hover:bg-slate-800">
+                Voltar para o Login
               </Button>
             </div>
           </CardContent>
@@ -250,7 +253,7 @@ export default function QueroAjudar() {
                   />
                   <div className="space-y-1">
                     <Label htmlFor="aceitou_termo" className="font-medium text-amber-900 cursor-pointer">
-                      Declaro que li e aceito o Termo de Voluntariado, nos termos da Lei nº 9.608/1998.
+                      Declaro que li e aceito o <a href="/termos" target="_blank" className="underline hover:text-amber-700">Termo de Voluntariado</a>, nos termos da Lei nº 9.608/1998.
                     </Label>
                     <p className="text-xs text-amber-700">
                       O trabalho voluntário não gera vínculo empregatício, nem obrigação de natureza trabalhista, previdenciária ou afim.

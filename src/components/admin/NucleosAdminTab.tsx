@@ -19,7 +19,7 @@ import type { NucleoInsert } from '@/types/database.types';
 export default function NucleosAdminTab() {
   const { toast } = useToast();
   const { role: currentUserRole, user } = useAuth();
-  
+
   const { data: nucleos = [], isLoading, error } = useNucleosQuery();
   const { data: usuarios = [] } = useUsuariosQuery();
   const createNucleo = useCreateNucleo();
@@ -109,10 +109,10 @@ export default function NucleosAdminTab() {
       toast({ variant: 'destructive', title: 'Nome obrigatório' });
       return;
     }
-    
+
     setIsSubmitting(true);
     let coords = { latitude: formData.latitude, longitude: formData.longitude };
-    
+
     // Geocode se não tiver coordenadas e tiver endereço
     if (coords.latitude === 0 && coords.longitude === 0 && formData.cidade && formData.estado) {
       const address = `${formData.logradouro} ${formData.numero}, ${formData.bairro}, ${formData.cidade} - ${formData.estado}, ${formData.cep}`;
@@ -122,11 +122,20 @@ export default function NucleosAdminTab() {
       }
     }
 
-    const payload: Omit<NucleoInsert, 'id'> = {
-      ...formData,
+    // Concatena os campos do formulário para caber na coluna única 'endereco' do banco
+    const enderecoCompleto = `${formData.logradouro}, ${formData.numero}${formData.complemento ? ` - ${formData.complemento}` : ''}, ${formData.bairro}`;
+
+    // Mapeamento EXATO para as colunas existentes no Supabase
+    const payload: any = {
+      nome: formData.nome,
+      cidade: formData.cidade,
+      estado: formData.estado,
+      cep: formData.cep,
+      endereco: enderecoCompleto,
       latitude: coords.latitude,
       longitude: coords.longitude,
-      gerente_id: formData.gerente_id || null,
+      gerente_id: formData.gerente_id || null, // Agora o banco suporta essa coluna
+      is_ativo: true
     };
 
     try {
@@ -152,10 +161,10 @@ export default function NucleosAdminTab() {
         toast({ title: 'Núcleo excluído' });
       } catch (err: any) {
         if (err.message?.includes('foreign key') || err.message?.includes('violates foreign key constraint')) {
-          toast({ 
-            variant: 'destructive', 
-            title: 'Não é possível excluir', 
-            description: 'Este núcleo possui registros vinculados (usuários, doações, etc). Exclua ou transfira esses registros antes.' 
+          toast({
+            variant: 'destructive',
+            title: 'Não é possível excluir',
+            description: 'Este núcleo possui registros vinculados (usuários, doações, etc). Exclua ou transfira esses registros antes.'
           });
         } else {
           toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message });
@@ -199,7 +208,7 @@ export default function NucleosAdminTab() {
                     <Label>Nome do Núcleo *</Label>
                     <Input required value={formData.nome} onChange={(e) => handleInputChange('nome', e.target.value)} />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Gerente Responsável</Label>
                     <Select value={formData.gerente_id} onValueChange={(v) => handleInputChange('gerente_id', v)}>

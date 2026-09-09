@@ -3,13 +3,15 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { BeneficiarioInsert, BeneficiarioUpdate } from '@/types/database.types';
 import { isBackOfficeRole } from '@/types/domain';
+import { useCeoContext } from '@/lib/CeoContext';
 
 export const BENEFICIARIOS_KEY = ['beneficiarios'] as const;
 
 export function useBeneficiariosQuery() {
   const { isAuthenticated, role, user } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: [...BENEFICIARIOS_KEY, role, user?.id],
+    queryKey: [...BENEFICIARIOS_KEY, role, user?.id, selectedNucleusId],
     enabled: isAuthenticated,
     queryFn: async () => {
       let q = supabase
@@ -18,6 +20,8 @@ export function useBeneficiariosQuery() {
         .order('nome_completo', { ascending: true });
       if (role === 'solicitante' && user?.id) {
         q = q.eq('solicitante_id', user.id);
+      } else if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
       }
       const { data, error } = await q;
       if (error) throw error;

@@ -64,7 +64,7 @@ export default function Fila() {
         tipo,
         itens: solicitacoes
           .filter((s) => s.tipo_equipamento_id === tipo.id)
-          .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+          .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')),
       };
     });
     return grouped;

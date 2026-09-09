@@ -362,6 +362,10 @@ export default function Pessoas() {
   };
 
   const saveBenef = () => {
+    if (!benefForm.nome_completo.trim() || !benefForm.cpf.trim() || !benefForm.altura_cm?.trim() || !benefForm.peso_kg?.trim()) {
+      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Por favor, preencha Nome, CPF, Peso e Altura.' });
+      return;
+    }
     const payload = {
       nome_completo: benefForm.nome_completo,
       cpf: benefForm.cpf,

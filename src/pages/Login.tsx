@@ -105,7 +105,7 @@ export default function Login() {
       setBairro(data.bairro || '');
       setCidade(data.localidade || '');
       setEstado(data.uf || '');
-      
+
       // Auto focus the street number field
       setTimeout(() => {
         document.getElementById('numero')?.focus();
@@ -133,7 +133,7 @@ export default function Login() {
     try {
       if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: `${window.location.origin}/`,
         });
         if (error) throw error;
         toast({
@@ -195,6 +195,16 @@ export default function Login() {
       });
       if (error) throw error;
 
+      if (data?.user?.identities && data.user.identities.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Este e-mail já está cadastrado. Por favor, faça login.',
+        });
+        setLoading(false);
+        return;
+      }
+
       if (data.session) {
         toast({
           title: 'Cadastro concluído',
@@ -213,24 +223,24 @@ export default function Login() {
     } catch (err: unknown) {
       let title = 'Erro';
       let description = getErrorMessage(err);
-      
+
       const errMsg = description.toLowerCase();
-      
+
       if (errMsg.includes('email not confirmed')) {
         navigate(`/verificar-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      
+
       if (
-        (err as any)?.code === 'user_already_exists' || 
-        errMsg.includes('already registered') || 
+        (err as any)?.code === 'user_already_exists' ||
+        errMsg.includes('already registered') ||
         errMsg.includes('já está cadastrado') ||
         errMsg.includes('email_exists') ||
         (err as any)?.code === '23505' && errMsg.includes('email')
       ) {
         description = 'Este e-mail já está cadastrado. Por favor, faça login.';
       } else if (
-        errMsg.includes('usuarios_cpf_key') || 
+        errMsg.includes('usuarios_cpf_key') ||
         (err as any)?.constraint === 'usuarios_cpf_key' ||
         ((err as any)?.code === '23505' && errMsg.includes('cpf'))
       ) {
@@ -491,10 +501,10 @@ export default function Login() {
               {loading
                 ? '...'
                 : mode === 'signin'
-                ? 'Entrar'
-                : mode === 'signup'
-                ? 'Cadastrar'
-                : 'Enviar e-mail de recuperação'}
+                  ? 'Entrar'
+                  : mode === 'signup'
+                    ? 'Cadastrar'
+                    : 'Enviar e-mail de recuperação'}
             </Button>
             {mode === 'forgot' ? (
               <button

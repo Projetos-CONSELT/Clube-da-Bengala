@@ -1947,9 +1947,13 @@ export default function Solicitacoes() {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                  const files = Array.from(e.dataTransfer.files);
-                  if (files.length + retiradaFiles.length <= 5) {
-                    setRetiradaFiles([...retiradaFiles, ...files]);
+                  const allFiles = Array.from(e.dataTransfer.files);
+                  const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
+                  if (imageFiles.length < allFiles.length) {
+                    toast({ variant: 'destructive', title: 'Formato inválido', description: 'Apenas arquivos de imagem são permitidos.' });
+                  }
+                  if (imageFiles.length + retiradaFiles.length <= 5) {
+                    setRetiradaFiles([...retiradaFiles, ...imageFiles]);
                   } else {
                     toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
                   }
@@ -2031,6 +2035,15 @@ export default function Solicitacoes() {
                     variant: 'destructive',
                     title: 'Erro',
                     description: 'Por favor, selecione um equipamento para retirada.',
+                  });
+                  return;
+                }
+
+                if (retiradaFiles.length === 0) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Vistoria Obrigatória',
+                    description: 'É necessário enviar pelo menos uma foto do estado do equipamento no momento da entrega.',
                   });
                   return;
                 }

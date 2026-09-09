@@ -52,9 +52,13 @@ export function useUpdateUsuarioPapel() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, papel }: { id: string; papel: UserRole }) => {
+      const payload: any = { papel };
+      if (papel !== 'gerente' && papel !== 'ceo') {
+        payload.pode_criar_nucleos = false;
+      }
       const { data, error } = await supabase
         .from('usuarios')
-        .update({ papel })
+        .update(payload)
         .eq('id', id)
         .select()
         .single();

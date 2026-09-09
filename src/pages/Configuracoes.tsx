@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 
 // TODO: INSERIR LÓGICA DE CAPTURA DO CARGO DO USUÁRIO LOGADO AQUI
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ export default function Configuracoes() {
 
   // TODO: INSERIR LÓGICA DE CAPTURA DO CARGO DO USUÁRIO LOGADO AQUI
   const { role: currentUserRole } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
 
   // 2. CONTROLE DE ACESSO RESTRITO (RBAC ESTRITO):
   // As configurações são exclusivas para quem tem o cargo 'gerente' ou 'ceo'.
@@ -81,7 +83,7 @@ export default function Configuracoes() {
   // Estados de Recibo
   const [recibo, setRecibo] = useState(() => localStorage.getItem('recibo_template') || 'Recibo de empréstimo — Clube da Bengala');
   const [tipoForm, setTipoForm] = useState({ nome: '', descricao: '', limite_renovacoes: '3' });
-  
+
   // Estados Gateway (Centralizados)
   const [gatewayProvider, setGatewayProvider] = useState('simulado');
   const [gatewayApiKey, setGatewayApiKey] = useState('');
@@ -97,7 +99,7 @@ export default function Configuracoes() {
       const { data, error } = await supabase
         .from('configuracoes')
         .select('*')
-        .eq('id', 1)
+        .eq('nucleo_id', selectedNucleusId)
         .maybeSingle();
 
       if (error) {
@@ -151,8 +153,8 @@ export default function Configuracoes() {
     try {
       const { data, error } = await supabase
         .from('configuracoes_financeiras')
-        .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value')
-        .eq('id', 1)
+        .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value, texto_padrao_recibo')
+        .eq('nucleo_id', selectedNucleusId)
         .maybeSingle();
 
       if (error) {
@@ -163,6 +165,9 @@ export default function Configuracoes() {
         setGatewayApiKey(data.gateway_api_key || '');
         setGatewayEnv(data.gateway_environment || 'sandbox');
         setGatewayDefaultVal(data.gateway_default_value?.toString() || '150');
+        if (data.texto_padrao_recibo) {
+          setRecibo(data.texto_padrao_recibo);
+        }
       }
     } catch (err: any) {
       console.error('[Configuracoes] Erro ao buscar config financeira:', err);
@@ -178,7 +183,7 @@ export default function Configuracoes() {
     } else {
       setIsLoading(false);
     }
-  }, [isEditable, currentUserRole]);
+  }, [isEditable, currentUserRole, selectedNucleusId]);
 
   // ==========================================
   // 2. CORREÇÃO DO UPDATE - ESTREITO .update().eq('id', 1) SEM .single()
@@ -189,6 +194,14 @@ export default function Configuracoes() {
         variant: 'destructive',
         title: 'Ação não permitida',
         description: 'Apenas Gerentes e CEOs podem salvar alterações nas configurações.',
+      });
+      return;
+    }
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
       });
       return;
     }
@@ -204,18 +217,21 @@ export default function Configuracoes() {
         }
       });
 
-      const payload = {
+      const payloadParaSalvar: any = {
         dias_maximos: Number(diasMaximos) || 0,
         limites_por_tipo: limitesJsonb,
         bloquear_inadimplentes: Boolean(bloquearInadimplentes),
         termos_uso: termosUso,
       };
 
-      // Consulta estritamente .update(payload).eq('id', 1) - SEM .single() / .maybeSingle() / .select()
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
+
       const { error } = await supabase
         .from('configuracoes')
-        .update(payload)
-        .eq('id', 1);
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
 
       if (error) {
         console.error("DEBUG SUPABASE UPDATE:", error);
@@ -318,10 +334,35 @@ export default function Configuracoes() {
     );
   };
 
-  // Salvar Recibo Local
-  const saveRecibo = () => {
-    localStorage.setItem('recibo_template', recibo);
-    sonnerToast.success('Template de recibo salvo localmente');
+  // Salvar Recibo Local e no Banco
+  const saveRecibo = async () => {
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
+      });
+      return;
+    }
+
+    try {
+      const payloadParaSalvar: any = { texto_padrao_recibo: recibo };
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
+
+      const { error } = await supabase
+        .from('configuracoes_financeiras')
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
+
+      if (error) throw error;
+
+      localStorage.setItem('recibo_template', recibo);
+      sonnerToast.success('Template de recibo salvo no sistema com sucesso');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar recibo', description: err.message || 'Falha ao salvar o template de recibo no banco.' });
+    }
   };
 
   // Salvar Gateway no Supabase (Apenas CEO)
@@ -335,18 +376,32 @@ export default function Configuracoes() {
       return;
     }
 
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
+      });
+      return;
+    }
+
     try {
-      const payload = {
+      const payloadParaSalvar: any = {
         gateway_provider: gatewayProvider,
         gateway_api_key: gatewayApiKey,
         gateway_environment: gatewayEnv,
         gateway_default_value: Number(gatewayDefaultVal) || 150,
+        nucleo_id: selectedNucleusId,
       };
+
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
 
       const { error } = await supabase
         .from('configuracoes_financeiras')
-        .update(payload)
-        .eq('id', 1);
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
 
       if (error) throw error;
 
