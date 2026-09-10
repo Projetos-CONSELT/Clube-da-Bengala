@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -40,6 +41,7 @@ export default function QueroAjudar() {
   const geocoding = useGeocoding();
   const createMut = useCreateColaborador();
   const [isSuccess, setIsSuccess] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -134,7 +136,7 @@ export default function QueroAjudar() {
               Cadastro concluído! Seu Ponto de Arrecadação passará por análise e aparecerá no mapa em breve.
             </p>
             <div className="pt-4">
-              <Button onClick={() => window.location.href = '/login'} className="w-full bg-slate-900 hover:bg-slate-800">
+              <Button onClick={() => navigate('/login')} className="w-full bg-slate-900 hover:bg-slate-800">
                 Voltar para o Login
               </Button>
             </div>

@@ -2018,16 +2018,28 @@ export default function Solicitacoes() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setRetiradaModalOpen(false)}
-              disabled={uploadingRetirada || registrarRetiradaMutation.isPending}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={async () => {
+          <DialogFooter className="gap-2 sm:gap-0 sm:flex sm:items-center sm:justify-between w-full">
+            <div className="flex justify-start">
+              <a
+                href="/docs/termo_emprestimo.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                aria-label="Abrir Termo de Empréstimo em nova guia"
+              >
+                <FileText className="w-4 h-4" /> Visualizar Termo de Empréstimo
+              </a>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setRetiradaModalOpen(false)}
+                disabled={uploadingRetirada || registrarRetiradaMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={async () => {
                 if (!selected || !retiradaEquipamento) return;
                 const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
                 if (!eqId) {
@@ -2159,6 +2171,7 @@ export default function Solicitacoes() {
               )}
               {uploadingRetirada ? 'Enviando Fotos...' : 'Confirmar Retirada & Gerar Termo'}
             </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

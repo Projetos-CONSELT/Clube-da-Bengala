@@ -1,4 +1,7 @@
 import { useState, useMemo } from 'react';
+import * as z from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useUsuariosQuery, useUpdateUsuarioPapel, useUpdateUsuario } from '@/hooks/useUsuarios';
 import {
   useBeneficiariosQuery,
@@ -37,6 +40,18 @@ const ROLE_LEVELS: Record<UserRole, number> = {
   atendente: 2,
   solicitante: 1,
 };
+
+const beneficiarioSchema = z.object({
+  id: z.string().optional(),
+  nome_completo: z.string().min(1, 'Campo obrigatório'),
+  cpf: z.string().min(11, 'CPF inválido').max(14, 'CPF inválido'),
+  altura_cm: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  peso_kg: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  tamanho_calcado: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  solicitante_id: z.string().optional(),
+});
+
+type BeneficiarioFormData = z.infer<typeof beneficiarioSchema>;
 
 export default function Pessoas() {
   const { toast } = useToast();
@@ -110,15 +125,26 @@ export default function Pessoas() {
   );
 
   const [benefModal, setBenefModal] = useState(false);
-  const [benefForm, setBenefForm] = useState({
-    id: '',
-    nome_completo: '',
-    cpf: '',
-    altura_cm: '',
-    peso_kg: '',
-    tamanho_calcado: '',
-    solicitante_id: '',
+  const {
+    register: registerBenef,
+    handleSubmit: handleBenefSubmit,
+    reset: resetBenef,
+    setValue: setBenefValue,
+    watch: watchBenef,
+    formState: { errors: benefErrors },
+  } = useForm<BeneficiarioFormData>({
+    resolver: zodResolver(beneficiarioSchema),
+    defaultValues: {
+      id: '',
+      nome_completo: '',
+      cpf: '',
+      altura_cm: '' as any,
+      peso_kg: '' as any,
+      tamanho_calcado: '' as any,
+      solicitante_id: '',
+    },
   });
+  const watchBenefId = watchBenef('id');
 
   // Modal para confirmar exclusão de beneficiário
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -173,26 +199,26 @@ export default function Pessoas() {
   const openNewBenef = () => {
     // Ao cadastrar, seleciona o primeiro solicitante válido ou o usuário atual se for solicitante
     const defaultSolId = apenasSolicitantes.find((s) => s.id === currentUser?.id)?.id || apenasSolicitantes[0]?.id || currentUser?.id || '';
-    setBenefForm({
+    resetBenef({
       id: '',
       nome_completo: '',
       cpf: '',
-      altura_cm: '',
-      peso_kg: '',
-      tamanho_calcado: '',
+      altura_cm: '' as any,
+      peso_kg: '' as any,
+      tamanho_calcado: '' as any,
       solicitante_id: defaultSolId,
     });
     setBenefModal(true);
   };
 
   const openEditBenef = (b: any) => {
-    setBenefForm({
+    resetBenef({
       id: b.id,
       nome_completo: b.nome_completo || '',
       cpf: b.cpf || '',
-      altura_cm: b.altura_cm?.toString() || '',
-      peso_kg: b.peso_kg?.toString() || '',
-      tamanho_calcado: b.tamanho_calcado?.toString() || '',
+      altura_cm: b.altura_cm?.toString() || ('' as any),
+      peso_kg: b.peso_kg?.toString() || ('' as any),
+      tamanho_calcado: b.tamanho_calcado?.toString() || ('' as any),
       solicitante_id: b.solicitante_id || currentUser?.id || '',
     });
     setBenefModal(true);
@@ -361,18 +387,14 @@ export default function Pessoas() {
     }
   };
 
-  const saveBenef = () => {
-    if (!benefForm.nome_completo.trim() || !benefForm.cpf.trim() || !benefForm.altura_cm?.trim() || !benefForm.peso_kg?.trim()) {
-      toast({ variant: 'destructive', title: 'Campos obrigatórios', description: 'Por favor, preencha Nome, CPF, Peso e Altura.' });
-      return;
-    }
+  const onSubmitBenef = (data: BeneficiarioFormData) => {
     const payload = {
-      nome_completo: benefForm.nome_completo,
-      cpf: benefForm.cpf,
-      altura_cm: benefForm.altura_cm ? Number(benefForm.altura_cm) : null,
-      peso_kg: benefForm.peso_kg ? Number(benefForm.peso_kg) : null,
-      tamanho_calcado: benefForm.tamanho_calcado ? Number(benefForm.tamanho_calcado) : null,
-      solicitante_id: benefForm.solicitante_id || currentUser?.id,
+      nome_completo: data.nome_completo,
+      cpf: data.cpf,
+      altura_cm: data.altura_cm ? Number(data.altura_cm) : null,
+      peso_kg: data.peso_kg ? Number(data.peso_kg) : null,
+      tamanho_calcado: data.tamanho_calcado ? Number(data.tamanho_calcado) : null,
+      solicitante_id: data.solicitante_id || currentUser?.id,
     };
     const cb = {
       onSuccess: () => {
@@ -381,7 +403,7 @@ export default function Pessoas() {
       },
       onError: (e: Error) => toast({ variant: 'destructive', title: 'Erro ao salvar', description: e.message }),
     };
-    if (benefForm.id) updateBenef.mutate({ id: benefForm.id, patch: payload }, cb);
+    if (data.id) updateBenef.mutate({ id: data.id, patch: payload }, cb);
     else createBenef.mutate(payload, cb);
   };
 
@@ -907,75 +929,67 @@ export default function Pessoas() {
       {/* Modal Cadastro/Edição de Beneficiário */}
       <Dialog open={benefModal} onOpenChange={setBenefModal}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{benefForm.id ? 'Editar Beneficiário' : 'Novo Beneficiário'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label>Nome Completo</Label>
-              <Input
-                value={benefForm.nome_completo}
-                onChange={(e) => setBenefForm({ ...benefForm, nome_completo: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>CPF</Label>
-              <Input
-                value={benefForm.cpf}
-                onChange={(e) => setBenefForm({ ...benefForm, cpf: e.target.value })}
-              />
-            </div>
+          <form onSubmit={handleBenefSubmit(onSubmitBenef)}>
+            <DialogHeader>
+              <DialogTitle>{watchBenefId ? 'Editar Beneficiário' : 'Novo Beneficiário'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div>
+                <Label>Nome Completo</Label>
+                <Input {...registerBenef('nome_completo')} />
+                {benefErrors.nome_completo && <span className="text-red-500 text-xs mt-1 block">{benefErrors.nome_completo.message}</span>}
+              </div>
+              <div>
+                <Label>CPF</Label>
+                <Input {...registerBenef('cpf')} />
+                {benefErrors.cpf && <span className="text-red-500 text-xs mt-1 block">{benefErrors.cpf.message}</span>}
+              </div>
 
-            {canManageSolicitantes && (
-              <div>
-                <Label>Solicitante Responsável / Associado</Label>
-                <Select
-                  value={benefForm.solicitante_id}
-                  onValueChange={(val) => setBenefForm({ ...benefForm, solicitante_id: val })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione o solicitante" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {apenasSolicitantes.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.nome_completo || u.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+              {canManageSolicitantes && (
+                <div>
+                  <Label>Solicitante Responsável / Associado</Label>
+                  <Select
+                    value={watchBenef('solicitante_id')}
+                    onValueChange={(val) => setBenefValue('solicitante_id', val)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Selecione o solicitante" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apenasSolicitantes.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.nome_completo || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label>Altura (cm)</Label>
-                <Input
-                  value={benefForm.altura_cm}
-                  onChange={(e) => setBenefForm({ ...benefForm, altura_cm: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Peso (kg)</Label>
-                <Input
-                  value={benefForm.peso_kg}
-                  onChange={(e) => setBenefForm({ ...benefForm, peso_kg: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Calçado</Label>
-                <Input
-                  value={benefForm.tamanho_calcado}
-                  onChange={(e) => setBenefForm({ ...benefForm, tamanho_calcado: e.target.value })}
-                />
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label>Altura (cm)</Label>
+                  <Input type="number" {...registerBenef('altura_cm')} />
+                  {benefErrors.altura_cm && <span className="text-red-500 text-xs mt-1 block">{benefErrors.altura_cm.message}</span>}
+                </div>
+                <div>
+                  <Label>Peso (kg)</Label>
+                  <Input type="number" {...registerBenef('peso_kg')} />
+                  {benefErrors.peso_kg && <span className="text-red-500 text-xs mt-1 block">{benefErrors.peso_kg.message}</span>}
+                </div>
+                <div>
+                  <Label>Calçado</Label>
+                  <Input type="number" {...registerBenef('tamanho_calcado')} />
+                  {benefErrors.tamanho_calcado && <span className="text-red-500 text-xs mt-1 block">{benefErrors.tamanho_calcado.message}</span>}
+                </div>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={saveBenef} disabled={createBenef.isPending || updateBenef.isPending}>
-              Salvar
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="mt-4">
+              <Button type="submit" disabled={createBenef.isPending || updateBenef.isPending}>
+                Salvar
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

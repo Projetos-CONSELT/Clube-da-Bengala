@@ -38,6 +38,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedLoanTerms, setAcceptedLoanTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -55,6 +56,7 @@ export default function Login() {
     setCep('');
     setConfirmPassword('');
     setAcceptedTerms(false);
+    setAcceptedLoanTerms(false);
   };
 
   const toggleMode = () => {
@@ -159,6 +161,16 @@ export default function Login() {
           variant: 'destructive',
           title: 'Termos de Serviço',
           description: 'Você precisa aceitar os Termos de Serviço para continuar.',
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (mode === 'signup' && !acceptedLoanTerms) {
+        toast({
+          variant: 'destructive',
+          title: 'Termo de Empréstimo',
+          description: 'Você precisa declarar que leu e aceita o Termo de Empréstimo para continuar.',
         });
         setLoading(false);
         return;
@@ -456,39 +468,58 @@ export default function Login() {
               </div>
             )}
             {mode === 'signup' && (
-              <div className="flex items-start gap-2 py-1">
-                <input
-                  id="terms"
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={(e) => setAcceptedTerms(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
-                />
-                <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none flex items-center gap-1">
-                  Li e aceito os
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <button type="button" className="text-blue-600 hover:underline font-semibold ml-1 outline-none">
-                        Termos de Serviço
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                          <FileText className="w-5 h-5 text-blue-600" />
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 py-1">
+                  <input
+                    id="terms"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                  />
+                  <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none flex items-center gap-1">
+                    Li e aceito os
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button type="button" className="text-blue-600 hover:underline font-semibold ml-1 outline-none">
                           Termos de Serviço
-                        </DialogTitle>
-                        <DialogDescription>
-                          Clube da Bengala
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="py-4">
-                        <TermosContent />
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  {' '}do Clube da Bengala.
-                </Label>
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-blue-600" />
+                            Termos de Serviço
+                          </DialogTitle>
+                          <DialogDescription>
+                            Clube da Bengala
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                          <TermosContent />
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    {' '}do Clube da Bengala.
+                  </Label>
+                </div>
+
+                <div className="flex items-start gap-2 py-1">
+                  <input
+                    id="loanTerms"
+                    type="checkbox"
+                    required
+                    checked={acceptedLoanTerms}
+                    onChange={(e) => setAcceptedLoanTerms(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                  />
+                  <Label htmlFor="loanTerms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none">
+                    Declaro que li e aceito as condições do{' '}
+                    <a href="/docs/termo_emprestimo.pdf" target="_blank" rel="noopener noreferrer" aria-label="Abrir termo de empréstimo em nova guia" className="text-blue-600 hover:underline font-semibold ml-1">
+                      Termo de Empréstimo
+                    </a>
+                  </Label>
+                </div>
               </div>
             )}
             {mode === 'signup' && (

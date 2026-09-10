@@ -140,6 +140,7 @@ export default function Configuracoes() {
       }
     } catch (err: any) {
       console.error('[Configuracoes] Exceção inesperada durante busca:', err);
+      throw new Error(err.message || 'Erro ao buscar configuracoes do sistema');
     } finally {
       setIsLoading(false);
     }
@@ -703,7 +704,7 @@ export default function Configuracoes() {
                   />
                   <p className="text-xs text-slate-400 flex items-center gap-1.5">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-                    Este documento é exibido durante a confirmação da solicitação e na geração de recibos PDF.
+                    Este documento é exibido durante a confirmação da solicitação e na geração de recibos PDF. Você também pode consultar o <a href="/docs/termo_emprestimo.pdf" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">PDF oficial</a> salvo na pasta pública.
                   </p>
                 </CardContent>
               </Card>
