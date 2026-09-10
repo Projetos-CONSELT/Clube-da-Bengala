@@ -1947,15 +1947,25 @@ export default function Solicitacoes() {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                  const allFiles = Array.from(e.dataTransfer.files);
-                  const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
-                  if (imageFiles.length < allFiles.length) {
-                    toast({ variant: 'destructive', title: 'Formato inválido', description: 'Apenas arquivos de imagem são permitidos.' });
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+                  
+                  const validImageFiles = droppedFiles.filter(file => file.type.startsWith('image/'));
+                  const invalidFiles = droppedFiles.filter(file => !file.type.startsWith('image/'));
+
+                  if (invalidFiles.length > 0) {
+                    toast({
+                      variant: "destructive",
+                      title: "Arquivo inválido",
+                      description: "Apenas imagens (JPG, PNG) podem ser anexadas na vistoria.",
+                    });
                   }
-                  if (imageFiles.length + retiradaFiles.length <= 5) {
-                    setRetiradaFiles([...retiradaFiles, ...imageFiles]);
-                  } else {
-                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+
+                  if (validImageFiles.length > 0) {
+                    if (validImageFiles.length + retiradaFiles.length <= 5) {
+                      setRetiradaFiles([...retiradaFiles, ...validImageFiles]);
+                    } else {
+                      toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                    }
                   }
                 }}
                 onClick={() => document.getElementById('retirada-file-input')?.click()}
@@ -2051,11 +2061,11 @@ export default function Solicitacoes() {
                   return;
                 }
 
-                if (retiradaFiles.length === 0) {
+                if (!retiradaFiles || retiradaFiles.length === 0) {
                   toast({
                     variant: 'destructive',
                     title: 'Vistoria Obrigatória',
-                    description: 'É necessário enviar pelo menos uma foto do estado do equipamento no momento da entrega.',
+                    description: 'Você precisa anexar pelo menos 1 foto do estado do equipamento antes de confirmar a retirada.',
                   });
                   return;
                 }
@@ -2214,11 +2224,25 @@ export default function Solicitacoes() {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                  const files = Array.from(e.dataTransfer.files);
-                  if (files.length + devolucaoFiles.length <= 5) {
-                    setDevolucaoFiles([...devolucaoFiles, ...files]);
-                  } else {
-                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+                  
+                  const validImageFiles = droppedFiles.filter(file => file.type.startsWith('image/'));
+                  const invalidFiles = droppedFiles.filter(file => !file.type.startsWith('image/'));
+
+                  if (invalidFiles.length > 0) {
+                    toast({
+                      variant: "destructive",
+                      title: "Arquivo inválido",
+                      description: "Apenas imagens (JPG, PNG) podem ser anexadas na vistoria.",
+                    });
+                  }
+
+                  if (validImageFiles.length > 0) {
+                    if (validImageFiles.length + devolucaoFiles.length <= 5) {
+                      setDevolucaoFiles([...devolucaoFiles, ...validImageFiles]);
+                    } else {
+                      toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                    }
                   }
                 }}
                 onClick={() => document.getElementById('devolucao-file-input')?.click()}

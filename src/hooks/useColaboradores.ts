@@ -67,7 +67,7 @@ export function useCreateColaborador() {
       const payload: ColaboradorInsert = {
         ...colaborador,
         id,
-        is_ativo: false, // Ensure it's false for new public submissions
+        is_ativo: colaborador.is_ativo !== undefined ? colaborador.is_ativo : false,
       };
       
       // Se aceitou termo, registramos a data

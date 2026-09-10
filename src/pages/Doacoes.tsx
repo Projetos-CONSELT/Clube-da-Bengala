@@ -81,7 +81,7 @@ export default function Doacoes() {
               >
                 <NavigationControl position="top-right" />
                 
-                {pasAtivos?.filter(pa => pa.modalidades?.includes('Ponto de Arrecadação (PA)')).map((pa) => (
+                {pasAtivos?.filter(pa => pa.modalidades?.includes('PA') && pa.latitude !== null && pa.longitude !== null).map((pa) => (
                   <Marker
                     key={pa.id}
                     longitude={pa.longitude!}

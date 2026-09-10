@@ -99,11 +99,11 @@ export default function QueroAjudar() {
         whatsapp: data.whatsapp.replace(/\D/g, ''),
         cep: data.cep.replace(/\D/g, ''),
         endereco_completo: data.endereco_completo,
-        modalidades: data.modalidades,
+        modalidades: data.modalidades.map((m) => m === 'Ponto de Arrecadação (PA)' ? 'PA' : m),
         aceitou_termo: data.aceitou_termo,
         latitude: lat,
         longitude: lng,
-        is_ativo: false,
+        is_ativo: true,
       },
       {
         onSuccess: () => {
@@ -133,7 +133,7 @@ export default function QueroAjudar() {
               Muito obrigado por querer ajudar o Clube da Bengala. Nossa equipe analisará seu cadastro e entrará em contato em breve pelo WhatsApp informado.
             </p>
             <p className="text-sm font-semibold text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
-              Cadastro concluído! Seu Ponto de Arrecadação passará por análise e aparecerá no mapa em breve.
+              Cadastro concluído! Seu Ponto de Arrecadação já está ativo e visível no mapa de doações.
             </p>
             <div className="pt-4">
               <Button onClick={() => navigate('/login')} className="w-full bg-slate-900 hover:bg-slate-800">
