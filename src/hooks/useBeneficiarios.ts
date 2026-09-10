@@ -33,6 +33,7 @@ export function useBeneficiariosQuery() {
 export function useCreateBeneficiario() {
   const qc = useQueryClient();
   const { user, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useMutation({
     mutationFn: async (payload: Omit<BeneficiarioInsert, 'solicitante_id'> & { solicitante_id?: string }) => {
       const isSol = role === 'solicitante';
@@ -40,9 +41,18 @@ export function useCreateBeneficiario() {
         ? user?.id
         : payload.solicitante_id;
       if (!solicitante_id) throw new Error('Solicitante não identificado.');
-      const row: BeneficiarioInsert = { ...payload, solicitante_id };
+
+      const nucleo_id = isSol ? user?.nucleo_id : selectedNucleusId;
+      const row: BeneficiarioInsert = { ...payload, solicitante_id, nucleo_id };
+      
       const { data, error } = await supabase.from('beneficiarios').insert(row).select().single();
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value')) {
+          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        } else {
+          throw new Error(error.message);
+        }
+      }
       return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),

@@ -121,6 +121,7 @@ export type Database = {
           peso_kg: number | null;
           tamanho_calcado: number | null;
           created_at: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id?: string;
@@ -131,6 +132,7 @@ export type Database = {
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -141,6 +143,7 @@ export type Database = {
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [
           {
