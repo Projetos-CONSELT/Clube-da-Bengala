@@ -26,19 +26,19 @@ export default function Termos() {
         </CardHeader>
         <CardContent className="p-6 md:p-8">
           <TermosContent />
-          
+
           <div className="border-t border-slate-100 pt-6 mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-slate-500">
               Se tiver dúvidas sobre estes termos, entre em contato com a administração do Clube da Bengala.
             </p>
-            <Button
+            {/* <Button
               onClick={() => navigate(-1)}
               variant="outline"
               className="w-full sm:w-auto rounded-xl gap-2 text-slate-700 hover:text-slate-900 border-slate-200"
             >
               <ArrowLeft className="w-4 h-4" />
               Voltar
-            </Button>
+            </Button> */}
           </div>
         </CardContent>
       </Card>

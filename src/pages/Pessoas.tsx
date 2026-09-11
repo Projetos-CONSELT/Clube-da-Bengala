@@ -9,7 +9,7 @@ import {
   useUpdateBeneficiario,
   useDeleteBeneficiario,
 } from '@/hooks/useBeneficiarios';
-import { useColaboradoresQuery, useUpdateColaborador } from '@/hooks/useColaboradores';
+import { useColaboradoresQuery, useUpdateColaborador, useVoluntariosQuery, useDeleteColaborador } from '@/hooks/useColaboradores';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +65,8 @@ export default function Pessoas() {
   const deleteBenef = useDeleteBeneficiario();
   const colaboradoresQuery = useColaboradoresQuery();
   const updateColaborador = useUpdateColaborador();
+  const voluntariosQuery = useVoluntariosQuery();
+  const deleteColaborador = useDeleteColaborador();
 
   const [searchTerm, setSearchTerm] = useState('');
   const canManageSolicitantes = isBackOfficeRole(currentUserRole);
@@ -921,6 +923,111 @@ export default function Pessoas() {
                   </div>
                 );
               })()
+            )}
+          </TabsContent>
+        )}
+
+        {canManageSolicitantes && (
+          <TabsContent value="voluntarios" className="mt-4 space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Gerenciamento de Voluntários</h3>
+            </div>
+
+            {voluntariosQuery.isLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              </div>
+            ) : voluntariosQuery.isError ? (
+              <div className="p-4 bg-red-50 text-red-600 rounded-lg border border-red-100 flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5" />
+                Ocorreu um erro ao carregar os voluntários.
+              </div>
+            ) : (voluntariosQuery.data?.length ?? 0) === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-slate-900">Nenhum voluntário encontrado</h3>
+                <p className="text-slate-500 max-w-sm mx-auto mt-1">
+                  Não há registros de voluntários cadastrados para este núcleo no momento.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {voluntariosQuery.data?.map((v) => (
+                  <Card key={v.id} className="border-slate-200 shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
+                    <CardContent className="p-0">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center p-4 gap-4">
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-slate-900 text-base">{v.nome_completo}</h4>
+                            <Badge variant={v.is_ativo ? "default" : "secondary"} className={v.is_ativo ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}>
+                              {v.is_ativo ? 'Ativo' : 'Pendente'}
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 text-sm text-slate-600 mt-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-slate-800">WhatsApp:</span> 
+                              {v.whatsapp?.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') || 'Não informado'}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-slate-800">E-mail:</span> 
+                              {v.email || 'Não informado'}
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {v.modalidades?.map((mod: string) => (
+                              <Badge key={mod} variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200 font-normal">
+                                {mod}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                          {!v.is_ativo && (
+                            <Button
+                              onClick={() => {
+                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: true } }, {
+                                  onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' })
+                                });
+                              }}
+                              disabled={updateColaborador.isPending}
+                              className="w-full sm:w-32 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              size="sm"
+                            >
+                              <UserCheck className="w-4 h-4 mr-2" />
+                              Aprovar
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            className="w-full sm:w-32 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                            size="sm"
+                            disabled={deleteColaborador.isPending || updateColaborador.isPending}
+                            onClick={() => {
+                              if (v.is_ativo) {
+                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: false } }, {
+                                  onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' })
+                                });
+                              } else {
+                                if(confirm('Deseja realmente rejeitar (excluir) este voluntário?')) {
+                                  deleteColaborador.mutate(v.id, {
+                                    onSuccess: () => toast({ title: 'Voluntário rejeitado/excluído.' })
+                                  });
+                                }
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {v.is_ativo ? 'Desativar' : 'Rejeitar'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
           </TabsContent>
         )}

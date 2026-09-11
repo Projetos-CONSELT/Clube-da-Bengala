@@ -13,6 +13,8 @@ import { Loader2, Heart, MapPin, CheckCircle2 } from 'lucide-react';
 import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { useCreateColaborador } from '@/hooks/useColaboradores';
+import { useNucleosQuery } from '@/hooks/useNucleos';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, 'Nome completo é obrigatório'),
@@ -21,6 +23,8 @@ const formSchema = z.object({
   whatsapp: z.string().min(10, 'WhatsApp inválido'),
   cep: z.string().min(8, 'CEP inválido'),
   endereco_completo: z.string().min(5, 'Endereço completo é obrigatório'),
+  numero: z.string().min(1, 'Número é obrigatório'),
+  nucleo_id: z.string().uuid("Por favor, selecione um núcleo válido"),
   modalidades: z.array(z.string()).min(1, 'Selecione pelo menos uma modalidade de ajuda'),
   aceitou_termo: z.boolean().refine((val) => val === true, {
     message: 'Você precisa aceitar o Termo de Voluntariado',
@@ -40,6 +44,7 @@ export default function QueroAjudar() {
   const viaCep = useViaCEP();
   const geocoding = useGeocoding();
   const createMut = useCreateColaborador();
+  const nucleosQuery = useNucleosQuery();
   const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
 
@@ -58,6 +63,8 @@ export default function QueroAjudar() {
       whatsapp: '',
       cep: '',
       endereco_completo: '',
+      numero: '',
+      nucleo_id: '',
       modalidades: [],
       aceitou_termo: false,
     },
@@ -65,13 +72,14 @@ export default function QueroAjudar() {
 
   const modalidadesSelecionadas = watch('modalidades');
   const aceitou_termo = watch('aceitou_termo');
+  const nucleo_id_selecionado = watch('nucleo_id');
 
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const cep = e.target.value;
     if (cep.length >= 8) {
       const data = await viaCep.fetchCEP(cep);
       if (data && !data.erro) {
-        setValue('endereco_completo', `${data.logradouro}, , ${data.bairro} - ${data.localidade}/${data.uf}`);
+        setValue('endereco_completo', `${data.logradouro}, ${data.bairro} - ${data.localidade}/${data.uf}`);
       }
     }
   };
@@ -79,16 +87,31 @@ export default function QueroAjudar() {
   const onSubmit = async (data: FormValues) => {
     let lat: number | null = null;
     let lng: number | null = null;
+    
+    // Concatena o endereço com o número para a geocodificação e salvamento
+    const fullAddress = `${data.endereco_completo.split(',')[0]}, ${data.numero}, ${data.endereco_completo.split(',').slice(1).join(',').trim()}`;
+
+    // Substitui a barra por vírgula e remove o traço para ajudar a API de mapas
+    const enderecoLimpo = fullAddress
+      .replace(' - ', ', ')
+      .replace('/', ', ') + ', Brasil';
 
     try {
       // Tentativa de geocodificação
-      const coords = await geocoding.fetchCoordinates(data.endereco_completo);
+      const coords = await geocoding.fetchCoordinates(enderecoLimpo);
       if (coords) {
         lat = coords.latitude;
         lng = coords.longitude;
       }
-    } catch (err) {
-      console.warn('Falha no geocoding, salvando sem coordenadas precisas.', err);
+    } catch (err: any) {
+      console.error('❌ Erro detalhado no Geocoding:', err.message || err);
+      if (data.modalidades.includes('Ponto de Arrecadação (PA)')) {
+        toast({
+          variant: "default",
+          title: "Aviso de Localização",
+          description: "Não conseguimos mapear seu endereço automaticamente. Um gerente ajustará isso em breve."
+        });
+      }
     }
 
     createMut.mutate(
@@ -98,7 +121,8 @@ export default function QueroAjudar() {
         email: data.email || null,
         whatsapp: data.whatsapp.replace(/\D/g, ''),
         cep: data.cep.replace(/\D/g, ''),
-        endereco_completo: data.endereco_completo,
+        endereco_completo: fullAddress,
+        nucleo_id: data.nucleo_id,
         modalidades: data.modalidades.map((m) => m === 'Ponto de Arrecadação (PA)' ? 'PA' : m),
         aceitou_termo: data.aceitou_termo,
         latitude: lat,
@@ -202,7 +226,7 @@ export default function QueroAjudar() {
                   <MapPin className="w-5 h-5 text-blue-600" /> Endereço
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="space-y-2 md:col-span-1">
                     <Label htmlFor="cep">CEP *</Label>
                     <Input id="cep" placeholder="00000-000" {...register('cep')} onBlur={handleCepBlur} />
@@ -211,8 +235,14 @@ export default function QueroAjudar() {
                   
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="endereco_completo">Endereço Completo *</Label>
-                    <Input id="endereco_completo" placeholder="Rua, Número, Bairro, Cidade - UF" {...register('endereco_completo')} />
+                    <Input id="endereco_completo" placeholder="Rua, Bairro, Cidade - UF" {...register('endereco_completo')} />
                     {errors.endereco_completo && <p className="text-xs text-red-500">{errors.endereco_completo.message}</p>}
+                  </div>
+
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="numero">Número *</Label>
+                    <Input id="numero" placeholder="Ex: 123" {...register('numero')} />
+                    {errors.numero && <p className="text-xs text-red-500">{errors.numero.message}</p>}
                   </div>
                 </div>
                 {viaCep.loading && <p className="text-xs text-blue-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando CEP...</p>}
@@ -243,6 +273,29 @@ export default function QueroAjudar() {
                   ))}
                 </div>
                 {errors.modalidades && <p className="text-xs text-red-500">{errors.modalidades.message}</p>}
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h3 className="font-semibold text-slate-800">Vínculo *</h3>
+                <div className="space-y-2">
+                  <Label>Qual núcleo você deseja ajudar?</Label>
+                  <Select
+                    value={nucleo_id_selecionado}
+                    onValueChange={(val) => setValue('nucleo_id', val, { shouldValidate: true })}
+                  >
+                    <SelectTrigger className="w-full bg-white">
+                      <SelectValue placeholder="Selecione um núcleo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {nucleosQuery.data?.map((nucleo) => (
+                        <SelectItem key={nucleo.id} value={nucleo.id}>
+                          {nucleo.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.nucleo_id && <p className="text-xs text-red-500">{errors.nucleo_id.message}</p>}
+                </div>
               </div>
 
               <div className="space-y-4 pt-4 border-t border-slate-100">
