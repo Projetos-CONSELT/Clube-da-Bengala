@@ -15,13 +15,32 @@ import { useGeocoding } from '@/hooks/useGeocoding';
 import { useCreateColaborador } from '@/hooks/useColaboradores';
 import { useNucleosQuery } from '@/hooks/useNucleos';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { cleanCPF, formatCPF, formatPhone, formatCEP } from '@/utils/cpf';
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, 'Nome completo é obrigatório'),
-  cpf: z.string().min(11, 'CPF inválido'),
-  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
-  whatsapp: z.string().min(10, 'WhatsApp inválido'),
-  cep: z.string().min(8, 'CEP inválido'),
+  cpf: z
+    .string()
+    .min(1, 'CPF é obrigatório')
+    .refine((val) => cleanCPF(val).length === 11, {
+      message: 'CPF incompleto (digite os 11 números)',
+    }),
+  email: z
+    .string()
+    .min(1, 'E-mail é obrigatório')
+    .email('E-mail inválido'),
+  whatsapp: z
+    .string()
+    .min(1, 'WhatsApp é obrigatório')
+    .refine((val) => cleanCPF(val).length >= 10 && cleanCPF(val).length <= 11, {
+      message: 'WhatsApp incompleto (digite DDD + número)',
+    }),
+  cep: z
+    .string()
+    .min(1, 'CEP é obrigatório')
+    .refine((val) => cleanCPF(val).length === 8, {
+      message: 'CEP incompleto (digite os 8 números)',
+    }),
   endereco_completo: z.string().min(5, 'Endereço completo é obrigatório'),
   numero: z.string().min(1, 'Número é obrigatório'),
   nucleo_id: z.string().uuid("Por favor, selecione um núcleo válido"),
@@ -75,9 +94,9 @@ export default function QueroAjudar() {
   const nucleo_id_selecionado = watch('nucleo_id');
 
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const cep = e.target.value;
-    if (cep.length >= 8) {
-      const data = await viaCep.fetchCEP(cep);
+    const rawCep = cleanCPF(e.target.value);
+    if (rawCep.length === 8) {
+      const data = await viaCep.fetchCEP(rawCep);
       if (data && !data.erro) {
         setValue('endereco_completo', `${data.logradouro}, ${data.bairro} - ${data.localidade}/${data.uf}`);
       }
@@ -204,18 +223,38 @@ export default function QueroAjudar() {
 
                 <div className="space-y-2">
                   <Label htmlFor="cpf">CPF *</Label>
-                  <Input id="cpf" placeholder="000.000.000-00" {...register('cpf')} />
+                  <Input
+                    id="cpf"
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    {...register('cpf')}
+                    value={watch('cpf') || ''}
+                    onChange={(e) => {
+                      const formatted = formatCPF(e.target.value);
+                      setValue('cpf', formatted, { shouldValidate: true, shouldDirty: true });
+                    }}
+                  />
                   {errors.cpf && <p className="text-xs text-red-500">{errors.cpf.message}</p>}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="whatsapp">WhatsApp *</Label>
-                  <Input id="whatsapp" placeholder="(00) 90000-0000" {...register('whatsapp')} />
+                  <Input
+                    id="whatsapp"
+                    placeholder="(00) 00000-0000"
+                    maxLength={15}
+                    {...register('whatsapp')}
+                    value={watch('whatsapp') || ''}
+                    onChange={(e) => {
+                      const formatted = formatPhone(e.target.value);
+                      setValue('whatsapp', formatted, { shouldValidate: true, shouldDirty: true });
+                    }}
+                  />
                   {errors.whatsapp && <p className="text-xs text-red-500">{errors.whatsapp.message}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">E-mail (opcional)</Label>
+                  <Label htmlFor="email">E-mail *</Label>
                   <Input id="email" type="email" placeholder="seu@email.com" {...register('email')} />
                   {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
                 </div>
@@ -229,7 +268,18 @@ export default function QueroAjudar() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="space-y-2 md:col-span-1">
                     <Label htmlFor="cep">CEP *</Label>
-                    <Input id="cep" placeholder="00000-000" {...register('cep')} onBlur={handleCepBlur} />
+                    <Input
+                      id="cep"
+                      placeholder="00000-000"
+                      maxLength={9}
+                      {...register('cep')}
+                      value={watch('cep') || ''}
+                      onChange={(e) => {
+                        const formatted = formatCEP(e.target.value);
+                        setValue('cep', formatted, { shouldValidate: true, shouldDirty: true });
+                      }}
+                      onBlur={handleCepBlur}
+                    />
                     {errors.cep && <p className="text-xs text-red-500">{errors.cep.message}</p>}
                   </div>
                   

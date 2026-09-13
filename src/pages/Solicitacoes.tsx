@@ -72,6 +72,7 @@ import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { MapSelector, type Nucleo } from '@/components/MapSelector';
 import { supabase } from '@/lib/supabase';
+import { formatCEP, cleanCPF } from '@/utils/cpf';
 
 moment.locale('pt-br');
 
@@ -659,8 +660,9 @@ export default function Solicitacoes() {
   const [fallbackMode, setFallbackMode] = useState(false);
 
   const handleCepBlur = async () => {
-    if (cepInput.length >= 8) {
-      const data = await fetchCEP(cepInput);
+    const rawCep = cleanCPF(cepInput);
+    if (rawCep.length === 8) {
+      const data = await fetchCEP(rawCep);
       if (data) {
         const enderecoCompleto = `${data.logradouro}, ${data.bairro}, ${data.localidade}, ${data.uf}, Brasil`;
         const coords = await fetchCoordinates(enderecoCompleto);
@@ -850,6 +852,7 @@ export default function Solicitacoes() {
   };
 
   const handleDelete = (sol: SolicitacaoComRelacoes) => {
+    if (role === 'solicitante') return;
     if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
     deleteMutation.mutate(sol.id, {
       onSuccess: () => toast({ title: 'Solicitação excluída' }),
@@ -1056,7 +1059,7 @@ export default function Solicitacoes() {
                 </DropdownMenuItem>
               </>
             )}
-            {(isBackOffice || s.solicitante_id === user?.id) && (
+            {isBackOffice && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -1349,7 +1352,7 @@ export default function Solicitacoes() {
                     <Input 
                       type="text"
                       value={cepInput}
-                      onChange={e => setCepInput(e.target.value)}
+                      onChange={e => setCepInput(formatCEP(e.target.value))}
                       onBlur={handleCepBlur}
                       placeholder="00000-000"
                       maxLength={9}

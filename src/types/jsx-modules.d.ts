@@ -140,6 +140,7 @@ declare module '@/components/ui/dropdown-menu' {
 declare module '@/components/ui/avatar' {
   import type { ComponentType } from 'react';
   export const Avatar: ComponentType<Record<string, unknown>>;
+  export const AvatarImage: ComponentType<Record<string, unknown>>;
   export const AvatarFallback: ComponentType<Record<string, unknown>>;
 }
 

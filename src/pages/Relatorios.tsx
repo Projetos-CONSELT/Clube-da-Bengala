@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/lib/supabase';
+import { removeAccents } from '@/utils/cpf';
 import {
   BarChart3,
   Download,
@@ -274,18 +275,28 @@ export default function Relatorios() {
   }, [fetchGraficosData, selectedNucleusId]);
 
   const exportCsv = () => {
-    const rows = [
-      ['Métrica', 'Valor'],
-      ['Usuários', String(usuarios.length)],
-      ['Beneficiários', String(beneficiarios.length)],
+    const rawRows = [
+      ['Metrica', 'Valor'],
+      ['Usuarios', String(usuarios.length)],
+      ['Beneficiarios', String(beneficiarios.length)],
+      ['Tipos de equipamento', String(tipos.length)],
       ['Equipamentos', String(equipamentos.length)],
-      ['Solicitações', String(solicitacoes.length)],
-      ['Empréstimos', String(emprestimos.length)],
-      ['Disponíveis', String(stats?.equipamentosDisponiveis ?? 0)],
-      ['Em triagem', String(stats?.solicitacoesTriagem ?? 0)],
+      ['Solicitacoes', String(solicitacoes.length)],
+      ['Emprestimos', String(emprestimos.length)],
+      ['Equipamentos disponiveis', String(stats?.equipamentosDisponiveis ?? 0)],
+      ['Solicitacoes em triagem', String(stats?.solicitacoesTriagem ?? 0)],
+      ['Aguardando documentacao', String(stats?.solicitacoesAguardandoDocumentacao ?? 0)],
+      ['Aguardando retirada', String(stats?.solicitacoesAguardandoRetirada ?? 0)],
+      ['Emprestimos vencendo', String(stats?.emprestimosVencendo ?? 0)],
+      ['Inadimplentes', String(stats?.inadimplentes ?? 0)],
     ];
-    const csv = rows.map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const normalizedRows = rawRows.map((row) =>
+      row.map((cell) => removeAccents(cell))
+    );
+
+    const csvContent = '\uFEFF' + normalizedRows.map((r) => r.join(';')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

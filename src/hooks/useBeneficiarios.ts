@@ -69,7 +69,12 @@ export function useUpdateBeneficiario() {
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.code === '23505') {
+          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import * as z from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -33,6 +33,8 @@ import type { UserRole } from '@/types/database.types';
 import { Loader2, Plus, Trash2, UserCheck, ShieldAlert, Folder, ChevronDown, ChevronUp, Edit, Users, Search } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { isBackOfficeRole } from '@/types/domain';
+import { supabase } from '@/lib/supabase';
+import { cleanCPF, formatCPF } from '@/utils/cpf';
 
 const ROLE_LEVELS: Record<UserRole, number> = {
   ceo: 5,
@@ -44,7 +46,12 @@ const ROLE_LEVELS: Record<UserRole, number> = {
 const beneficiarioSchema = z.object({
   id: z.string().optional(),
   nome_completo: z.string().min(1, 'Campo obrigatório'),
-  cpf: z.string().min(11, 'CPF inválido').max(14, 'CPF inválido'),
+  cpf: z
+    .string()
+    .min(1, 'Campo obrigatório')
+    .refine((val) => cleanCPF(val).length === 11, {
+      message: 'CPF incompleto (digite os 11 números)',
+    }),
   altura_cm: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
   peso_kg: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
   tamanho_calcado: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
@@ -88,10 +95,12 @@ export default function Pessoas() {
     const filtered = allBenef.filter((b: any) => {
       if (!search) return true;
       const nome = b.nome_completo?.toLowerCase() || '';
-      const cpf = b.cpf?.toLowerCase() || '';
+      const rawCpf = b.cpf?.toLowerCase() || '';
+      const cleanSearch = cleanCPF(search);
+      const cpfMatches = cleanSearch ? cleanCPF(b.cpf).includes(cleanSearch) : rawCpf.includes(search);
       const solNome = b.solicitante?.nome_completo?.toLowerCase() || '';
       const solEmail = b.solicitante?.email?.toLowerCase() || '';
-      return nome.includes(search) || cpf.includes(search) || solNome.includes(search) || solEmail.includes(search);
+      return nome.includes(search) || cpfMatches || solNome.includes(search) || solEmail.includes(search);
     });
 
     const map = new Map<string, {
@@ -146,7 +155,51 @@ export default function Pessoas() {
       solicitante_id: '',
     },
   });
+  const watchBenefCpf = watchBenef('cpf');
   const watchBenefId = watchBenef('id');
+
+  const cleanWatchedCpf = cleanCPF(watchBenefCpf);
+
+  const isCpfDuplicatedInLocal = useMemo(() => {
+    if (cleanWatchedCpf.length !== 11) return false;
+    const allBenef = beneficiariosQuery.data ?? [];
+    return allBenef.some(
+      (b: any) => b.id !== watchBenefId && cleanCPF(b.cpf) === cleanWatchedCpf
+    );
+  }, [cleanWatchedCpf, beneficiariosQuery.data, watchBenefId]);
+
+  const [dbCpfDuplicated, setDbCpfDuplicated] = useState(false);
+
+  useEffect(() => {
+    if (cleanWatchedCpf.length === 11 && benefModal) {
+      let active = true;
+      const checkDb = async () => {
+        try {
+          const formatted = formatCPF(cleanWatchedCpf);
+          const { data } = await supabase
+            .from('beneficiarios')
+            .select('id')
+            .or(`cpf.eq.${cleanWatchedCpf},cpf.eq.${formatted}`);
+          if (!active) return;
+          if (data && data.some((b: any) => b.id !== watchBenefId)) {
+            setDbCpfDuplicated(true);
+          } else {
+            setDbCpfDuplicated(false);
+          }
+        } catch {
+          if (active) setDbCpfDuplicated(false);
+        }
+      };
+      checkDb();
+      return () => {
+        active = false;
+      };
+    } else {
+      setDbCpfDuplicated(false);
+    }
+  }, [cleanWatchedCpf, watchBenefId, benefModal]);
+
+  const isCpfDuplicated = isCpfDuplicatedInLocal || dbCpfDuplicated;
 
   // Modal para confirmar exclusão de beneficiário
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -217,7 +270,7 @@ export default function Pessoas() {
     resetBenef({
       id: b.id,
       nome_completo: b.nome_completo || '',
-      cpf: b.cpf || '',
+      cpf: formatCPF(b.cpf || ''),
       altura_cm: b.altura_cm?.toString() || ('' as any),
       peso_kg: b.peso_kg?.toString() || ('' as any),
       tamanho_calcado: b.tamanho_calcado?.toString() || ('' as any),
@@ -390,9 +443,17 @@ export default function Pessoas() {
   };
 
   const onSubmitBenef = (data: BeneficiarioFormData) => {
+    if (isCpfDuplicated) {
+      toast({
+        variant: 'destructive',
+        title: 'CPF já cadastrado',
+        description: 'Este CPF já foi cadastrado para outro beneficiário.',
+      });
+      return;
+    }
     const payload = {
       nome_completo: data.nome_completo,
-      cpf: data.cpf,
+      cpf: formatCPF(data.cpf),
       altura_cm: data.altura_cm ? Number(data.altura_cm) : null,
       peso_kg: data.peso_kg ? Number(data.peso_kg) : null,
       tamanho_calcado: data.tamanho_calcado ? Number(data.tamanho_calcado) : null,
@@ -736,7 +797,7 @@ export default function Pessoas() {
                               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                                 <div className="space-y-1">
                                   <p className="font-bold text-slate-900 text-sm">{b.nome_completo}</p>
-                                  <p className="text-xs text-slate-500">CPF: {b.cpf || 'Não informado'}</p>
+                                  <p className="text-xs text-slate-500">CPF: {b.cpf ? formatCPF(b.cpf) : 'Não informado'}</p>
                                   {(b.altura_cm || b.peso_kg || b.tamanho_calcado) && (
                                     <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600 flex-wrap">
                                       {b.altura_cm && (
@@ -1047,9 +1108,27 @@ export default function Pessoas() {
                 {benefErrors.nome_completo && <span className="text-red-500 text-xs mt-1 block">{benefErrors.nome_completo.message}</span>}
               </div>
               <div>
-                <Label>CPF</Label>
-                <Input {...registerBenef('cpf')} />
-                {benefErrors.cpf && <span className="text-red-500 text-xs mt-1 block">{benefErrors.cpf.message}</span>}
+                <Label htmlFor="benef-cpf">CPF</Label>
+                <Input
+                  id="benef-cpf"
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                  {...registerBenef('cpf')}
+                  value={watchBenefCpf || ''}
+                  onChange={(e) => {
+                    const formatted = formatCPF(e.target.value);
+                    setBenefValue('cpf', formatted, { shouldValidate: true, shouldDirty: true });
+                  }}
+                  className={isCpfDuplicated ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                />
+                {benefErrors.cpf && !isCpfDuplicated && (
+                  <span className="text-red-500 text-xs mt-1 block">{benefErrors.cpf.message}</span>
+                )}
+                {isCpfDuplicated && (
+                  <span className="text-red-500 text-xs mt-1 block font-semibold">
+                    ⚠️ Este CPF já foi cadastrado.
+                  </span>
+                )}
               </div>
 
               {canManageSolicitantes && (
