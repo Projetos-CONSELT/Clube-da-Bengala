@@ -247,6 +247,7 @@ export type Database = {
           status: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses: number | null;
           motivo_solicitacao: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada: string | null;
           prazo_retirada: string | null;
           data_retirada_realizada: string | null;
@@ -270,6 +271,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;
           data_retirada_realizada?: string | null;
@@ -293,6 +295,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;
           data_retirada_realizada?: string | null;

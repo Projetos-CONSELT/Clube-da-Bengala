@@ -174,6 +174,10 @@ export function useUpdateSolicitacao() {
         .eq('id', id)
         .maybeSingle();
 
+      if (motivoRecusa) {
+        patch.observacoes_solicitante = motivoRecusa;
+      }
+
       const { data, error } = await supabase
         .from('solicitacoes')
         .update(patch)

@@ -83,10 +83,12 @@ export function useRejectionLogsQuery() {
               (log.user_id === user?.id ? currentUserName : null);
 
             const refusalText =
+              details.observacoes_solicitante ||
               details.motivo_recusa ||
               details.motivo ||
               details.triageMotivo ||
               details.justificativa ||
+              details.patch?.observacoes_solicitante ||
               details.patch?.motivo_recusa ||
               details.patch?.motivo ||
               null;

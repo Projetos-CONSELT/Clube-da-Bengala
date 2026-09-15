@@ -132,10 +132,13 @@ function getSolicitacaoRefusalInfo(
     if (recusaLog) {
       const details = recusaLog.details as any;
       const refusalMotivo =
+        s.observacoes_solicitante ||
+        details?.observacoes_solicitante ||
         details?.motivo_recusa ||
         details?.motivo ||
         details?.triageMotivo ||
         details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
         details?.patch?.motivo_recusa ||
         details?.patch?.motivo;
 
@@ -169,7 +172,9 @@ function getSolicitacaoRefusalInfo(
   // Find exact refusal message typed by the attendant during triage refusal:
   let exactMotivo: string | null = null;
 
-  if (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo)) {
+  if (s.observacoes_solicitante && s.observacoes_solicitante.trim()) {
+    exactMotivo = s.observacoes_solicitante.trim();
+  } else if (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo)) {
     exactMotivo = logInfo.motivo;
   }
 
@@ -177,10 +182,12 @@ function getSolicitacaoRefusalInfo(
     for (const l of logs) {
       const details = l.details as any;
       const candidate =
+        details?.observacoes_solicitante ||
         details?.motivo_recusa ||
         details?.motivo ||
         details?.triageMotivo ||
         details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
         details?.patch?.motivo_recusa ||
         details?.patch?.motivo;
 
@@ -246,10 +253,13 @@ function DadosSolicitacaoTab({
     if (recusaLog) {
       const details = recusaLog.details as any;
       const extractedMotivo =
+        solicitacao.observacoes_solicitante ||
+        details?.observacoes_solicitante ||
         details?.motivo_recusa ||
         details?.motivo ||
         details?.triageMotivo ||
         details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
         details?.patch?.motivo_recusa ||
         details?.patch?.motivo;
 
