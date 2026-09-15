@@ -95,21 +95,37 @@ moment.locale('pt-br');
 function getSolicitacaoRefusalInfo(
   s: SolicitacaoComRelacoes,
   rejectionMap?: Map<string, any>,
-  currentUserDisplayName?: string,
   logs?: any[]
 ) {
   if (!s || s.status !== 'encerrada') return null;
 
   let logInfo = rejectionMap?.get(s.id);
 
+  const isGenericOrEmpty = (m: string | null | undefined) => {
+    if (!m) return true;
+    const clean = m.trim();
+    return (
+      !clean ||
+      clean === 'Motivo não informado' ||
+      clean === 'Solicitação recusada pela equipe de atendimento.' ||
+      clean === 'Solicitação recusada' ||
+      clean === 'Recusado na triagem'
+    );
+  };
+
+  let recusaLog: any = null;
   if (logs && logs.length > 0) {
-    const recusaLog = logs.find((l) => {
+    recusaLog = logs.find((l) => {
       const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      const fromStatus = String(details?.from_status || '');
       return (
         details?.recusada === true ||
         details?.triageDecision === 'recusado' ||
         Boolean(details?.motivo_recusa) ||
-        (details?.to_status === 'encerrada' && (Boolean(details?.motivo) || Boolean(details?.triageMotivo)))
+        Boolean(details?.triageMotivo) ||
+        Boolean(details?.motivo) ||
+        (toStatus === 'encerrada' && (fromStatus === 'triagem' || Boolean(details?.patch?.motivo_recusa) || Boolean(details?.patch?.motivo)))
       );
     });
 
@@ -119,17 +135,20 @@ function getSolicitacaoRefusalInfo(
         details?.motivo_recusa ||
         details?.motivo ||
         details?.triageMotivo ||
-        details?.patch?.motivo_solicitacao;
+        details?.justificativa ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
 
       const userName =
         recusaLog.usuario?.nome_completo ||
         recusaLog.usuario?.email ||
         logInfo?.usuarioNome ||
-        currentUserDisplayName;
+        s.solicitante?.nome_completo ||
+        s.solicitante?.email;
 
       logInfo = {
-        motivo: refusalMotivo || logInfo?.motivo || 'Motivo não informado',
-        usuarioNome: userName,
+        motivo: refusalMotivo || (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo) ? logInfo.motivo : null),
+        usuarioNome: userName || logInfo?.usuarioNome || 'Atendente Responsável',
         dataRecusa: recusaLog.created_at || logInfo?.dataRecusa || s.created_at,
       };
     }
@@ -145,15 +164,35 @@ function getSolicitacaoRefusalInfo(
   const resolvedUser =
     logInfo?.usuarioNome && logInfo.usuarioNome !== 'Atendente' && logInfo.usuarioNome !== 'Atendente Responsável'
       ? logInfo.usuarioNome
-      : (currentUserDisplayName || 'Atendente Responsável');
+      : (s.solicitante?.nome_completo || s.solicitante?.email || 'Atendente Responsável');
 
-  const finalMotivo =
-    logInfo?.motivo && logInfo.motivo !== 'Solicitação recusada pela equipe de atendimento.'
-      ? logInfo.motivo
-      : 'Motivo não informado';
+  // Find exact refusal message typed by the attendant during triage refusal:
+  let exactMotivo: string | null = null;
+
+  if (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo)) {
+    exactMotivo = logInfo.motivo;
+  }
+
+  if (!exactMotivo && logs && logs.length > 0) {
+    for (const l of logs) {
+      const details = l.details as any;
+      const candidate =
+        details?.motivo_recusa ||
+        details?.motivo ||
+        details?.triageMotivo ||
+        details?.justificativa ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
+
+      if (candidate && !isGenericOrEmpty(candidate)) {
+        exactMotivo = candidate;
+        break;
+      }
+    }
+  }
 
   return {
-    motivo: finalMotivo,
+    motivo: exactMotivo || 'Motivo não informado',
     usuarioNome: resolvedUser,
     dataRecusa: logInfo?.dataRecusa || s.created_at || new Date().toISOString(),
   };
@@ -192,26 +231,45 @@ function DadosSolicitacaoTab({
   const refusalData = useMemo(() => {
     const recusaLog = logs.find((l) => {
       const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      const fromStatus = String(details?.from_status || '');
       return (
         details?.recusada === true ||
         details?.triageDecision === 'recusado' ||
-        (details?.to_status === 'encerrada' && Boolean(details?.motivo))
+        Boolean(details?.motivo_recusa) ||
+        Boolean(details?.triageMotivo) ||
+        Boolean(details?.motivo) ||
+        (toStatus === 'encerrada' && (fromStatus === 'triagem' || Boolean(details?.patch?.motivo_recusa) || Boolean(details?.patch?.motivo)))
       );
     });
 
     if (recusaLog) {
-      return {
-        motivo:
-          (recusaLog.details as any)?.motivo_recusa ||
-          (recusaLog.details as any)?.motivo ||
-          (recusaLog.details as any)?.triageMotivo ||
-          'Motivo não informado',
-        usuarioNome: recusaLog.usuario?.nome_completo || recusaLog.usuario?.email || null,
-        dataRecusa: recusaLog.created_at,
-      };
+      const details = recusaLog.details as any;
+      const extractedMotivo =
+        details?.motivo_recusa ||
+        details?.motivo ||
+        details?.triageMotivo ||
+        details?.justificativa ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
+
+      const userRes =
+        recusaLog.usuario?.nome_completo ||
+        recusaLog.usuario?.email ||
+        solicitacao.solicitante?.nome_completo ||
+        solicitacao.solicitante?.email ||
+        'Atendente Responsável';
+
+      if (extractedMotivo && extractedMotivo !== 'Motivo não informado' && extractedMotivo !== 'Solicitação recusada pela equipe de atendimento.') {
+        return {
+          motivo: extractedMotivo,
+          usuarioNome: userRes,
+          dataRecusa: recusaLog.created_at,
+        };
+      }
     }
 
-    return getSolicitacaoRefusalInfo(solicitacao, rejectionMap, undefined, logs);
+    return getSolicitacaoRefusalInfo(solicitacao, rejectionMap, logs);
   }, [logs, solicitacao, rejectionMap]);
 
   const isRecusada = Boolean(refusalData);
@@ -221,6 +279,9 @@ function DadosSolicitacaoTab({
   }, [logs]);
 
   const displayMotivoSolicitacao = useMemo(() => {
+    if (solicitacao.motivo_solicitacao && solicitacao.motivo_solicitacao.trim()) {
+      return solicitacao.motivo_solicitacao.trim();
+    }
     const creationMotivo =
       (creationLog?.details as any)?.motivo_solicitacao ||
       (creationLog?.details as any)?.motivo;
@@ -229,21 +290,8 @@ function DadosSolicitacaoTab({
       return creationMotivo.trim();
     }
 
-    if (
-      solicitacao.motivo_solicitacao &&
-      solicitacao.motivo_solicitacao.trim() &&
-      refusalData?.motivo &&
-      solicitacao.motivo_solicitacao.trim() !== refusalData.motivo.trim()
-    ) {
-      return solicitacao.motivo_solicitacao.trim();
-    }
-
-    if (solicitacao.motivo_solicitacao && !refusalData?.motivo) {
-      return solicitacao.motivo_solicitacao.trim();
-    }
-
     return null;
-  }, [creationLog, solicitacao.motivo_solicitacao, refusalData?.motivo]);
+  }, [creationLog, solicitacao.motivo_solicitacao]);
 
   const aprovacaoLog = useMemo(() => {
     return logs.find((l) => {
@@ -273,8 +321,6 @@ function DadosSolicitacaoTab({
     });
   }, [logs]);
 
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
-
   const quemRecusouNome = useMemo(() => {
     if (refusalData?.usuarioNome && refusalData.usuarioNome !== 'Atendente' && refusalData.usuarioNome !== 'Atendente Responsável') {
       return refusalData.usuarioNome;
@@ -288,14 +334,14 @@ function DadosSolicitacaoTab({
       );
     });
     return (
+      (recusaLog?.details as any)?.usuario_nome ||
       recusaLog?.usuario?.nome_completo ||
       recusaLog?.usuario?.email ||
-      profile?.nome_completo ||
-      user?.full_name ||
-      user?.email ||
+      solicitacao.solicitante?.nome_completo ||
+      solicitacao.solicitante?.email ||
       'Atendente Responsável'
     );
-  }, [refusalData, logs, profile, user]);
+  }, [refusalData, logs, solicitacao]);
 
   const dataRecusa = refusalData?.dataRecusa
     ? moment(refusalData.dataRecusa).format('DD/MM/YYYY [às] HH:mm')
@@ -303,9 +349,10 @@ function DadosSolicitacaoTab({
 
   const isAprovado = solicitacao.status !== 'triagem' && !isRecusada;
   const quemAprovouNome =
+    (aprovacaoLog?.details as any)?.usuario_nome ||
     aprovacaoLog?.usuario?.nome_completo ||
     aprovacaoLog?.usuario?.email ||
-    (isAprovado ? currentUserDisplayName : null);
+    (isAprovado ? (solicitacao.solicitante?.nome_completo || solicitacao.solicitante?.email || 'Atendente Responsável') : null);
 
   const dataAprovacao = aprovacaoLog
     ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
@@ -315,9 +362,10 @@ function DadosSolicitacaoTab({
 
   const temPrazo = Boolean(solicitacao.prazo_retirada || solicitacao.prazo_limite_retirada || prazoLog);
   const quemDefiniuPrazoNome =
+    (prazoLog?.details as any)?.usuario_nome ||
     prazoLog?.usuario?.nome_completo ||
     prazoLog?.usuario?.email ||
-    (temPrazo ? currentUserDisplayName : null);
+    (temPrazo ? (solicitacao.solicitante?.nome_completo || solicitacao.solicitante?.email || 'Atendente Responsável') : null);
 
   const dataDefinicaoPrazo = prazoLog
     ? moment(prazoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
@@ -406,7 +454,7 @@ function DadosSolicitacaoTab({
       )}
       {displayMotivoSolicitacao && (
         <div className="col-span-2">
-          <p className="text-sm text-slate-500">Motivo da solicitação</p>
+          <p className="text-sm text-slate-500">Mensagem do solicitante</p>
           <p className="font-medium">{displayMotivoSolicitacao}</p>
         </div>
       )}
@@ -442,12 +490,11 @@ function ImagensRetiradaTab({
   }, [logs]);
 
   const foiRetirado = Boolean(solicitacao?.data_retirada_realizada || retiradaLog || solicitacao?.status === 'equipamento_emprestado');
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
 
   const registrouNome =
     retiradaLog?.usuario?.nome_completo ||
     retiradaLog?.usuario?.email ||
-    (foiRetirado ? currentUserDisplayName : null);
+    (foiRetirado ? 'Atendente Responsável' : null);
 
   const dataHoraRegistro = retiradaLog
     ? moment(retiradaLog.created_at).format('DD/MM/YYYY [às] HH:mm')
@@ -596,12 +643,11 @@ function ImagensDevolucaoTab({ solicitacaoId, isBackOffice, solicitacao }: Image
   }, [logs]);
 
   const foiDevolvido = Boolean(devolucaoLog || solicitacao?.status === 'encerrada' || solicitacao?.status === 'em_devolucao');
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
 
   const registrouNome =
     devolucaoLog?.usuario?.nome_completo ||
     devolucaoLog?.usuario?.email ||
-    (foiDevolvido ? currentUserDisplayName : null);
+    (foiDevolvido ? 'Atendente Responsável' : null);
 
   const dataHoraRegistro = devolucaoLog
     ? moment(devolucaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
@@ -1106,8 +1152,7 @@ export default function Solicitacoes() {
   const concluidas = viewMode === 'normal' ? solicitacoesToRender.filter((s) => s.status === 'encerrada') : solicitacoesToRender;
 
   const renderSolicitacaoItem = (s: SolicitacaoComRelacoes) => {
-    const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || undefined;
-    const refusalInfo = getSolicitacaoRefusalInfo(s, rejectionMap, currentUserDisplayName);
+    const refusalInfo = getSolicitacaoRefusalInfo(s, rejectionMap);
     const isRecusada = Boolean(refusalInfo);
 
     return (
@@ -1667,8 +1712,7 @@ export default function Solicitacoes() {
       <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
         <DialogContent className="max-w-2xl">
           {selected && (() => {
-            const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || undefined;
-            const selectedRefusalInfo = getSolicitacaoRefusalInfo(selected, rejectionMap, currentUserDisplayName, selectedLogs);
+            const selectedRefusalInfo = getSolicitacaoRefusalInfo(selected, rejectionMap, selectedLogs);
             const isSelectedRecusada = Boolean(selectedRefusalInfo);
 
             return (

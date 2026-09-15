@@ -86,13 +86,14 @@ export function useRejectionLogsQuery() {
               details.motivo_recusa ||
               details.motivo ||
               details.triageMotivo ||
-              details.patch?.motivo_solicitacao ||
-              details.alteracoes?.motivo_solicitacao?.para ||
-              'Motivo não informado';
+              details.justificativa ||
+              details.patch?.motivo_recusa ||
+              details.patch?.motivo ||
+              null;
 
             map.set(reqId, {
-              motivo: refusalText,
-              usuarioNome: resolvedName || currentUserName || 'Atendente Responsável',
+              motivo: refusalText || 'Motivo não informado',
+              usuarioNome: resolvedName || 'Atendente Responsável',
               dataRecusa: log.created_at,
             });
           }
