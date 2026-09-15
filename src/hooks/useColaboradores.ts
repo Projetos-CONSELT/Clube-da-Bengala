@@ -62,8 +62,7 @@ export function useAtivosColaboradoresQuery() {
         .from('colaboradores')
         .select('*')
         .eq('is_ativo', true)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null);
+        .order('criado_em', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },

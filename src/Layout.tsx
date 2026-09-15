@@ -227,17 +227,6 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
     if (!user?.id) return;
     setIsSavingProfile(true);
     try {
-      const cleanCpfVal = cleanCPF(editFormData.cpf);
-      if (editFormData.cpf && cleanCpfVal.length !== 11 && cleanCpfVal.length !== 0) {
-        toast({
-          variant: 'destructive',
-          title: 'CPF inválido',
-          description: 'O CPF deve conter os 11 números.',
-        });
-        setIsSavingProfile(false);
-        return;
-      }
-
       const cleanPhoneVal = cleanCPF(editFormData.whatsapp);
       if (editFormData.whatsapp && cleanPhoneVal.length < 10 && cleanPhoneVal.length !== 0) {
         toast({
@@ -253,8 +242,6 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
         .from('usuarios')
         .update({
           nome_completo: editFormData.nome_completo.trim(),
-          cpf: formatCPF(editFormData.cpf),
-          email: editFormData.email.trim() || null,
           whatsapp: formatPhone(editFormData.whatsapp),
           endereco: editFormData.endereco.trim() || null,
           cidade: editFormData.cidade.trim() || null,
@@ -799,26 +786,31 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="edit-cpf" className="text-xs font-semibold">CPF</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="edit-cpf" className="text-xs font-semibold text-slate-500">CPF</Label>
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">Não alterável</span>
+                    </div>
                     <Input
                       id="edit-cpf"
                       value={editFormData.cpf}
-                      maxLength={14}
-                      onChange={(e) => setEditFormData({ ...editFormData, cpf: formatCPF(e.target.value) })}
+                      disabled
                       placeholder="000.000.000-00"
-                      className="bg-white"
+                      className="bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="edit-email" className="text-xs font-semibold">E-mail</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="edit-email" className="text-xs font-semibold text-slate-500">E-mail</Label>
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">Não alterável</span>
+                    </div>
                     <Input
                       id="edit-email"
                       type="email"
                       value={editFormData.email}
-                      onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                      disabled
                       placeholder="seu@email.com"
-                      className="bg-white"
+                      className="bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200"
                     />
                   </div>
 
