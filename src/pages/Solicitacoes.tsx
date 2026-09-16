@@ -1109,7 +1109,7 @@ export default function Solicitacoes() {
   };
 
   const handleDelete = (sol: SolicitacaoComRelacoes) => {
-    if (role === 'solicitante') return;
+    if (role === 'solicitante' || role === 'atendente') return;
     if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
     deleteMutation.mutate(sol.id, {
       onSuccess: () => toast({ title: 'Solicitação excluída' }),
@@ -1320,7 +1320,7 @@ export default function Solicitacoes() {
                   </DropdownMenuItem>
                 </>
               )}
-              {isBackOffice && (
+              {isBackOffice && role !== 'atendente' && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

@@ -31,14 +31,17 @@ export default function Doacoes() {
 
   const { data: pasAtivos, isLoading: isLoadingPas } = useAtivosColaboradoresQuery();
   const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+  const [mapError, setMapError] = useState(false);
   const [selectedPa, setSelectedPa] = useState<any>(null);
+
+  const isMapWorking = Boolean(token) && !mapError;
 
   const [viewState, setViewState] = useState({
     longitude: -48.2772,
     latitude: -18.9128, // Uberlândia coordinates as default center
     zoom: 11,
   });
-  // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
+  // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
   const pasRegistrados = useMemo(() => {
     if (!pasAtivos) return [];
     return (pasAtivos as any[]).filter((pa: any) =>
@@ -92,15 +95,15 @@ export default function Doacoes() {
           </p>
         </div>
 
-        {/* Layout Grade: Mapa à esquerda, Lista à direita */}
+        {/* Layout Grade: Mapa (e Lista apenas se o mapa não funcionar) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
           {/* Mapa de PAs */}
-          <div className="lg:col-span-2">
+          <div className={isMapWorking ? "lg:col-span-3" : "lg:col-span-2"}>
             <Card className="shadow-sm border-slate-200 overflow-hidden">
               <CardContent className="p-0 relative overflow-hidden h-[450px] rounded-lg">
-                {!token ? (
-                  <div className="flex h-full items-center justify-center p-4 bg-yellow-50 text-yellow-800">
+                {!token || mapError ? (
+                  <div className="flex h-full items-center justify-center p-4 bg-yellow-50 text-yellow-800 font-medium text-sm">
                     Mapa temporariamente indisponível.
                   </div>
                 ) : isLoadingPas ? (
@@ -111,6 +114,7 @@ export default function Doacoes() {
                   <Map
                     {...viewState}
                     onMove={(evt: any) => setViewState(evt.viewState)}
+                    onError={() => setMapError(true)}
                     mapStyle="mapbox://styles/mapbox/streets-v12"
                     mapboxAccessToken={token}
                   >
@@ -185,88 +189,89 @@ export default function Doacoes() {
             </Card>
           </div>
 
-          {/* Lista de Pontos de Arrecadação Cadastrados */}
-          <div className="lg:col-span-1 space-y-3">
-            <Card className="shadow-sm border-slate-200">
-              <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-rose-600" /> Locais Registrados
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Pontos voluntários disponíveis
-                  </CardDescription>
-                </div>
-                <Badge variant="secondary" className="bg-rose-50 text-rose-700 font-semibold border-rose-100">
-                  {pasRegistrados.length} PAs
-                </Badge>
-              </CardHeader>
-              <CardContent className="p-3 max-h-[380px] overflow-y-auto space-y-2.5">
-                {isLoadingPas ? (
-                  <div className="p-4 text-center text-xs text-slate-500">Carregando lista de PAs...</div>
-                ) : pasRegistrados.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500 space-y-2">
-                    <Heart className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="text-xs font-medium">Nenhum Ponto de Arrecadação cadastrado ainda.</p>
-                    <p className="text-[11px] text-slate-400">Cadastre-se na página Quero Ajudar para aparecer no mapa!</p>
+          {/* Lista de Pontos de Arrecadação Cadastrados (exibida apenas quando o mapa não estiver funcionando) */}
+          {!isMapWorking && (
+            <div className="lg:col-span-1 space-y-3">
+              <Card className="shadow-sm border-slate-200">
+                <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-rose-600" /> Locais Registrados
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Pontos voluntários disponíveis
+                    </CardDescription>
                   </div>
-                ) : (
-                  pasRegistrados.map((pa: any) => {
-                    const isSelected = selectedPa?.id === pa.id;
-                    const hasCoords = pa.latitude !== null && pa.longitude !== null;
-                    return (
-                      <div
-                        key={pa.id}
-                        onClick={() => handleSelectPa(pa)}
-                        className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${
-                          isSelected
-                            ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
-                            : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">{pa.nome_completo}</h4>
-                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-rose-50 text-rose-700 border-rose-200 shrink-0 gap-1">
-                            <Heart className="w-2.5 h-2.5 fill-rose-600" /> PA
-                          </Badge>
+                  <Badge variant="secondary" className="bg-rose-50 text-rose-700 font-semibold border-rose-100">
+                    {pasRegistrados.length} PAs
+                  </Badge>
+                </CardHeader>
+                <CardContent className="p-3 max-h-[380px] overflow-y-auto space-y-2.5">
+                  {isLoadingPas ? (
+                    <div className="p-4 text-center text-xs text-slate-500">Carregando lista de PAs...</div>
+                  ) : pasRegistrados.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500 space-y-2">
+                      <Heart className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-xs font-medium">Nenhum Ponto de Arrecadação cadastrado ainda.</p>
+                      <p className="text-[11px] text-slate-400">Cadastre-se na página Quero Ajudar para aparecer no mapa!</p>
+                    </div>
+                  ) : (
+                    pasRegistrados.map((pa: any) => {
+                      const isSelected = selectedPa?.id === pa.id;
+                      const hasCoords = pa.latitude !== null && pa.longitude !== null;
+                      return (
+                        <div
+                          key={pa.id}
+                          onClick={() => handleSelectPa(pa)}
+                          className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${
+                            isSelected
+                              ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
+                              : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">{pa.nome_completo}</h4>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-rose-50 text-rose-700 border-rose-200 shrink-0 gap-1">
+                              <Heart className="w-2.5 h-2.5 fill-rose-600" /> PA
+                            </Badge>
+                          </div>
+
+                          <p className="text-xs text-slate-600 flex items-start gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                            <span className="line-clamp-2">{pa.endereco_completo}</span>
+                          </p>
+
+                          <div className="flex items-center justify-between pt-1 gap-2">
+                            {pa.whatsapp ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2.5 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 gap-1"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  window.open(`https://wa.me/55${pa.whatsapp}`, '_blank');
+                                }}
+                              >
+                                <Phone className="w-3 h-3" /> WhatsApp
+                              </Button>
+                            ) : <span />}
+
+                            {hasCoords ? (
+                              <span className="text-[11px] text-rose-600 font-medium flex items-center gap-0.5 hover:underline">
+                                <Navigation className="w-3 h-3" /> Ver no mapa
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">Coord. pendente</span>
+                            )}
+                          </div>
                         </div>
-
-                        <p className="text-xs text-slate-600 flex items-start gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                          <span className="line-clamp-2">{pa.endereco_completo}</span>
-                        </p>
-
-                        <div className="flex items-center justify-between pt-1 gap-2">
-                          {pa.whatsapp ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs px-2.5 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 gap-1"
-                              onClick={(e: React.MouseEvent) => {
-                                e.stopPropagation();
-                                window.open(`https://wa.me/55${pa.whatsapp}`, '_blank');
-                              }}
-                            >
-                              <Phone className="w-3 h-3" /> WhatsApp
-                            </Button>
-                          ) : <span />}
-
-                          {hasCoords ? (
-                            <span className="text-[11px] text-rose-600 font-medium flex items-center gap-0.5 hover:underline">
-                              <Navigation className="w-3 h-3" /> Ver no mapa
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">Coord. pendente</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 

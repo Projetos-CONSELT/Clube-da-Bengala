@@ -64,6 +64,7 @@ export default function Configuracoes() {
 
   // Estados dos parâmetros da tabela 'configuracoes' (id = 1)
   const [diasMaximos, setDiasMaximos] = useState<number>(30);
+  const [diasRenovacao, setDiasRenovacao] = useState<number>(() => Number(localStorage.getItem('dias_renovacao')) || 30);
   const [limitesPorTipo, setLimitesPorTipo] = useState<LimiteItem[]>([]);
   const [bloquearInadimplentes, setBloquearInadimplentes] = useState<boolean>(true);
   const [termosUso, setTermosUso] = useState<string>('');
@@ -113,12 +114,18 @@ export default function Configuracoes() {
 
         // Trata a conversão da coluna JSONB limites_por_tipo para array de pares de chave e valor
         if (data.limites_por_tipo && typeof data.limites_por_tipo === 'object' && !Array.isArray(data.limites_por_tipo)) {
-          const parsedItems: LimiteItem[] = Object.entries(data.limites_por_tipo as Record<string, unknown>).map(
-            ([key, value]) => ({
+          const jsonObj = data.limites_por_tipo as Record<string, unknown>;
+          if (jsonObj.__dias_renovacao !== undefined) {
+            const val = Number(jsonObj.__dias_renovacao) || 30;
+            setDiasRenovacao(val);
+            localStorage.setItem('dias_renovacao', String(val));
+          }
+          const parsedItems: LimiteItem[] = Object.entries(jsonObj)
+            .filter(([key]) => key !== '__dias_renovacao')
+            .map(([key, value]) => ({
               key,
               value: Number(value) || 0,
-            })
-          );
+            }));
           setLimitesPorTipo(parsedItems);
         } else {
           setLimitesPorTipo([
@@ -210,10 +217,12 @@ export default function Configuracoes() {
     setIsSaving(true);
     try {
       // Reconverte o array LimiteItem para o objeto JSONB exigido pela coluna limites_por_tipo
-      const limitesJsonb: Record<string, number> = {};
+      const limitesJsonb: Record<string, number> = {
+        __dias_renovacao: Number(diasRenovacao) || 30,
+      };
       limitesPorTipo.forEach((item) => {
         const cleanKey = item.key.trim();
-        if (cleanKey) {
+        if (cleanKey && cleanKey !== '__dias_renovacao') {
           limitesJsonb[cleanKey] = Number(item.value) || 0;
         }
       });
@@ -224,6 +233,8 @@ export default function Configuracoes() {
         bloquear_inadimplentes: Boolean(bloquearInadimplentes),
         termos_uso: termosUso,
       };
+
+      localStorage.setItem('dias_renovacao', String(diasRenovacao));
 
       if (!payloadParaSalvar.id) {
         delete payloadParaSalvar.id;
@@ -644,6 +655,33 @@ export default function Configuracoes() {
                           </Button>
                         </div>
                       </div>
+                    </div>
+
+                    <hr className="border-slate-100" />
+
+                    {/* Tempo Disponível por Renovação */}
+                    <div className="space-y-2 max-w-md pt-2">
+                      <Label htmlFor="dias_renovacao" className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-blue-600 inline" />
+                        Tempo Disponível por Renovação
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="dias_renovacao"
+                          type="number"
+                          min={1}
+                          max={365}
+                          disabled={!isEditable}
+                          value={diasRenovacao}
+                          onChange={(e) => setDiasRenovacao(Math.max(1, Number(e.target.value)))}
+                          className="bg-white border-slate-200 text-slate-900 font-medium h-10 w-32"
+                        />
+                        <span className="text-sm text-slate-500 font-medium shrink-0">dias por renovação</span>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Quantidade de dias adicionados ao prazo de devolução a cada renovação efetuada pelo atendente/sistema.
+                      </p>
                     </div>
                   </div>
                 </CardContent>

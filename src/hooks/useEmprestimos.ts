@@ -111,10 +111,11 @@ export function useRenovarEmprestimo() {
 export function useRenovarEmprestimoRpc() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id }: { id: string }) => {
+    mutationFn: async ({ id, diasAdicionais }: { id: string; diasAdicionais?: number }) => {
+      const dias = diasAdicionais || Number(localStorage.getItem('dias_renovacao')) || 30;
       const { data, error } = await supabase.rpc('renovar_emprestimo', {
         p_emprestimo_id: id,
-        p_dias_adicionais: 30,
+        p_dias_adicionais: dias,
       });
       if (error) throw error;
       return { id, ...(data as { nova_data: string; renovacoes_realizadas: number }) };
