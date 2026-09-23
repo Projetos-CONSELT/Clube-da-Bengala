@@ -116,7 +116,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('cb_selected_nucleus_id');
+      }
       setSession(currentSession);
       void loadProfile(currentSession?.user?.id, currentSession?.user?.email);
     });
@@ -129,6 +132,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const logout = useCallback(async () => {
+    localStorage.removeItem('cb_selected_nucleus_id');
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);

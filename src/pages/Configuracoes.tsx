@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { toast as sonnerToast } from 'sonner';
@@ -429,21 +430,66 @@ export default function Configuracoes() {
   };
 
   const addTipo = () => {
-    if (!tipoForm.nome) return;
+    const nomeLimpo = tipoForm.nome.trim();
+    if (!nomeLimpo) {
+      toast({
+        variant: 'destructive',
+        title: 'Nome obrigatório',
+        description: 'Preencha o nome do tipo de equipamento.',
+      });
+      return;
+    }
+
     createTipo.mutate(
       {
-        nome: tipoForm.nome,
-        descricao: tipoForm.descricao || null,
-        limite_renovacoes: Number(tipoForm.limite_renovacoes) || 3,
+        nome: nomeLimpo,
+        descricao: tipoForm.descricao.trim() || null,
+        limite_renovacoes: Math.max(1, Number(tipoForm.limite_renovacoes) || 3),
         schema_especificacoes: {},
       },
       {
         onSuccess: () => {
-          toast({ title: 'Tipo cadastrado com sucesso' });
+          toast({
+            title: 'Tipo cadastrado com sucesso',
+            description: `O tipo "${nomeLimpo}" agora está disponível no sistema.`,
+          });
+          sonnerToast.success('Tipo de equipamento cadastrado!');
           setTipoForm({ nome: '', descricao: '', limite_renovacoes: '3' });
+        },
+        onError: (err: any) => {
+          toast({
+            variant: 'destructive',
+            title: 'Erro ao cadastrar tipo',
+            description: err?.message || 'Falha ao salvar o tipo de equipamento.',
+          });
+          sonnerToast.error(err?.message || 'Erro ao cadastrar tipo');
         },
       }
     );
+  };
+
+  const handleDeleteTipo = (id: string, nome: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o tipo de equipamento "${nome}"?`)) {
+      return;
+    }
+
+    deleteTipo.mutate(id, {
+      onSuccess: () => {
+        toast({
+          title: 'Tipo excluído',
+          description: `O tipo "${nome}" foi removido com sucesso.`,
+        });
+        sonnerToast.success(`Tipo "${nome}" excluído.`);
+      },
+      onError: (err: any) => {
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao excluir tipo',
+          description: err?.message || 'Não foi possível excluir o tipo de equipamento.',
+        });
+        sonnerToast.error(err?.message || 'Erro ao excluir tipo');
+      },
+    });
   };
 
   return (
@@ -873,30 +919,148 @@ export default function Configuracoes() {
         {/* ==========================================
             ABA 3: TIPOS DE EQUIPAMENTO
            ========================================== */}
-        <TabsContent value="tipos" className="mt-4 space-y-4 focus-visible:outline-none">
-          <Card className="border-slate-200/80 shadow-sm bg-white">
-            <CardHeader><CardTitle className="text-lg">Novo Tipo de Equipamento</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div><Label>Nome do Equipamento</Label><Input value={tipoForm.nome} onChange={(e) => setTipoForm({ ...tipoForm, nome: e.target.value })} /></div>
-              <div><Label>Descrição</Label><Textarea value={tipoForm.descricao} onChange={(e) => setTipoForm({ ...tipoForm, descricao: e.target.value })} /></div>
-              <div><Label>Limite Padrão de Renovações</Label><Input type="number" value={tipoForm.limite_renovacoes} onChange={(e) => setTipoForm({ ...tipoForm, limite_renovacoes: e.target.value })} /></div>
-              <Button onClick={addTipo} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"><Plus className="w-4 h-4" /> Cadastrar Tipo</Button>
+        <TabsContent value="tipos" className="mt-4 space-y-6 focus-visible:outline-none">
+          <Card className="border-slate-200/80 shadow-sm bg-white overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+              <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-600" />
+                Novo Tipo de Equipamento
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500">
+                Cadastre as categorias globais de equipamentos disponíveis para empréstimo e doação.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="tipo-nome" className="text-sm font-medium text-slate-700">
+                    Nome do Equipamento <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="tipo-nome"
+                    placeholder="Ex: Cadeira de Rodas Motorizada, Andador 4 Rodas..."
+                    value={tipoForm.nome}
+                    onChange={(e) => setTipoForm({ ...tipoForm, nome: e.target.value })}
+                    className="bg-white border-slate-200"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="tipo-limite" className="text-sm font-medium text-slate-700">
+                    Limite Padrão de Renovações
+                  </Label>
+                  <Input
+                    id="tipo-limite"
+                    type="number"
+                    min={1}
+                    max={20}
+                    placeholder="3"
+                    value={tipoForm.limite_renovacoes}
+                    onChange={(e) => setTipoForm({ ...tipoForm, limite_renovacoes: e.target.value })}
+                    className="bg-white border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tipo-desc" className="text-sm font-medium text-slate-700">
+                  Descrição (Opcional)
+                </Label>
+                <Textarea
+                  id="tipo-desc"
+                  rows={2}
+                  placeholder="Informações adicionais ou especificações gerais deste tipo de equipamento..."
+                  value={tipoForm.descricao}
+                  onChange={(e) => setTipoForm({ ...tipoForm, descricao: e.target.value })}
+                  className="bg-white border-slate-200"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  onClick={addTipo}
+                  disabled={createTipo.isPending}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                >
+                  {createTipo.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Cadastrando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Cadastrar Tipo
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200/80 shadow-sm bg-white">
-            <CardContent className="p-0 divide-y">
-              {(tiposQuery.data ?? []).map((t) => (
-                <div key={t.id} className="p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-slate-900">{t.nome}</p>
-                    <p className="text-sm text-slate-500">{t.descricao || 'Sem descrição cadastrada'}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => deleteTipo.mutate(t.id)}>
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
+          <Card className="border-slate-200/80 shadow-sm bg-white overflow-hidden">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-blue-600" />
+                  Tipos Cadastrados
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Total de {tiposQuery.data?.length ?? 0} tipo(s) de equipamento configurados no catálogo global.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {tiposQuery.isLoading ? (
+                <div className="p-6 space-y-3">
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                  <Skeleton className="h-14 w-full rounded-lg" />
+                  <Skeleton className="h-14 w-full rounded-lg" />
                 </div>
-              ))}
+              ) : (tiposQuery.data ?? []).length === 0 ? (
+                <div className="p-8 text-center flex flex-col items-center justify-center space-y-2">
+                  <Package className="w-10 h-10 text-slate-300" />
+                  <p className="font-medium text-slate-600 text-sm">Nenhum tipo de equipamento cadastrado</p>
+                  <p className="text-xs text-slate-400 max-w-sm">
+                    Utilize o formulário acima para adicionar os tipos de equipamentos gerenciados pelo sistema.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {(tiposQuery.data ?? []).map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-4 flex items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                          <Package className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-slate-900 text-sm">{t.nome}</p>
+                            <Badge variant="secondary" className="text-[11px] font-normal bg-slate-100 text-slate-600 border border-slate-200">
+                              Limite: {t.limite_renovacoes ?? 3} {t.limite_renovacoes === 1 ? 'renovação' : 'renovações'}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">
+                            {t.descricao || 'Sem descrição cadastrada'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={deleteTipo.isPending}
+                        onClick={() => handleDeleteTipo(t.id, t.nome)}
+                        className="hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors shrink-0"
+                        title="Excluir tipo de equipamento"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
