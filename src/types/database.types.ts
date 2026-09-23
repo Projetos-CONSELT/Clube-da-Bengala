@@ -693,6 +693,7 @@ export type Database = {
       configuracoes: {
         Row: {
           id: number;
+          nucleo_id?: string | null;
           dias_maximos: number;
           limites_por_tipo: Json;
           bloquear_inadimplentes: boolean;
@@ -702,6 +703,7 @@ export type Database = {
         };
         Insert: {
           id?: number;
+          nucleo_id?: string | null;
           dias_maximos?: number;
           limites_por_tipo?: Json;
           bloquear_inadimplentes?: boolean;
@@ -711,10 +713,47 @@ export type Database = {
         };
         Update: {
           id?: number;
+          nucleo_id?: string | null;
           dias_maximos?: number;
           limites_por_tipo?: Json;
           bloquear_inadimplentes?: boolean;
           termos_uso?: string;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      configuracoes_financeiras: {
+        Row: {
+          id: string;
+          nucleo_id: string | null;
+          gateway_provider: string | null;
+          gateway_api_key: string | null;
+          gateway_environment: string | null;
+          gateway_default_value: number | null;
+          texto_padrao_recibo: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nucleo_id?: string | null;
+          gateway_provider?: string | null;
+          gateway_api_key?: string | null;
+          gateway_environment?: string | null;
+          gateway_default_value?: number | null;
+          texto_padrao_recibo?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nucleo_id?: string | null;
+          gateway_provider?: string | null;
+          gateway_api_key?: string | null;
+          gateway_environment?: string | null;
+          gateway_default_value?: number | null;
+          texto_padrao_recibo?: string | null;
           created_at?: string | null;
           updated_at?: string | null;
         };

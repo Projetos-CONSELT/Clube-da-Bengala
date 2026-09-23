@@ -96,6 +96,10 @@ export default function Configuracoes() {
   // 1. CORREÇÃO DO FETCH - SUBST. .single() POR .maybeSingle()
   // ==========================================
   const fetchConfiguracoes = async () => {
+    if (!selectedNucleusId) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -158,7 +162,7 @@ export default function Configuracoes() {
   // FETCH DE CONFIGURAÇÕES FINANCEIRAS (SOMENTE CEO)
   // ==========================================
   const fetchConfiguracoesFinanceiras = async () => {
-    if (currentUserRole !== 'ceo') return;
+    if (currentUserRole !== 'ceo' || !selectedNucleusId) return;
     try {
       const { data, error } = await supabase
         .from('configuracoes_financeiras')
