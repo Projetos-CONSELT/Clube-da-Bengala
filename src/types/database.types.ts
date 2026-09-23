@@ -754,6 +754,11 @@ export type Database = {
           gateway_environment?: string | null;
           gateway_default_value?: number | null;
           texto_padrao_recibo?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
       colaboradores: {
         Row: {
           id: string;

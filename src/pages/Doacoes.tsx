@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useUsuariosQuery } from '@/hooks/useUsuarios';
 import { useTiposEquipamentoQuery } from '@/hooks/useSolicitacoes';
 import { useCreateEquipamento } from '@/hooks/useEquipamentos';
@@ -352,7 +352,7 @@ export default function Doacoes() {
               <Select value={form.tipo_id} onValueChange={(v) => setForm({ ...form, tipo_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione o tipo de equipamento" /></SelectTrigger>
                 <SelectContent>
-                  {(tiposQuery.data ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
+                  {(tiposQuery.data ?? []).map((t: any) => <SelectItem key={t.id} value={t.id}>{t.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -361,7 +361,7 @@ export default function Doacoes() {
               <Select value={form.doador_id} onValueChange={(v) => setForm({ ...form, doador_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione o doador" /></SelectTrigger>
                 <SelectContent>
-                  {(usuariosQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.nome_completo}</SelectItem>)}
+                  {(usuariosQuery.data ?? []).map((u: any) => <SelectItem key={u.id} value={u.id}>{u.nome_completo}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
