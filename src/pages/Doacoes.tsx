@@ -42,20 +42,64 @@ export default function Doacoes() {
     zoom: 11,
   });
   // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
+  // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
   const pasRegistrados = useMemo(() => {
     if (!pasAtivos) return [];
-    return (pasAtivos as any[]).filter((pa: any) =>
-      pa.modalidades?.some((m: string) => m === 'PA' || m === 'Ponto de Arrecadação (PA)')
-    );
+    return (pasAtivos as any[]).filter((pa: any) => {
+      if (!pa.modalidades) return false;
+      if (Array.isArray(pa.modalidades)) {
+        return pa.modalidades.some(
+          (m: string) =>
+            m === 'PA' ||
+            m === 'Ponto de Arrecadação (PA)' ||
+            String(m).toLowerCase().includes('arrecadação') ||
+            String(m).toLowerCase().includes('arrecadacao')
+        );
+      }
+      if (typeof pa.modalidades === 'string') {
+        return (
+          pa.modalidades.includes('PA') ||
+          pa.modalidades.toLowerCase().includes('arrecadação') ||
+          pa.modalidades.toLowerCase().includes('arrecadacao')
+        );
+      }
+      return false;
+    });
   }, [pasAtivos]);
+
+  // Centraliza o mapa no primeiro ponto registrado caso existam coordenadas
+  useEffect(() => {
+    if (pasRegistrados.length > 0) {
+      const firstWithCoords = pasRegistrados.find(
+        (pa: any) =>
+          pa.latitude !== null &&
+          pa.longitude !== null &&
+          !isNaN(Number(pa.latitude)) &&
+          !isNaN(Number(pa.longitude))
+      );
+      if (firstWithCoords) {
+        setViewState((prev) => ({
+          ...prev,
+          longitude: Number(firstWithCoords.longitude),
+          latitude: Number(firstWithCoords.latitude),
+          zoom: 12,
+        }));
+      }
+    }
+  }, [pasRegistrados]);
 
   const handleSelectPa = (pa: any) => {
     setSelectedPa(pa);
-    if (pa.latitude !== null && pa.longitude !== null) {
+    if (
+      pa.latitude !== null &&
+      pa.longitude !== null &&
+      !isNaN(Number(pa.latitude)) &&
+      !isNaN(Number(pa.longitude))
+    ) {
       setViewState((prev) => ({
         ...prev,
-        longitude: pa.longitude,
-        latitude: pa.latitude,
+        longitude: Number(pa.longitude),
+        latitude: Number(pa.latitude),
         zoom: 14,
       }));
     }
@@ -95,16 +139,20 @@ export default function Doacoes() {
           </p>
         </div>
 
-        {/* Layout Grade: Mapa (e Lista apenas se o mapa não funcionar) */}
+        {/* Layout Grade: Mapa e Lista lateral de Pontos de Arrecadação */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
           {/* Mapa de PAs */}
-          <div className={isMapWorking ? "lg:col-span-3" : "lg:col-span-2"}>
-            <Card className="shadow-sm border-slate-200 overflow-hidden">
+          <div className="lg:col-span-2">
+            <Card className="shadow-sm border-slate-200 overflow-hidden bg-white">
               <CardContent className="p-0 relative overflow-hidden h-[450px] rounded-lg">
                 {!token || mapError ? (
-                  <div className="flex h-full items-center justify-center p-4 bg-yellow-50 text-yellow-800 font-medium text-sm">
-                    Mapa temporariamente indisponível.
+                  <div className="flex flex-col h-full items-center justify-center p-6 bg-amber-50/60 text-amber-800 text-center space-y-2">
+                    <Heart className="w-10 h-10 text-amber-500" />
+                    <p className="font-semibold text-sm">Visualização em Mapa</p>
+                    <p className="text-xs text-amber-700 max-w-sm">
+                      O mapa interativo está em modo offline. Você pode consultar todos os pontos de arrecadação diretamente na lista ao lado.
+                    </p>
                   </div>
                 ) : isLoadingPas ? (
                   <div className="flex h-full items-center justify-center p-4 text-slate-500">
@@ -121,14 +169,22 @@ export default function Doacoes() {
                     <NavigationControl position="top-right" />
                     
                     {pasRegistrados
-                      .filter((pa: any) => pa.latitude !== null && pa.longitude !== null)
+                      .filter(
+                        (pa: any) =>
+                          pa.latitude !== null &&
+                          pa.longitude !== null &&
+                          !isNaN(Number(pa.latitude)) &&
+                          !isNaN(Number(pa.longitude))
+                      )
                       .map((pa: any) => {
                         const isSelected = selectedPa?.id === pa.id;
+                        const lat = Number(pa.latitude);
+                        const lng = Number(pa.longitude);
                         return (
                           <Marker
                             key={pa.id}
-                            longitude={pa.longitude!}
-                            latitude={pa.latitude!}
+                            longitude={lng}
+                            latitude={lat}
                             anchor="bottom"
                             onClick={(e) => {
                               e.originalEvent.stopPropagation();
@@ -142,7 +198,7 @@ export default function Doacoes() {
                               title={pa.nome_completo}
                             >
                               <div className="relative flex flex-col items-center">
-                                {/* Marcador em formato de Coração (igual a Quero Ajudar) */}
+                                {/* Marcador em formato de Coração */}
                                 <div className="w-9 h-9 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white ring-2 ring-rose-200 group-hover:bg-rose-500 transition-colors">
                                   <Heart className="w-5 h-5 fill-white text-white" />
                                 </div>
@@ -155,8 +211,8 @@ export default function Doacoes() {
 
                     {selectedPa && selectedPa.latitude && selectedPa.longitude && (
                       <Popup
-                        longitude={selectedPa.longitude}
-                        latitude={selectedPa.latitude}
+                        longitude={Number(selectedPa.longitude)}
+                        latitude={Number(selectedPa.latitude)}
                         anchor="top"
                         onClose={() => setSelectedPa(null)}
                         closeOnClick={false}
@@ -189,89 +245,91 @@ export default function Doacoes() {
             </Card>
           </div>
 
-          {/* Lista de Pontos de Arrecadação Cadastrados (exibida apenas quando o mapa não estiver funcionando) */}
-          {!isMapWorking && (
-            <div className="lg:col-span-1 space-y-3">
-              <Card className="shadow-sm border-slate-200">
-                <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-rose-600" /> Locais Registrados
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Pontos voluntários disponíveis
-                    </CardDescription>
+          {/* Lista lateral de Pontos de Arrecadação Cadastrados */}
+          <div className="lg:col-span-1 space-y-3">
+            <Card className="shadow-sm border-slate-200 bg-white">
+              <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-rose-600" /> Locais Registrados
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500">
+                    Pontos voluntários cadastrados
+                  </CardDescription>
+                </div>
+                <Badge variant="secondary" className="bg-rose-50 text-rose-700 font-semibold border-rose-200">
+                  {pasRegistrados.length} PAs
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-3 max-h-[400px] overflow-y-auto space-y-2.5">
+                {isLoadingPas ? (
+                  <div className="p-4 text-center text-xs text-slate-500">Carregando lista de PAs...</div>
+                ) : pasRegistrados.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500 space-y-2">
+                    <Heart className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-medium">Nenhum Ponto de Arrecadação cadastrado ainda.</p>
+                    <p className="text-[11px] text-slate-400">Voluntários com modalidade PA aparecerão aqui após aprovação.</p>
                   </div>
-                  <Badge variant="secondary" className="bg-rose-50 text-rose-700 font-semibold border-rose-100">
-                    {pasRegistrados.length} PAs
-                  </Badge>
-                </CardHeader>
-                <CardContent className="p-3 max-h-[380px] overflow-y-auto space-y-2.5">
-                  {isLoadingPas ? (
-                    <div className="p-4 text-center text-xs text-slate-500">Carregando lista de PAs...</div>
-                  ) : pasRegistrados.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 space-y-2">
-                      <Heart className="w-8 h-8 text-slate-300 mx-auto" />
-                      <p className="text-xs font-medium">Nenhum Ponto de Arrecadação cadastrado ainda.</p>
-                      <p className="text-[11px] text-slate-400">Cadastre-se na página Quero Ajudar para aparecer no mapa!</p>
-                    </div>
-                  ) : (
-                    pasRegistrados.map((pa: any) => {
-                      const isSelected = selectedPa?.id === pa.id;
-                      const hasCoords = pa.latitude !== null && pa.longitude !== null;
-                      return (
-                        <div
-                          key={pa.id}
-                          onClick={() => handleSelectPa(pa)}
-                          className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${
-                            isSelected
-                              ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
-                              : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">{pa.nome_completo}</h4>
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-rose-50 text-rose-700 border-rose-200 shrink-0 gap-1">
-                              <Heart className="w-2.5 h-2.5 fill-rose-600" /> PA
-                            </Badge>
-                          </div>
-
-                          <p className="text-xs text-slate-600 flex items-start gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                            <span className="line-clamp-2">{pa.endereco_completo}</span>
-                          </p>
-
-                          <div className="flex items-center justify-between pt-1 gap-2">
-                            {pa.whatsapp ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs px-2.5 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 gap-1"
-                                onClick={(e: React.MouseEvent) => {
-                                  e.stopPropagation();
-                                  window.open(`https://wa.me/55${pa.whatsapp}`, '_blank');
-                                }}
-                              >
-                                <Phone className="w-3 h-3" /> WhatsApp
-                              </Button>
-                            ) : <span />}
-
-                            {hasCoords ? (
-                              <span className="text-[11px] text-rose-600 font-medium flex items-center gap-0.5 hover:underline">
-                                <Navigation className="w-3 h-3" /> Ver no mapa
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic">Coord. pendente</span>
-                            )}
-                          </div>
+                ) : (
+                  pasRegistrados.map((pa: any) => {
+                    const isSelected = selectedPa?.id === pa.id;
+                    const hasCoords =
+                      pa.latitude !== null &&
+                      pa.longitude !== null &&
+                      !isNaN(Number(pa.latitude)) &&
+                      !isNaN(Number(pa.longitude));
+                    return (
+                      <div
+                        key={pa.id}
+                        onClick={() => handleSelectPa(pa)}
+                        className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${
+                          isSelected
+                            ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
+                            : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">{pa.nome_completo}</h4>
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-rose-50 text-rose-700 border-rose-200 shrink-0 gap-1">
+                            <Heart className="w-2.5 h-2.5 fill-rose-600" /> PA
+                          </Badge>
                         </div>
-                      );
-                    })
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
+
+                        <p className="text-xs text-slate-600 flex items-start gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">{pa.endereco_completo}</span>
+                        </p>
+
+                        <div className="flex items-center justify-between pt-1 gap-2">
+                          {pa.whatsapp ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs px-2.5 border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 gap-1"
+                              onClick={(e: React.MouseEvent) => {
+                                e.stopPropagation();
+                                window.open(`https://wa.me/55${pa.whatsapp}`, '_blank');
+                              }}
+                            >
+                              <Phone className="w-3 h-3" /> WhatsApp
+                            </Button>
+                          ) : <span />}
+
+                          {hasCoords ? (
+                            <span className="text-[11px] text-rose-600 font-medium flex items-center gap-0.5 hover:underline">
+                              <Navigation className="w-3 h-3" /> Ver no mapa
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Coord. pendente</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 

@@ -754,8 +754,57 @@ export type Database = {
           gateway_environment?: string | null;
           gateway_default_value?: number | null;
           texto_padrao_recibo?: string | null;
+      colaboradores: {
+        Row: {
+          id: string;
+          nome_completo: string;
+          cpf: string | null;
+          email: string | null;
+          whatsapp: string | null;
+          cep: string | null;
+          endereco_completo: string | null;
+          nucleo_id: string | null;
+          modalidades: string[] | null;
+          aceitou_termo: boolean;
+          data_aceite_termo: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          is_ativo: boolean;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nome_completo: string;
+          cpf?: string | null;
+          email?: string | null;
+          whatsapp?: string | null;
+          cep?: string | null;
+          endereco_completo?: string | null;
+          nucleo_id?: string | null;
+          modalidades?: string[] | null;
+          aceitou_termo?: boolean;
+          data_aceite_termo?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          is_ativo?: boolean;
           created_at?: string | null;
-          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nome_completo?: string;
+          cpf?: string | null;
+          email?: string | null;
+          whatsapp?: string | null;
+          cep?: string | null;
+          endereco_completo?: string | null;
+          nucleo_id?: string | null;
+          modalidades?: string[] | null;
+          aceitou_termo?: boolean;
+          data_aceite_termo?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          is_ativo?: boolean;
+          created_at?: string | null;
         };
         Relationships: [];
       };
@@ -872,5 +921,9 @@ export type AuditLogActionType = AuditLog['action_type'];
 export type Configuracao = Database['public']['Tables']['configuracoes']['Row'];
 export type ConfiguracaoInsert = Database['public']['Tables']['configuracoes']['Insert'];
 export type ConfiguracaoUpdate = Database['public']['Tables']['configuracoes']['Update'];
+
+export type Colaborador = Database['public']['Tables']['colaboradores']['Row'];
+export type ColaboradorInsert = Database['public']['Tables']['colaboradores']['Insert'];
+export type ColaboradorUpdate = Database['public']['Tables']['colaboradores']['Update'];
 
 

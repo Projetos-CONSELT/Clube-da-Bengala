@@ -900,197 +900,162 @@ export default function Pessoas() {
 
         {canManageSolicitantes && (
           <TabsContent value="voluntarios" className="mt-4 space-y-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Input
-                placeholder="Pesquisar voluntários..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-md"
-              />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Gerenciamento de Voluntários</h3>
+                <p className="text-xs text-slate-500">
+                  Voluntários cadastrados através do formulário "Seja um Voluntário (Quero Ajudar)".
+                </p>
+              </div>
+              <div className="w-full sm:w-72">
+                <Input
+                  placeholder="Pesquisar por nome, e-mail ou CPF..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-white border-slate-200"
+                />
+              </div>
             </div>
-            
+
             {colaboradoresQuery.isLoading ? (
-              <div className="flex justify-center p-8">
-                <Loader2 className="animate-spin w-6 h-6 text-blue-600" />
-              </div>
-            ) : (
-              (() => {
-                const term = searchTerm.toLowerCase();
-                const filteredColaboradores = (colaboradoresQuery.data ?? []).filter((c) => 
-                  c.nome_completo?.toLowerCase().includes(term) ||
-                  (c.email ?? '').toLowerCase().includes(term) ||
-                  (c.cpf ?? '').toLowerCase().includes(term)
-                );
-
-                if (filteredColaboradores.length === 0) {
-                  return (
-                    <Card>
-                      <CardContent className="p-8 text-center text-slate-500">
-                        Nenhum voluntário encontrado.
-                      </CardContent>
-                    </Card>
-                  );
-                }
-
-                return (
-                  <div className="grid gap-4">
-                    {filteredColaboradores.map((c) => (
-                      <Card key={c.id} className="overflow-hidden border">
-                        <CardContent className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-bold text-slate-900">{c.nome_completo}</h4>
-                              {c.is_ativo ? (
-                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Ativo</Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-slate-500">Inativo</Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-slate-500">
-                              CPF: {c.cpf} • Whats: {c.whatsapp} {c.email ? `• E-mail: ${c.email}` : ''}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Endereço: {c.endereco_completo}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {c.modalidades?.map((mod: string) => (
-                                <Badge key={mod} variant="secondary" className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-100">
-                                  {mod}
-                                </Badge>
-                              ))}
-                            </div>
-                            {c.data_aceite_termo && (
-                              <p className="text-xs text-amber-700 mt-2 font-medium">
-                                Aceitou termo em: {new Date(c.data_aceite_termo).toLocaleString('pt-BR')}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex shrink-0">
-                            <Button
-                              variant={c.is_ativo ? 'outline' : 'default'}
-                              className={!c.is_ativo ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-red-600 border-red-200 hover:bg-red-50'}
-                              onClick={() => {
-                                updateColaborador.mutate({ id: c.id, patch: { is_ativo: !c.is_ativo } }, {
-                                  onSuccess: () => toast({ title: `Voluntário ${!c.is_ativo ? 'ativado' : 'desativado'} com sucesso` })
-                                })
-                              }}
-                              disabled={updateColaborador.isPending}
-                            >
-                              {c.is_ativo ? 'Desativar' : 'Aprovar / Ativar'}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                );
-              })()
-            )}
-          </TabsContent>
-        )}
-
-        {canManageSolicitantes && (
-          <TabsContent value="voluntarios" className="mt-4 space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-800">Gerenciamento de Voluntários</h3>
-            </div>
-
-            {voluntariosQuery.isLoading ? (
               <div className="flex justify-center items-center py-12">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
               </div>
-            ) : voluntariosQuery.isError ? (
+            ) : colaboradoresQuery.isError ? (
               <div className="p-4 bg-red-50 text-red-600 rounded-lg border border-red-100 flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5" />
                 Ocorreu um erro ao carregar os voluntários.
               </div>
-            ) : (voluntariosQuery.data?.length ?? 0) === 0 ? (
-              <div className="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-slate-900">Nenhum voluntário encontrado</h3>
-                <p className="text-slate-500 max-w-sm mx-auto mt-1">
-                  Não há registros de voluntários cadastrados para este núcleo no momento.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4">
-                {voluntariosQuery.data?.map((v) => (
-                  <Card key={v.id} className="border-slate-200 shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
-                    <CardContent className="p-0">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center p-4 gap-4">
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium text-slate-900 text-base">{v.nome_completo}</h4>
-                            <Badge variant={v.is_ativo ? "default" : "secondary"} className={v.is_ativo ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}>
-                              {v.is_ativo ? 'Ativo' : 'Pendente'}
-                            </Badge>
-                          </div>
-                          
-                          <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 text-sm text-slate-600 mt-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-slate-800">WhatsApp:</span> 
-                              {v.whatsapp?.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') || 'Não informado'}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-slate-800">E-mail:</span> 
-                              {v.email || 'Não informado'}
-                            </div>
-                          </div>
-                          
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {v.modalidades?.map((mod: string) => (
-                              <Badge key={mod} variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200 font-normal">
-                                {mod}
+            ) : (() => {
+              const term = searchTerm.toLowerCase();
+              const filteredColaboradores = (colaboradoresQuery.data ?? []).filter((c: any) =>
+                c.nome_completo?.toLowerCase().includes(term) ||
+                (c.email ?? '').toLowerCase().includes(term) ||
+                (c.cpf ?? '').toLowerCase().includes(term) ||
+                (c.endereco_completo ?? '').toLowerCase().includes(term)
+              );
+
+              if (filteredColaboradores.length === 0) {
+                return (
+                  <div className="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-slate-900">Nenhum voluntário encontrado</h3>
+                    <p className="text-slate-500 max-w-sm mx-auto mt-1 text-sm">
+                      {searchTerm ? 'Nenhum resultado corresponde à sua pesquisa.' : 'Não há registros de voluntários cadastrados para este núcleo no momento.'}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredColaboradores.map((v: any) => (
+                    <Card key={v.id} className="border-slate-200 shadow-sm overflow-hidden bg-white hover:shadow-md transition-shadow">
+                      <CardContent className="p-5">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex-1 space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-slate-900 text-base">{v.nome_completo}</h4>
+                              <Badge
+                                variant={v.is_ativo ? "default" : "secondary"}
+                                className={v.is_ativo ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-amber-100 text-amber-800 border-amber-200"}
+                              >
+                                {v.is_ativo ? 'Ativo' : 'Pendente de Aprovação'}
                               </Badge>
-                            ))}
+                            </div>
+
+                            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-600 pt-0.5">
+                              {v.cpf && (
+                                <span><strong className="text-slate-700">CPF:</strong> {formatCPF(v.cpf)}</span>
+                              )}
+                              <span>
+                                <strong className="text-slate-700">WhatsApp:</strong>{' '}
+                                {v.whatsapp ? v.whatsapp.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'}
+                              </span>
+                              {v.email && (
+                                <span><strong className="text-slate-700">E-mail:</strong> {v.email}</span>
+                              )}
+                            </div>
+
+                            {v.endereco_completo && (
+                              <p className="text-xs text-slate-500 flex items-start gap-1 pt-1">
+                                <span className="font-semibold text-slate-600 shrink-0">Endereço:</span>
+                                <span>{v.endereco_completo}</span>
+                              </p>
+                            )}
+
+                            <div className="pt-2 flex flex-wrap gap-1.5">
+                              {v.modalidades?.map((mod: string) => (
+                                <Badge key={mod} variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200 font-medium">
+                                  {mod === 'PA' ? 'Ponto de Arrecadação (PA)' : mod}
+                                </Badge>
+                              ))}
+                            </div>
+
+                            {v.data_aceite_termo && (
+                              <p className="text-[11px] text-amber-700 pt-1 font-medium">
+                                Aceitou o Termo de Voluntariado em: {new Date(v.data_aceite_termo).toLocaleString('pt-BR')}
+                              </p>
+                            )}
                           </div>
-                        </div>
-                        
-                        <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                          {!v.is_ativo && (
+
+                          <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                            {!v.is_ativo ? (
+                              <Button
+                                onClick={() => {
+                                  updateColaborador.mutate(
+                                    { id: v.id, patch: { is_ativo: true } },
+                                    { onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' }) }
+                                  );
+                                }}
+                                disabled={updateColaborador.isPending}
+                                className="flex-1 sm:w-36 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                                size="sm"
+                              >
+                                <UserCheck className="w-4 h-4" />
+                                Aprovar
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  updateColaborador.mutate(
+                                    { id: v.id, patch: { is_ativo: false } },
+                                    { onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' }) }
+                                  );
+                                }}
+                                disabled={updateColaborador.isPending}
+                                className="flex-1 sm:w-36 text-amber-700 border-amber-200 hover:bg-amber-50"
+                                size="sm"
+                              >
+                                Desativar
+                              </Button>
+                            )}
+
                             <Button
-                              onClick={() => {
-                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: true } }, {
-                                  onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' })
-                                });
-                              }}
-                              disabled={updateColaborador.isPending}
-                              className="w-full sm:w-32 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              variant="outline"
+                              className="flex-1 sm:w-36 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5"
                               size="sm"
-                            >
-                              <UserCheck className="w-4 h-4 mr-2" />
-                              Aprovar
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            className="w-full sm:w-32 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
-                            size="sm"
-                            disabled={deleteColaborador.isPending || updateColaborador.isPending}
-                            onClick={() => {
-                              if (v.is_ativo) {
-                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: false } }, {
-                                  onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' })
-                                });
-                              } else {
-                                if(confirm('Deseja realmente rejeitar (excluir) este voluntário?')) {
+                              disabled={deleteColaborador.isPending || updateColaborador.isPending}
+                              onClick={() => {
+                                if (confirm(`Deseja realmente remover o voluntário "${v.nome_completo}"?`)) {
                                   deleteColaborador.mutate(v.id, {
-                                    onSuccess: () => toast({ title: 'Voluntário rejeitado/excluído.' })
+                                    onSuccess: () => toast({ title: 'Voluntário removido com sucesso.' })
                                   });
                                 }
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {v.is_ativo ? 'Desativar' : 'Rejeitar'}
-                          </Button>
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Excluir
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              );
+            })()}
           </TabsContent>
         )}
       </Tabs>

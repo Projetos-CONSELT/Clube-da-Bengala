@@ -17,15 +17,17 @@ export function useColaboradoresQuery() {
     queryFn: async () => {
       let q = supabase
         .from('colaboradores')
-        .select('*')
-        .order('criado_em', { ascending: false });
+        .select('*');
         
       if (selectedNucleusId) {
         q = q.eq('nucleo_id', selectedNucleusId);
       }
       
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        console.error('[colaboradores] Erro ao buscar colaboradores:', error);
+        throw error;
+      }
       return data ?? [];
     },
   });
@@ -40,15 +42,17 @@ export function useVoluntariosQuery() {
     queryFn: async () => {
       let q = supabase
         .from('colaboradores')
-        .select('*')
-        .order('criado_em', { ascending: false });
+        .select('*');
         
       if (selectedNucleusId) {
         q = q.eq('nucleo_id', selectedNucleusId);
       }
       
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        console.error('[voluntarios] Erro ao buscar voluntarios:', error);
+        throw error;
+      }
       return data ?? [];
     },
   });
@@ -61,9 +65,11 @@ export function useAtivosColaboradoresQuery() {
       const { data, error } = await supabase
         .from('colaboradores')
         .select('*')
-        .eq('is_ativo', true)
-        .order('criado_em', { ascending: false });
-      if (error) throw error;
+        .eq('is_ativo', true);
+      if (error) {
+        console.error('[colaboradores_ativos] Erro ao buscar colaboradores ativos:', error);
+        throw error;
+      }
       return data ?? [];
     },
   });
@@ -83,8 +89,10 @@ export function useUpdateColaborador() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
-      qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['colaboradores'] });
+      void qc.invalidateQueries({ queryKey: ['colaboradores_ativos'] });
     },
   });
 }
@@ -97,7 +105,7 @@ export function useCreateColaborador() {
       const payload: ColaboradorInsert = {
         ...colaborador,
         id,
-        is_ativo: colaborador.is_ativo !== undefined ? colaborador.is_ativo : false,
+        is_ativo: colaborador.is_ativo !== undefined ? colaborador.is_ativo : true,
       };
       
       // Se aceitou termo, registramos a data
@@ -114,7 +122,10 @@ export function useCreateColaborador() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['colaboradores'] });
+      void qc.invalidateQueries({ queryKey: ['colaboradores_ativos'] });
     },
   });
 }
@@ -130,8 +141,10 @@ export function useDeleteColaborador() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
-      qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+      void qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['colaboradores'] });
+      void qc.invalidateQueries({ queryKey: ['colaboradores_ativos'] });
     },
   });
 }
