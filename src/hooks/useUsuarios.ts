@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { useCeoContext } from '@/lib/CeoContext';
@@ -69,18 +70,60 @@ export function useCreateUsuario() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (usuario: Omit<UsuarioInsert, 'id'>) => {
-      const id = window.crypto.randomUUID();
-      const { data, error } = await supabase
-        .from('usuarios')
-        .insert({
-          ...usuario,
-          id,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const tempPassword = `Temp_${window.crypto.randomUUID().slice(0, 8)}!Aa1`;
+
+      const { data: authData, error: authError } = await authClient.auth.signUp({
+        email: usuario.email!,
+        password: tempPassword,
+        options: {
+          data: {
+            nome_completo: usuario.nome_completo,
+            cpf: usuario.cpf || null,
+            whatsapp: usuario.whatsapp || null,
+            papel: usuario.papel || 'solicitante',
+            nucleo_id: usuario.nucleo_id || null,
+            pode_criar_nucleos: usuario.pode_criar_nucleos || false,
+          },
+        },
+      });
+
+      if (authError) {
+        const msg = authError.message.toLowerCase();
+        if (
+          msg.includes('already registered') ||
+          msg.includes('user_already_exists') ||
+          msg.includes('já está cadastrado')
+        ) {
+          throw new Error('Este e-mail já está cadastrado no sistema.');
+        }
+        throw new Error(authError.message);
+      }
+
+      const createdUserId = authData.user?.id;
+      if (createdUserId) {
+        await supabase
+          .from('usuarios')
+          .update({
+            nome_completo: usuario.nome_completo,
+            cpf: usuario.cpf || null,
+            whatsapp: usuario.whatsapp || null,
+            papel: usuario.papel || 'solicitante',
+            nucleo_id: usuario.nucleo_id || null,
+            pode_criar_nucleos: usuario.pode_criar_nucleos || false,
+          })
+          .eq('id', createdUserId);
+      }
+
+      return authData.user;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: USUARIOS_KEY }),
   });
 }
+

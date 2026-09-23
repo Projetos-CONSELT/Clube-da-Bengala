@@ -23,6 +23,7 @@ export interface AuthUser {
   full_name: string;
   role: UserRole | null;
   nucleo_id: string | null;
+  pode_criar_nucleos?: boolean | null;
 }
 
 export interface AuthContextValue {
@@ -150,6 +151,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         full_name: profile?.nome_completo || session.user.email || '',
         role,
         nucleo_id,
+        pode_criar_nucleos: profile?.pode_criar_nucleos ?? null,
       }
     : null;
 

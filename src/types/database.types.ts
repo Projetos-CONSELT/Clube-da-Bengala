@@ -70,46 +70,63 @@ export type Database = {
         Row: {
           id: string;
           nome: string;
-          cep: string;
-          estado: string;
-          cidade: string;
-          bairro: string;
-          rua: string;
-          numero: string;
+          cep: string | null;
+          estado: string | null;
+          cidade: string | null;
+          bairro: string | null;
+          rua: string | null;
+          numero: string | null;
           complemento: string | null;
+          endereco: string | null;
           latitude: number | null;
           longitude: number | null;
+          gerente_id: string | null;
+          is_ativo: boolean | null;
           created_at: string | null;
         };
         Insert: {
           id?: string;
           nome: string;
-          cep: string;
-          estado: string;
-          cidade: string;
-          bairro: string;
-          rua: string;
-          numero: string;
+          cep?: string | null;
+          estado?: string | null;
+          cidade?: string | null;
+          bairro?: string | null;
+          rua?: string | null;
+          numero?: string | null;
           complemento?: string | null;
+          endereco?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          gerente_id?: string | null;
+          is_ativo?: boolean | null;
           created_at?: string | null;
         };
         Update: {
           id?: string;
           nome?: string;
-          cep?: string;
-          estado?: string;
-          cidade?: string;
-          bairro?: string;
-          rua?: string;
-          numero?: string;
+          cep?: string | null;
+          estado?: string | null;
+          cidade?: string | null;
+          bairro?: string | null;
+          rua?: string | null;
+          numero?: string | null;
           complemento?: string | null;
+          endereco?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          gerente_id?: string | null;
+          is_ativo?: boolean | null;
           created_at?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'nucleos_gerente_id_fkey';
+            columns: ['gerente_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       beneficiarios: {
         Row: {

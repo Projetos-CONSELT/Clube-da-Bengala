@@ -13,7 +13,23 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import type { UserRole } from '@/types/database.types';
-import { UserPlus, Loader2, Info } from 'lucide-react';
+import { UserPlus, Loader2, Info, AlertCircle } from 'lucide-react';
+
+const formatCPF = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+};
+
+const formatWhatsApp = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+};
 
 export default function UsuariosAdminTab() {
   const { toast } = useToast();
@@ -25,6 +41,7 @@ export default function UsuariosAdminTab() {
   const updateUsuario = useUpdateUsuario();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     nome_completo: '',
     email: '',
@@ -40,30 +57,92 @@ export default function UsuariosAdminTab() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
+  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange('cpf', formatCPF(e.target.value));
+  };
+
+  const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange('whatsapp', formatWhatsApp(e.target.value));
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.nome_completo.trim()) {
+      newErrors.nome_completo = 'Nome completo é obrigatório.';
+    } else if (formData.nome_completo.trim().length < 3) {
+      newErrors.nome_completo = 'O nome deve ter no mínimo 3 caracteres.';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'E-mail é obrigatório.';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email.trim())) {
+      newErrors.email = 'Insira um e-mail válido (exemplo@email.com).';
+    }
+
+    const rawCpf = formData.cpf.replace(/\D/g, '');
+    if (formData.cpf && rawCpf.length > 0 && rawCpf.length !== 11) {
+      newErrors.cpf = 'O CPF deve conter 11 dígitos.';
+    }
+
+    const rawWhatsapp = formData.whatsapp.replace(/\D/g, '');
+    if (formData.whatsapp && rawWhatsapp.length > 0 && rawWhatsapp.length < 10) {
+      newErrors.whatsapp = 'O WhatsApp deve conter DDD e número completo.';
+    }
+
+    if (formData.papel !== 'solicitante' && formData.papel !== 'ceo' && !formData.nucleo_id && podeAtribuirNucleos) {
+      newErrors.nucleo_id = 'Selecione um núcleo para este cargo.';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleOpenModal = () => {
+    setErrors({});
+    setFormData({
+      nome_completo: '',
+      email: '',
+      cpf: '',
+      whatsapp: '',
+      papel: 'solicitante',
+      nucleo_id: '',
+      pode_criar_nucleos: false,
+    });
+    setIsModalOpen(true);
   };
 
   const handleCreateUsuarioSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nome_completo.trim()) {
-      toast({ variant: 'destructive', title: 'Nome obrigatório', description: 'Preencha o nome completo do usuário.' });
+    
+    if (!validateForm()) {
+      toast({
+        variant: 'destructive',
+        title: 'Campos inválidos',
+        description: 'Por favor, revise as informações destacadas no formulário.',
+      });
       return;
-    }
-    if (!formData.email.trim()) {
-      toast({ variant: 'destructive', title: 'E-mail obrigatório', description: 'Preencha o e-mail do usuário.' });
-      return;
-    }
-    if (formData.papel !== 'solicitante' && formData.papel !== 'ceo' && !formData.nucleo_id && podeAtribuirNucleos) {
-       toast({ variant: 'destructive', title: 'Núcleo obrigatório', description: 'Selecione um núcleo para este cargo.' });
-       return;
     }
 
     setIsSubmitting(true);
+    const rawCpf = formData.cpf.replace(/\D/g, '');
+    const rawWhatsapp = formData.whatsapp.replace(/\D/g, '');
+
     createUsuario.mutate(
       {
-        nome_completo: formData.nome_completo,
+        nome_completo: formData.nome_completo.trim(),
         email: formData.email.toLowerCase().trim(),
-        cpf: formData.cpf.trim() || null,
-        whatsapp: formData.whatsapp.trim() || null,
+        cpf: rawCpf || null,
+        whatsapp: rawWhatsapp || null,
         papel: formData.papel,
         is_inadimplente: false,
         nucleo_id: podeAtribuirNucleos ? (formData.nucleo_id || null) : user?.nucleo_id,
@@ -72,8 +151,8 @@ export default function UsuariosAdminTab() {
       {
         onSuccess: () => {
           toast({
-            title: 'Usuário adicionado',
-            description: `O usuário ${formData.nome_completo} foi registrado no painel com sucesso.`,
+            title: 'Usuário adicionado com sucesso',
+            description: `O usuário ${formData.nome_completo} foi registrado no painel.`,
           });
           setIsModalOpen(false);
           setFormData({ nome_completo: '', email: '', cpf: '', whatsapp: '', papel: 'solicitante', nucleo_id: '', pode_criar_nucleos: false });
@@ -119,12 +198,12 @@ export default function UsuariosAdminTab() {
       <div className="flex justify-end">
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all gap-2 py-2 px-4 rounded-xl">
+            <Button onClick={handleOpenModal} className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all gap-2 py-2 px-4 rounded-xl">
               <UserPlus className="h-4 w-4" /> Adicionar Usuário Manualmente
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg rounded-2xl">
-            <form onSubmit={handleCreateUsuarioSubmit}>
+            <form onSubmit={handleCreateUsuarioSubmit} noValidate>
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold flex items-center gap-2">
                   <UserPlus className="h-5 w-5 text-blue-600" /> Registrar Usuário
@@ -134,33 +213,88 @@ export default function UsuariosAdminTab() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-2">
+              <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto px-1">
                 <Alert className="bg-blue-50 border-blue-200 text-blue-800 rounded-xl">
                   <Info className="h-4 w-4 text-blue-600" />
                   <AlertTitle className="font-semibold text-sm">Aviso</AlertTitle>
                   <AlertDescription className="text-xs">
-                    Eles precisarão criar uma senha pelo fluxo normal de login usando este e-mail.
+                    O usuário receberá acesso ao sistema e poderá definir sua senha utilizando este e-mail.
                   </AlertDescription>
                 </Alert>
 
-                <div className="space-y-2">
-                  <Label>Nome Completo *</Label>
-                  <Input required value={formData.nome_completo} onChange={(e) => handleInputChange('nome_completo', e.target.value)} />
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Nome Completo <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    placeholder="Ex: Maria Silva"
+                    value={formData.nome_completo}
+                    onChange={(e) => handleInputChange('nome_completo', e.target.value)}
+                    className={errors.nome_completo ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  />
+                  {errors.nome_completo && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" /> {errors.nome_completo}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label>E-mail *</Label>
-                  <Input type="email" required value={formData.email} onChange={(e) => handleInputChange('email', e.target.value)} />
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    E-mail <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    type="email"
+                    placeholder="usuario@exemplo.com"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    className={errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  />
+                  {errors.email && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" /> {errors.email}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label>CPF</Label>
-                  <Input value={formData.cpf} onChange={(e) => handleInputChange('cpf', e.target.value)} />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">CPF</Label>
+                    <Input
+                      placeholder="000.000.000-00"
+                      value={formData.cpf}
+                      onChange={handleCpfChange}
+                      maxLength={14}
+                      className={errors.cpf ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                    />
+                    {errors.cpf && (
+                      <p className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.cpf}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">WhatsApp</Label>
+                    <Input
+                      placeholder="(00) 00000-0000"
+                      value={formData.whatsapp}
+                      onChange={handleWhatsappChange}
+                      maxLength={15}
+                      className={errors.whatsapp ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                    />
+                    {errors.whatsapp && (
+                      <p className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.whatsapp}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>WhatsApp</Label>
-                  <Input value={formData.whatsapp} onChange={(e) => handleInputChange('whatsapp', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Cargo *</Label>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    Cargo <span className="text-red-500">*</span>
+                  </Label>
                   <Select value={formData.papel} onValueChange={(v) => handleInputChange('papel', v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -182,23 +316,32 @@ export default function UsuariosAdminTab() {
                 )}
 
                 {podeAtribuirNucleos && formData.papel !== 'solicitante' && formData.papel !== 'ceo' && (
-                  <div className="space-y-2">
-                    <Label>Núcleo Vinculado *</Label>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">
+                      Núcleo Vinculado <span className="text-red-500">*</span>
+                    </Label>
                     <Select value={formData.nucleo_id} onValueChange={(v) => handleInputChange('nucleo_id', v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione um núcleo" /></SelectTrigger>
+                      <SelectTrigger className={errors.nucleo_id ? 'border-red-500' : ''}>
+                        <SelectValue placeholder="Selecione um núcleo" />
+                      </SelectTrigger>
                       <SelectContent>
                         {nucleos.map(n => (
                           <SelectItem key={n.id} value={n.id}>{n.nome}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {errors.nucleo_id && (
+                      <p className="text-xs text-red-600 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {errors.nucleo_id}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100">
                 <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>Cancelar</Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700">
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Salvar
                 </Button>
               </DialogFooter>
