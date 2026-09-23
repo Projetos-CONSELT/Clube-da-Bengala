@@ -38,6 +38,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedLoanTerms, setAcceptedLoanTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -55,6 +56,7 @@ export default function Login() {
     setCep('');
     setConfirmPassword('');
     setAcceptedTerms(false);
+    setAcceptedLoanTerms(false);
   };
 
   const toggleMode = () => {
@@ -105,7 +107,7 @@ export default function Login() {
       setBairro(data.bairro || '');
       setCidade(data.localidade || '');
       setEstado(data.uf || '');
-      
+
       // Auto focus the street number field
       setTimeout(() => {
         document.getElementById('numero')?.focus();
@@ -133,7 +135,7 @@ export default function Login() {
     try {
       if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: `${window.location.origin}/login`,
         });
         if (error) throw error;
         toast({
@@ -164,6 +166,16 @@ export default function Login() {
         return;
       }
 
+      if (mode === 'signup' && !acceptedLoanTerms) {
+        toast({
+          variant: 'destructive',
+          title: 'Termo de Empréstimo',
+          description: 'Você precisa declarar que leu e aceita o Termo de Empréstimo para continuar.',
+        });
+        setLoading(false);
+        return;
+      }
+
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -177,7 +189,7 @@ export default function Login() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/login`,
           data: {
             nome_completo: fullName.trim(),
             cpf: cpf.trim(),
@@ -194,6 +206,16 @@ export default function Login() {
         },
       });
       if (error) throw error;
+
+      if (data?.user?.identities && data.user.identities.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Este e-mail já está cadastrado. Por favor, faça login.',
+        });
+        setLoading(false);
+        return;
+      }
 
       if (data.session) {
         toast({
@@ -213,24 +235,24 @@ export default function Login() {
     } catch (err: unknown) {
       let title = 'Erro';
       let description = getErrorMessage(err);
-      
+
       const errMsg = description.toLowerCase();
-      
+
       if (errMsg.includes('email not confirmed')) {
         navigate(`/verificar-email?email=${encodeURIComponent(email)}`);
         return;
       }
-      
+
       if (
-        (err as any)?.code === 'user_already_exists' || 
-        errMsg.includes('already registered') || 
+        (err as any)?.code === 'user_already_exists' ||
+        errMsg.includes('already registered') ||
         errMsg.includes('já está cadastrado') ||
         errMsg.includes('email_exists') ||
         (err as any)?.code === '23505' && errMsg.includes('email')
       ) {
         description = 'Este e-mail já está cadastrado. Por favor, faça login.';
       } else if (
-        errMsg.includes('usuarios_cpf_key') || 
+        errMsg.includes('usuarios_cpf_key') ||
         (err as any)?.constraint === 'usuarios_cpf_key' ||
         ((err as any)?.code === '23505' && errMsg.includes('cpf'))
       ) {
@@ -446,39 +468,58 @@ export default function Login() {
               </div>
             )}
             {mode === 'signup' && (
-              <div className="flex items-start gap-2 py-1">
-                <input
-                  id="terms"
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={(e) => setAcceptedTerms(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
-                />
-                <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none flex items-center gap-1">
-                  Li e aceito os
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <button type="button" className="text-blue-600 hover:underline font-semibold ml-1 outline-none">
-                        Termos de Serviço
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                          <FileText className="w-5 h-5 text-blue-600" />
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 py-1">
+                  <input
+                    id="terms"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                  />
+                  <Label htmlFor="terms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none flex items-center gap-1">
+                    Li e aceito os
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button type="button" className="text-blue-600 hover:underline font-semibold ml-1 outline-none">
                           Termos de Serviço
-                        </DialogTitle>
-                        <DialogDescription>
-                          Clube da Bengala
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="py-4">
-                        <TermosContent />
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  {' '}do Clube da Bengala.
-                </Label>
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-blue-600" />
+                            Termos de Serviço
+                          </DialogTitle>
+                          <DialogDescription>
+                            Clube da Bengala
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                          <TermosContent />
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    {' '}do Clube da Bengala.
+                  </Label>
+                </div>
+
+                <div className="flex items-start gap-2 py-1">
+                  <input
+                    id="loanTerms"
+                    type="checkbox"
+                    required
+                    checked={acceptedLoanTerms}
+                    onChange={(e) => setAcceptedLoanTerms(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                  />
+                  <Label htmlFor="loanTerms" className="text-xs text-slate-600 leading-normal cursor-pointer select-none">
+                    Declaro que li e aceito as condições do{' '}
+                    <a href="/docs/termo_emprestimo.pdf" target="_blank" rel="noopener noreferrer" aria-label="Abrir termo de empréstimo em nova guia" className="text-blue-600 hover:underline font-semibold ml-1">
+                      Termo de Empréstimo
+                    </a>
+                  </Label>
+                </div>
               </div>
             )}
             {mode === 'signup' && (
@@ -491,10 +532,10 @@ export default function Login() {
               {loading
                 ? '...'
                 : mode === 'signin'
-                ? 'Entrar'
-                : mode === 'signup'
-                ? 'Cadastrar'
-                : 'Enviar e-mail de recuperação'}
+                  ? 'Entrar'
+                  : mode === 'signup'
+                    ? 'Cadastrar'
+                    : 'Enviar e-mail de recuperação'}
             </Button>
             {mode === 'forgot' ? (
               <button

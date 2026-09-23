@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -12,14 +13,37 @@ import { Loader2, Heart, MapPin, CheckCircle2 } from 'lucide-react';
 import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { useCreateColaborador } from '@/hooks/useColaboradores';
+import { useNucleosQuery } from '@/hooks/useNucleos';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { cleanCPF, formatCPF, formatPhone, formatCEP } from '@/utils/cpf';
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, 'Nome completo é obrigatório'),
-  cpf: z.string().min(11, 'CPF inválido'),
-  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
-  whatsapp: z.string().min(10, 'WhatsApp inválido'),
-  cep: z.string().min(8, 'CEP inválido'),
+  cpf: z
+    .string()
+    .min(1, 'CPF é obrigatório')
+    .refine((val) => cleanCPF(val).length === 11, {
+      message: 'CPF incompleto (digite os 11 números)',
+    }),
+  email: z
+    .string()
+    .min(1, 'E-mail é obrigatório')
+    .email('E-mail inválido'),
+  whatsapp: z
+    .string()
+    .min(1, 'WhatsApp é obrigatório')
+    .refine((val) => cleanCPF(val).length >= 10 && cleanCPF(val).length <= 11, {
+      message: 'WhatsApp incompleto (digite DDD + número)',
+    }),
+  cep: z
+    .string()
+    .min(1, 'CEP é obrigatório')
+    .refine((val) => cleanCPF(val).length === 8, {
+      message: 'CEP incompleto (digite os 8 números)',
+    }),
   endereco_completo: z.string().min(5, 'Endereço completo é obrigatório'),
+  numero: z.string().min(1, 'Número é obrigatório'),
+  nucleo_id: z.string().uuid("Por favor, selecione um núcleo válido"),
   modalidades: z.array(z.string()).min(1, 'Selecione pelo menos uma modalidade de ajuda'),
   aceitou_termo: z.boolean().refine((val) => val === true, {
     message: 'Você precisa aceitar o Termo de Voluntariado',
@@ -39,7 +63,9 @@ export default function QueroAjudar() {
   const viaCep = useViaCEP();
   const geocoding = useGeocoding();
   const createMut = useCreateColaborador();
+  const nucleosQuery = useNucleosQuery();
   const [isSuccess, setIsSuccess] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -56,6 +82,8 @@ export default function QueroAjudar() {
       whatsapp: '',
       cep: '',
       endereco_completo: '',
+      numero: '',
+      nucleo_id: '',
       modalidades: [],
       aceitou_termo: false,
     },
@@ -63,13 +91,14 @@ export default function QueroAjudar() {
 
   const modalidadesSelecionadas = watch('modalidades');
   const aceitou_termo = watch('aceitou_termo');
+  const nucleo_id_selecionado = watch('nucleo_id');
 
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const cep = e.target.value;
-    if (cep.length >= 8) {
-      const data = await viaCep.fetchCEP(cep);
+    const rawCep = cleanCPF(e.target.value);
+    if (rawCep.length === 8) {
+      const data = await viaCep.fetchCEP(rawCep);
       if (data && !data.erro) {
-        setValue('endereco_completo', `${data.logradouro}, , ${data.bairro} - ${data.localidade}/${data.uf}`);
+        setValue('endereco_completo', `${data.logradouro}, ${data.bairro} - ${data.localidade}/${data.uf}`);
       }
     }
   };
@@ -77,16 +106,31 @@ export default function QueroAjudar() {
   const onSubmit = async (data: FormValues) => {
     let lat: number | null = null;
     let lng: number | null = null;
+    
+    // Concatena o endereço com o número para a geocodificação e salvamento
+    const fullAddress = `${data.endereco_completo.split(',')[0]}, ${data.numero}, ${data.endereco_completo.split(',').slice(1).join(',').trim()}`;
+
+    // Substitui a barra por vírgula e remove o traço para ajudar a API de mapas
+    const enderecoLimpo = fullAddress
+      .replace(' - ', ', ')
+      .replace('/', ', ') + ', Brasil';
 
     try {
       // Tentativa de geocodificação
-      const coords = await geocoding.fetchCoordinates(data.endereco_completo);
+      const coords = await geocoding.fetchCoordinates(enderecoLimpo);
       if (coords) {
         lat = coords.latitude;
         lng = coords.longitude;
       }
-    } catch (err) {
-      console.warn('Falha no geocoding, salvando sem coordenadas precisas.', err);
+    } catch (err: any) {
+      console.error('❌ Erro detalhado no Geocoding:', err.message || err);
+      if (data.modalidades.includes('Ponto de Arrecadação (PA)')) {
+        toast({
+          variant: "default",
+          title: "Aviso de Localização",
+          description: "Não conseguimos mapear seu endereço automaticamente. Um gerente ajustará isso em breve."
+        });
+      }
     }
 
     createMut.mutate(
@@ -96,12 +140,13 @@ export default function QueroAjudar() {
         email: data.email || null,
         whatsapp: data.whatsapp.replace(/\D/g, ''),
         cep: data.cep.replace(/\D/g, ''),
-        endereco_completo: data.endereco_completo,
-        modalidades: data.modalidades,
+        endereco_completo: fullAddress,
+        nucleo_id: data.nucleo_id,
+        modalidades: data.modalidades.map((m) => m === 'Ponto de Arrecadação (PA)' ? 'PA' : m),
         aceitou_termo: data.aceitou_termo,
         latitude: lat,
         longitude: lng,
-        is_ativo: false,
+        is_ativo: true,
       },
       {
         onSuccess: () => {
@@ -130,9 +175,12 @@ export default function QueroAjudar() {
             <p className="text-slate-600">
               Muito obrigado por querer ajudar o Clube da Bengala. Nossa equipe analisará seu cadastro e entrará em contato em breve pelo WhatsApp informado.
             </p>
+            <p className="text-sm font-semibold text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
+              Cadastro concluído! Seu Ponto de Arrecadação já está ativo e visível no mapa de doações.
+            </p>
             <div className="pt-4">
-              <Button onClick={() => window.location.href = '/'} className="w-full bg-slate-900 hover:bg-slate-800">
-                Voltar para o Início
+              <Button onClick={() => navigate('/login')} className="w-full bg-slate-900 hover:bg-slate-800">
+                Voltar para o Login
               </Button>
             </div>
           </CardContent>
@@ -175,18 +223,38 @@ export default function QueroAjudar() {
 
                 <div className="space-y-2">
                   <Label htmlFor="cpf">CPF *</Label>
-                  <Input id="cpf" placeholder="000.000.000-00" {...register('cpf')} />
+                  <Input
+                    id="cpf"
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    {...register('cpf')}
+                    value={watch('cpf') || ''}
+                    onChange={(e) => {
+                      const formatted = formatCPF(e.target.value);
+                      setValue('cpf', formatted, { shouldValidate: true, shouldDirty: true });
+                    }}
+                  />
                   {errors.cpf && <p className="text-xs text-red-500">{errors.cpf.message}</p>}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="whatsapp">WhatsApp *</Label>
-                  <Input id="whatsapp" placeholder="(00) 90000-0000" {...register('whatsapp')} />
+                  <Input
+                    id="whatsapp"
+                    placeholder="(00) 00000-0000"
+                    maxLength={15}
+                    {...register('whatsapp')}
+                    value={watch('whatsapp') || ''}
+                    onChange={(e) => {
+                      const formatted = formatPhone(e.target.value);
+                      setValue('whatsapp', formatted, { shouldValidate: true, shouldDirty: true });
+                    }}
+                  />
                   {errors.whatsapp && <p className="text-xs text-red-500">{errors.whatsapp.message}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">E-mail (opcional)</Label>
+                  <Label htmlFor="email">E-mail *</Label>
                   <Input id="email" type="email" placeholder="seu@email.com" {...register('email')} />
                   {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
                 </div>
@@ -197,17 +265,34 @@ export default function QueroAjudar() {
                   <MapPin className="w-5 h-5 text-blue-600" /> Endereço
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="space-y-2 md:col-span-1">
                     <Label htmlFor="cep">CEP *</Label>
-                    <Input id="cep" placeholder="00000-000" {...register('cep')} onBlur={handleCepBlur} />
+                    <Input
+                      id="cep"
+                      placeholder="00000-000"
+                      maxLength={9}
+                      {...register('cep')}
+                      value={watch('cep') || ''}
+                      onChange={(e) => {
+                        const formatted = formatCEP(e.target.value);
+                        setValue('cep', formatted, { shouldValidate: true, shouldDirty: true });
+                      }}
+                      onBlur={handleCepBlur}
+                    />
                     {errors.cep && <p className="text-xs text-red-500">{errors.cep.message}</p>}
                   </div>
                   
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="endereco_completo">Endereço Completo *</Label>
-                    <Input id="endereco_completo" placeholder="Rua, Número, Bairro, Cidade - UF" {...register('endereco_completo')} />
+                    <Input id="endereco_completo" placeholder="Rua, Bairro, Cidade - UF" {...register('endereco_completo')} />
                     {errors.endereco_completo && <p className="text-xs text-red-500">{errors.endereco_completo.message}</p>}
+                  </div>
+
+                  <div className="space-y-2 md:col-span-1">
+                    <Label htmlFor="numero">Número *</Label>
+                    <Input id="numero" placeholder="Ex: 123" {...register('numero')} />
+                    {errors.numero && <p className="text-xs text-red-500">{errors.numero.message}</p>}
                   </div>
                 </div>
                 {viaCep.loading && <p className="text-xs text-blue-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Buscando CEP...</p>}
@@ -241,6 +326,29 @@ export default function QueroAjudar() {
               </div>
 
               <div className="space-y-4 pt-4 border-t border-slate-100">
+                <h3 className="font-semibold text-slate-800">Vínculo *</h3>
+                <div className="space-y-2">
+                  <Label>Qual núcleo você deseja ajudar?</Label>
+                  <Select
+                    value={nucleo_id_selecionado}
+                    onValueChange={(val) => setValue('nucleo_id', val, { shouldValidate: true })}
+                  >
+                    <SelectTrigger className="w-full bg-white">
+                      <SelectValue placeholder="Selecione um núcleo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {nucleosQuery.data?.map((nucleo) => (
+                        <SelectItem key={nucleo.id} value={nucleo.id}>
+                          {nucleo.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.nucleo_id && <p className="text-xs text-red-500">{errors.nucleo_id.message}</p>}
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
                 <div className="flex items-start space-x-3 bg-amber-50 p-4 rounded-lg border border-amber-200">
                   <Checkbox 
                     id="aceitou_termo" 
@@ -250,7 +358,7 @@ export default function QueroAjudar() {
                   />
                   <div className="space-y-1">
                     <Label htmlFor="aceitou_termo" className="font-medium text-amber-900 cursor-pointer">
-                      Declaro que li e aceito o Termo de Voluntariado, nos termos da Lei nº 9.608/1998.
+                      Declaro que li e aceito o <a href="/termos" target="_blank" className="underline hover:text-amber-700">Termo de Voluntariado</a>, nos termos da Lei nº 9.608/1998.
                     </Label>
                     <p className="text-xs text-amber-700">
                       O trabalho voluntário não gera vínculo empregatício, nem obrigação de natureza trabalhista, previdenciária ou afim.

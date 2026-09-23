@@ -3,20 +3,51 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { ColaboradorInsert, ColaboradorUpdate } from '@/types/database.types';
 import { isBackOfficeRole } from '@/types/domain';
+import { useCeoContext } from '@/lib/CeoContext';
 
 export const COLABORADORES_KEY = ['colaboradores'] as const;
 export const COLABORADORES_ATIVOS_KEY = ['colaboradores_ativos'] as const;
 
 export function useColaboradoresQuery() {
   const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: COLABORADORES_KEY,
+    queryKey: [...COLABORADORES_KEY, selectedNucleusId],
     enabled: isAuthenticated && isBackOfficeRole(role),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('colaboradores')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('criado_em', { ascending: false });
+        
+      if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
+      
+      const { data, error } = await q;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useVoluntariosQuery() {
+  const { isAuthenticated, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
+  return useQuery({
+    queryKey: [...COLABORADORES_KEY, 'voluntarios', selectedNucleusId],
+    enabled: isAuthenticated && isBackOfficeRole(role),
+    queryFn: async () => {
+      let q = supabase
+        .from('colaboradores')
+        .select('*')
+        .order('criado_em', { ascending: false });
+        
+      if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
+      }
+      
+      const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
     },
@@ -31,8 +62,7 @@ export function useAtivosColaboradoresQuery() {
         .from('colaboradores')
         .select('*')
         .eq('is_ativo', true)
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null);
+        .order('criado_em', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -67,7 +97,7 @@ export function useCreateColaborador() {
       const payload: ColaboradorInsert = {
         ...colaborador,
         id,
-        is_ativo: false, // Ensure it's false for new public submissions
+        is_ativo: colaborador.is_ativo !== undefined ? colaborador.is_ativo : false,
       };
       
       // Se aceitou termo, registramos a data
@@ -85,6 +115,23 @@ export function useCreateColaborador() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+    },
+  });
+}
+
+export function useDeleteColaborador() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('colaboradores')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: COLABORADORES_KEY });
+      qc.invalidateQueries({ queryKey: COLABORADORES_ATIVOS_KEY });
     },
   });
 }

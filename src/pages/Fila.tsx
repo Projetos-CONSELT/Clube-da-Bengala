@@ -44,6 +44,8 @@ export default function Fila() {
   const isBackOffice = isBackOfficeRole(role);
 
   const [tipoSelecionado, setTipoSelecionado] = useState('todos');
+  const [ordenacao, setOrdenacao] = useState<'antigos' | 'recentes'>('antigos');
+  const [filtroStatus, setFiltroStatus] = useState<string>('todos');
   const [liberarOpen, setLiberarOpen] = useState(false);
   const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
   const [observacao, setObservacao] = useState('');
@@ -64,11 +66,16 @@ export default function Fila() {
         tipo,
         itens: solicitacoes
           .filter((s) => s.tipo_equipamento_id === tipo.id)
-          .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+          .filter((sol) => filtroStatus === 'todos' ? true : sol.status === filtroStatus)
+          .sort((a, b) => {
+            const dataA = new Date(a.created_at || 0).getTime();
+            const dataB = new Date(b.created_at || 0).getTime();
+            return ordenacao === 'antigos' ? dataA - dataB : dataB - dataA;
+          }),
       };
     });
     return grouped;
-  }, [tipos, solicitacoes]);
+  }, [tipos, solicitacoes, filtroStatus, ordenacao]);
 
   const tiposFiltrados =
     tipoSelecionado === 'todos'
@@ -159,7 +166,31 @@ export default function Fila() {
             {role === 'solicitante' ? ' (apenas suas)' : ''}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <Select value={ordenacao} onValueChange={(val: 'antigos' | 'recentes') => setOrdenacao(val)}>
+            <SelectTrigger className="w-56">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Ordenar por" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="antigos">Mais antigos primeiro</SelectItem>
+              <SelectItem value="recentes">Mais recentes primeiro</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+            <SelectTrigger className="w-48">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os status</SelectItem>
+              <SelectItem value="triagem">Em triagem</SelectItem>
+              <SelectItem value="aguardando_documentacao">Aguardando doc.</SelectItem>
+              <SelectItem value="aguardando_retirada">Aguardando retirada</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={tipoSelecionado} onValueChange={setTipoSelecionado}>
             <SelectTrigger className="w-52">
               <Filter className="w-4 h-4 mr-2" />

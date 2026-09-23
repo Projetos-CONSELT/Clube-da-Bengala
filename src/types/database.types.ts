@@ -138,6 +138,7 @@ export type Database = {
           peso_kg: number | null;
           tamanho_calcado: number | null;
           created_at: string | null;
+          nucleo_id: string | null;
         };
         Insert: {
           id?: string;
@@ -148,6 +149,7 @@ export type Database = {
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Update: {
           id?: string;
@@ -158,6 +160,7 @@ export type Database = {
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
           created_at?: string | null;
+          nucleo_id?: string | null;
         };
         Relationships: [
           {
@@ -261,6 +264,7 @@ export type Database = {
           status: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses: number | null;
           motivo_solicitacao: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada: string | null;
           prazo_retirada: string | null;
           data_retirada_realizada: string | null;
@@ -284,6 +288,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;
           data_retirada_realizada?: string | null;
@@ -307,6 +312,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;
           data_retirada_realizada?: string | null;

@@ -20,10 +20,21 @@ import {
   Send,
   Shield,
   Building2,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  CreditCard,
+  Camera,
+  Edit3,
+  Save,
+  X,
   type LucideIcon,
 } from 'lucide-react';
+import { formatCPF, formatPhone, formatCEP, cleanCPF } from '@/utils/cpf';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,10 +44,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { isBackOfficeRole } from '@/types/domain';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/supabase';
 import { useNotificacoesComBadges } from '@/hooks/useNotificacoes';
@@ -105,10 +117,157 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [roleRequestModalOpen, setRoleRequestModalOpen] = useState(false);
+  const [personalProfileModalOpen, setPersonalProfileModalOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isChangeNucleusOpen, setIsChangeNucleusOpen] = useState(false);
   const [requestedRole, setRequestedRole] = useState<string>('atendente');
   const [submittingRoleRequest, setSubmittingRoleRequest] = useState(false);
   const { toast } = useToast();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string>(() => {
+    if (typeof window !== 'undefined' && user?.id) {
+      return (
+        user?.user_metadata?.avatar_url ||
+        localStorage.getItem(`user_avatar_${user.id}`) ||
+        ''
+      );
+    }
+    return '';
+  });
+
+  useEffect(() => {
+    if (user?.id) {
+      const stored =
+        user?.user_metadata?.avatar_url ||
+        localStorage.getItem(`user_avatar_${user.id}`) ||
+        '';
+      if (stored) setAvatarUrl(stored);
+    }
+  }, [user]);
+
+  const [editFormData, setEditFormData] = useState({
+    nome_completo: '',
+    cpf: '',
+    email: '',
+    whatsapp: '',
+    endereco: '',
+    cidade: '',
+    estado: '',
+    cep: '',
+  });
+
+  const openProfileModal = () => {
+    setEditFormData({
+      nome_completo: profile?.nome_completo || user?.full_name || '',
+      cpf: formatCPF(profile?.cpf || ''),
+      email: profile?.email || user?.email || '',
+      whatsapp: formatPhone(profile?.whatsapp || ''),
+      endereco: profile?.endereco || '',
+      cidade: profile?.cidade || '',
+      estado: profile?.estado || '',
+      cep: formatCEP(profile?.cep || ''),
+    });
+    setIsEditingProfile(false);
+    setPersonalProfileModalOpen(true);
+  };
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: 'Arquivo muito grande',
+        description: 'Selecione uma imagem com no máximo 5MB.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 300;
+        const scale = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const resized = canvas.toDataURL('image/jpeg', 0.85);
+
+        setAvatarUrl(resized);
+        if (user?.id) {
+          localStorage.setItem(`user_avatar_${user.id}`, resized);
+          try {
+            await supabase.auth.updateUser({
+              data: { avatar_url: resized },
+            });
+          } catch (err) {
+            console.error('Erro salvando avatar:', err);
+          }
+        }
+        toast({
+          title: 'Foto atualizada!',
+          description: 'Sua foto de perfil foi alterada com sucesso.',
+        });
+      };
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    setIsSavingProfile(true);
+    try {
+      const cleanPhoneVal = cleanCPF(editFormData.whatsapp);
+      if (editFormData.whatsapp && cleanPhoneVal.length < 10 && cleanPhoneVal.length !== 0) {
+        toast({
+          variant: 'destructive',
+          title: 'WhatsApp inválido',
+          description: 'Digite o DDD e o número completo.',
+        });
+        setIsSavingProfile(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('usuarios')
+        .update({
+          nome_completo: editFormData.nome_completo.trim(),
+          whatsapp: formatPhone(editFormData.whatsapp),
+          endereco: editFormData.endereco.trim() || null,
+          cidade: editFormData.cidade.trim() || null,
+          estado: editFormData.estado.trim() || null,
+          cep: formatCEP(editFormData.cep),
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Perfil atualizado',
+        description: 'Suas informações pessoais foram salvas com sucesso.',
+      });
+      void refreshProfile();
+      setIsEditingProfile(false);
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar perfil',
+        description: err?.message || 'Houve um problema ao salvar suas informações.',
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const selectedNucleusName = nucleos.find(n => n.id === selectedNucleusId)?.nome;
 
@@ -233,7 +392,8 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
             <div className="px-3 py-4 border-t border-slate-700/50">
               <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-700/30">
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-blue-600 text-white text-sm">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />}
+                  <AvatarFallback className="bg-blue-600 text-white text-sm font-bold">
                     {displayName.charAt(0) || displayEmail.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
@@ -337,7 +497,8 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-blue-600 text-white text-sm">
+                      {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />}
+                      <AvatarFallback className="bg-blue-600 text-white text-sm font-bold">
                         {displayName.charAt(0) || 'U'}
                       </AvatarFallback>
                     </Avatar>
@@ -352,6 +513,11 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                       {getRoleLabel(role)}
                     </span>
                   </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={openProfileModal} className="cursor-pointer">
+                    <User className="w-4 h-4 mr-2 text-blue-600" />
+                    Meu perfil
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {isCeo && (
                     <>
@@ -450,6 +616,305 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
             >
               {submittingRoleRequest ? 'Enviando...' : 'Solicitar'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Meu Perfil */}
+      <Dialog open={personalProfileModalOpen} onOpenChange={setPersonalProfileModalOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900 text-xl">
+              <User className="w-5 h-5 text-blue-600" />
+              Meu Perfil
+            </DialogTitle>
+            <DialogDescription>
+              Visualize e edite seus dados pessoais e de conta.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Top Banner / Avatar com Upload */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200 shadow-2xs">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16 border-2 border-blue-600 shadow-sm shrink-0">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} className="object-cover" />}
+                  <AvatarFallback className="bg-blue-600 text-white text-xl font-bold">
+                    {displayName.charAt(0) || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="space-y-0.5 min-w-0">
+                  <h3 className="font-bold text-slate-900 text-base truncate">{displayName}</h3>
+                  <p className="text-xs text-slate-500 truncate">{displayEmail}</p>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${roleBadgeStyles[role || ''] || 'bg-slate-100 text-slate-700 border-slate-200'} mt-1`}>
+                    Cargo: {getRoleLabel(role)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAvatarFileChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Camera className="w-4 h-4 text-blue-600" />
+                  {avatarUrl ? 'Trocar foto' : 'Upload foto'}
+                </Button>
+              </div>
+            </div>
+
+            {/* Cabeçalho do Bloco de Informações Pessoais + Botão de Edição */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Informações Pessoais
+              </h4>
+              <Button
+                type="button"
+                variant={isEditingProfile ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={() => {
+                  if (!isEditingProfile) {
+                    setEditFormData({
+                      nome_completo: profile?.nome_completo || user?.full_name || '',
+                      cpf: formatCPF(profile?.cpf || ''),
+                      email: profile?.email || user?.email || '',
+                      whatsapp: formatPhone(profile?.whatsapp || ''),
+                      endereco: profile?.endereco || '',
+                      cidade: profile?.cidade || '',
+                      estado: profile?.estado || '',
+                      cep: formatCEP(profile?.cep || ''),
+                    });
+                  }
+                  setIsEditingProfile(!isEditingProfile);
+                }}
+              >
+                {isEditingProfile ? (
+                  <>
+                    <X className="w-3.5 h-3.5" /> Cancelar Edição
+                  </>
+                ) : (
+                  <>
+                    <Edit3 className="w-3.5 h-3.5 text-blue-600" /> Editar Informações
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {!isEditingProfile ? (
+              /* Modo de Visualização */
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-slate-400" /> Nome Completo
+                  </span>
+                  <p className="font-semibold text-slate-800">{profile?.nome_completo || displayName}</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-slate-400" /> CPF
+                  </span>
+                  <p className="font-semibold text-slate-800">{profile?.cpf ? formatCPF(profile.cpf) : 'Não informado'}</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" /> E-mail
+                  </span>
+                  <p className="font-semibold text-slate-800 truncate" title={displayEmail}>{displayEmail}</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" /> WhatsApp / Telefone
+                  </span>
+                  <p className="font-semibold text-slate-800">{profile?.whatsapp ? formatPhone(profile.whatsapp) : 'Não informado'}</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1 sm:col-span-2">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" /> Endereço
+                  </span>
+                  <p className="font-semibold text-slate-800">
+                    {profile?.endereco || 'Não informado'}
+                    {profile?.cidade ? `, ${profile.cidade}` : ''}
+                    {profile?.estado ? ` - ${profile.estado}` : ''}
+                    {profile?.cep ? ` (CEP: ${formatCEP(profile.cep)})` : ''}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" /> Núcleo Vinculado
+                  </span>
+                  <p className="font-semibold text-slate-800">{selectedNucleusName || 'Geral'}</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" /> Data de Cadastro
+                  </span>
+                  <p className="font-semibold text-slate-800">
+                    {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('pt-BR') : 'Não informada'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              /* Modo de Edição de Informações */
+              <div className="space-y-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-nome" className="text-xs font-semibold">Nome Completo</Label>
+                    <Input
+                      id="edit-nome"
+                      value={editFormData.nome_completo}
+                      onChange={(e) => setEditFormData({ ...editFormData, nome_completo: e.target.value })}
+                      placeholder="Seu nome completo"
+                      className="bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="edit-cpf" className="text-xs font-semibold text-slate-500">CPF</Label>
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">Não alterável</span>
+                    </div>
+                    <Input
+                      id="edit-cpf"
+                      value={editFormData.cpf}
+                      disabled
+                      placeholder="000.000.000-00"
+                      className="bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="edit-email" className="text-xs font-semibold text-slate-500">E-mail</Label>
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">Não alterável</span>
+                    </div>
+                    <Input
+                      id="edit-email"
+                      type="email"
+                      value={editFormData.email}
+                      disabled
+                      placeholder="seu@email.com"
+                      className="bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-whatsapp" className="text-xs font-semibold">WhatsApp / Telefone</Label>
+                    <Input
+                      id="edit-whatsapp"
+                      value={editFormData.whatsapp}
+                      maxLength={15}
+                      onChange={(e) => setEditFormData({ ...editFormData, whatsapp: formatPhone(e.target.value) })}
+                      placeholder="(00) 00000-0000"
+                      className="bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-endereco" className="text-xs font-semibold">Endereço</Label>
+                  <Input
+                    id="edit-endereco"
+                    value={editFormData.endereco}
+                    onChange={(e) => setEditFormData({ ...editFormData, endereco: e.target.value })}
+                    placeholder="Rua, número, bairro"
+                    className="bg-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label htmlFor="edit-cidade" className="text-xs font-semibold">Cidade</Label>
+                    <Input
+                      id="edit-cidade"
+                      value={editFormData.cidade}
+                      onChange={(e) => setEditFormData({ ...editFormData, cidade: e.target.value })}
+                      placeholder="Cidade"
+                      className="bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label htmlFor="edit-estado" className="text-xs font-semibold">Estado (UF)</Label>
+                    <Input
+                      id="edit-estado"
+                      value={editFormData.estado}
+                      maxLength={2}
+                      onChange={(e) => setEditFormData({ ...editFormData, estado: e.target.value.toUpperCase() })}
+                      placeholder="UF"
+                      className="bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label htmlFor="edit-cep" className="text-xs font-semibold">CEP</Label>
+                    <Input
+                      id="edit-cep"
+                      value={editFormData.cep}
+                      maxLength={9}
+                      onChange={(e) => setEditFormData({ ...editFormData, cep: formatCEP(e.target.value) })}
+                      placeholder="00000-000"
+                      className="bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            {isEditingProfile ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditingProfile(false)}
+                  disabled={isSavingProfile}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={isSavingProfile}
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSavingProfile ? 'Salvando...' : 'Salvar Alterações'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => openProfileModal()}
+                  className="gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Editar Dados
+                </Button>
+                <Button type="button" onClick={() => setPersonalProfileModalOpen(false)}>
+                  Fechar
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -43,7 +43,7 @@ import {
   useTransferirSolicitacao,
 } from '@/hooks/useSolicitacoes';
 import { useBeneficiariosQuery } from '@/hooks/useBeneficiarios';
-import { useAuditLogsQuery } from '@/hooks/useAuditLogs';
+import { useAuditLogsQuery, useRejectionLogsQuery } from '@/hooks/useAuditLogs';
 import { useImagensRetiradaQuery, useUploadImagemRetirada, useDeleteImagemRetirada } from '@/hooks/useImagensRetirada';
 import {
   useImagensDevolucaoQuery, useUploadImagemDevolucao, useDeleteImagemDevolucao
@@ -71,13 +71,152 @@ import { History } from 'lucide-react';
 import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { MapSelector, type Nucleo } from '@/components/MapSelector';
+import { useNucleosQuery } from '@/hooks/useNucleos';
 import { supabase } from '@/lib/supabase';
+import { formatCEP, cleanCPF } from '@/utils/cpf';
+
+function calculateDistance(lat1: number, lon1: number, lat2: number | null, lon2: number | null): number {
+  if (lat2 === null || lon2 === null || lat2 === 0 || lon2 === 0) return 9999;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+    Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 moment.locale('pt-br');
 
-function StatusBadge({ status }: { status: string | null | undefined }) {
+function getSolicitacaoRefusalInfo(
+  s: SolicitacaoComRelacoes,
+  rejectionMap?: Map<string, any>,
+  logs?: any[]
+) {
+  if (!s || s.status !== 'encerrada') return null;
+
+  let logInfo = rejectionMap?.get(s.id);
+
+  const isGenericOrEmpty = (m: string | null | undefined) => {
+    if (!m) return true;
+    const clean = m.trim();
+    return (
+      !clean ||
+      clean === 'Motivo não informado' ||
+      clean === 'Solicitação recusada pela equipe de atendimento.' ||
+      clean === 'Solicitação recusada' ||
+      clean === 'Recusado na triagem'
+    );
+  };
+
+  let recusaLog: any = null;
+  if (logs && logs.length > 0) {
+    recusaLog = logs.find((l) => {
+      const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      const fromStatus = String(details?.from_status || '');
+      return (
+        details?.recusada === true ||
+        details?.triageDecision === 'recusado' ||
+        Boolean(details?.motivo_recusa) ||
+        Boolean(details?.triageMotivo) ||
+        Boolean(details?.motivo) ||
+        (toStatus === 'encerrada' && (fromStatus === 'triagem' || Boolean(details?.patch?.motivo_recusa) || Boolean(details?.patch?.motivo)))
+      );
+    });
+
+    if (recusaLog) {
+      const details = recusaLog.details as any;
+      const refusalMotivo =
+        s.observacoes_solicitante ||
+        details?.observacoes_solicitante ||
+        details?.motivo_recusa ||
+        details?.motivo ||
+        details?.triageMotivo ||
+        details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
+
+      const userName =
+        recusaLog.usuario?.nome_completo ||
+        recusaLog.usuario?.email ||
+        logInfo?.usuarioNome ||
+        s.solicitante?.nome_completo ||
+        s.solicitante?.email;
+
+      logInfo = {
+        motivo: refusalMotivo || (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo) ? logInfo.motivo : null),
+        usuarioNome: userName || logInfo?.usuarioNome || 'Atendente Responsável',
+        dataRecusa: recusaLog.created_at || logInfo?.dataRecusa || s.created_at,
+      };
+    }
+  }
+
+  // Consider a request refused if:
+  // 1. It has an explicit rejection entry in rejectionMap/logs OR
+  // 2. Its status is 'encerrada' AND it never completed withdrawal or reservation
+  const isRefused = Boolean(logInfo) || (!s.data_retirada_realizada && !s.equipamento_reservado_id);
+
+  if (!isRefused) return null;
+
+  const resolvedUser =
+    logInfo?.usuarioNome && logInfo.usuarioNome !== 'Atendente' && logInfo.usuarioNome !== 'Atendente Responsável'
+      ? logInfo.usuarioNome
+      : (s.solicitante?.nome_completo || s.solicitante?.email || 'Atendente Responsável');
+
+  // Find exact refusal message typed by the attendant during triage refusal:
+  let exactMotivo: string | null = null;
+
+  if (s.observacoes_solicitante && s.observacoes_solicitante.trim()) {
+    exactMotivo = s.observacoes_solicitante.trim();
+  } else if (logInfo?.motivo && !isGenericOrEmpty(logInfo.motivo)) {
+    exactMotivo = logInfo.motivo;
+  }
+
+  if (!exactMotivo && logs && logs.length > 0) {
+    for (const l of logs) {
+      const details = l.details as any;
+      const candidate =
+        details?.observacoes_solicitante ||
+        details?.motivo_recusa ||
+        details?.motivo ||
+        details?.triageMotivo ||
+        details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
+
+      if (candidate && !isGenericOrEmpty(candidate)) {
+        exactMotivo = candidate;
+        break;
+      }
+    }
+  }
+
+  return {
+    motivo: exactMotivo || 'Motivo não informado',
+    usuarioNome: resolvedUser,
+    dataRecusa: logInfo?.dataRecusa || s.created_at || new Date().toISOString(),
+  };
+}
+
+function StatusBadge({ status, isRecusada }: { status: string | null | undefined; isRecusada?: boolean }) {
   const cfg = getStatusSolicitacaoUi(status);
-  return <Badge className={cfg.className}>{cfg.label}</Badge>;
+  return (
+    <div className="inline-flex items-center gap-1.5 flex-wrap">
+      <Badge className={cfg.className}>{cfg.label}</Badge>
+      {isRecusada && (
+        <Badge variant="destructive" className="bg-red-600 hover:bg-red-700 text-white font-bold">
+          Recusada
+        </Badge>
+      )}
+    </div>
+  );
 }
 
 const solicitanteName = (s: SolicitacaoComRelacoes) =>
@@ -86,9 +225,83 @@ const beneficiarioName = (s: SolicitacaoComRelacoes) =>
   s?.beneficiario?.nome_completo || 'Mesmo responsável';
 const tipoName = (s: SolicitacaoComRelacoes) => s?.tipo?.nome || '—';
 
-function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelacoes }) {
+function DadosSolicitacaoTab({
+  solicitacao,
+  rejectionMap,
+}: {
+  solicitacao: SolicitacaoComRelacoes;
+  rejectionMap?: Map<string, any>;
+}) {
   const { user, profile } = useAuth();
   const { data: logs = [] } = useAuditLogsQuery(solicitacao.id);
+
+  const refusalData = useMemo(() => {
+    const recusaLog = logs.find((l) => {
+      const details = l.details as any;
+      const toStatus = String(details?.to_status || details?.patch?.status || '');
+      const fromStatus = String(details?.from_status || '');
+      return (
+        details?.recusada === true ||
+        details?.triageDecision === 'recusado' ||
+        Boolean(details?.motivo_recusa) ||
+        Boolean(details?.triageMotivo) ||
+        Boolean(details?.motivo) ||
+        (toStatus === 'encerrada' && (fromStatus === 'triagem' || Boolean(details?.patch?.motivo_recusa) || Boolean(details?.patch?.motivo)))
+      );
+    });
+
+    if (recusaLog) {
+      const details = recusaLog.details as any;
+      const extractedMotivo =
+        solicitacao.observacoes_solicitante ||
+        details?.observacoes_solicitante ||
+        details?.motivo_recusa ||
+        details?.motivo ||
+        details?.triageMotivo ||
+        details?.justificativa ||
+        details?.patch?.observacoes_solicitante ||
+        details?.patch?.motivo_recusa ||
+        details?.patch?.motivo;
+
+      const userRes =
+        recusaLog.usuario?.nome_completo ||
+        recusaLog.usuario?.email ||
+        solicitacao.solicitante?.nome_completo ||
+        solicitacao.solicitante?.email ||
+        'Atendente Responsável';
+
+      if (extractedMotivo && extractedMotivo !== 'Motivo não informado' && extractedMotivo !== 'Solicitação recusada pela equipe de atendimento.') {
+        return {
+          motivo: extractedMotivo,
+          usuarioNome: userRes,
+          dataRecusa: recusaLog.created_at,
+        };
+      }
+    }
+
+    return getSolicitacaoRefusalInfo(solicitacao, rejectionMap, logs);
+  }, [logs, solicitacao, rejectionMap]);
+
+  const isRecusada = Boolean(refusalData);
+
+  const creationLog = useMemo(() => {
+    return logs.find((l) => l.action_type === 'CREATED');
+  }, [logs]);
+
+  const displayMotivoSolicitacao = useMemo(() => {
+    if (solicitacao.motivo_solicitacao && solicitacao.motivo_solicitacao.trim()) {
+      return solicitacao.motivo_solicitacao.trim();
+    }
+    const creationMotivo =
+      (creationLog?.details as any)?.motivo_solicitacao ||
+      (creationLog?.details as any)?.motivo;
+
+    if (creationMotivo && typeof creationMotivo === 'string' && creationMotivo.trim()) {
+      return creationMotivo.trim();
+    }
+
+    return null;
+  }, [creationLog, solicitacao.motivo_solicitacao]);
 
   const aprovacaoLog = useMemo(() => {
     return logs.find((l) => {
@@ -110,40 +323,67 @@ function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelac
       const details = l.details as any;
       return Boolean(
         details?.prazo_retirada ||
-          details?.patch?.prazo_retirada ||
-          details?.prazo_limite_retirada ||
-          details?.alteracoes?.prazo_retirada ||
-          details?.alteracoes?.prazo_limite_retirada
+        details?.patch?.prazo_retirada ||
+        details?.prazo_limite_retirada ||
+        details?.alteracoes?.prazo_retirada ||
+        details?.alteracoes?.prazo_limite_retirada
       );
     });
   }, [logs]);
 
-  const isAprovado = solicitacao.status !== 'triagem';
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
+  const quemRecusouNome = useMemo(() => {
+    if (refusalData?.usuarioNome && refusalData.usuarioNome !== 'Atendente' && refusalData.usuarioNome !== 'Atendente Responsável') {
+      return refusalData.usuarioNome;
+    }
+    const recusaLog = logs.find((l) => {
+      const details = l.details as any;
+      return (
+        details?.recusada === true ||
+        details?.triageDecision === 'recusado' ||
+        (details?.to_status === 'encerrada' && Boolean(details?.motivo))
+      );
+    });
+    return (
+      (recusaLog?.details as any)?.usuario_nome ||
+      recusaLog?.usuario?.nome_completo ||
+      recusaLog?.usuario?.email ||
+      solicitacao.solicitante?.nome_completo ||
+      solicitacao.solicitante?.email ||
+      'Atendente Responsável'
+    );
+  }, [refusalData, logs, solicitacao]);
+
+  const dataRecusa = refusalData?.dataRecusa
+    ? moment(refusalData.dataRecusa).format('DD/MM/YYYY [às] HH:mm')
+    : null;
+
+  const isAprovado = solicitacao.status !== 'triagem' && !isRecusada;
   const quemAprovouNome =
+    (aprovacaoLog?.details as any)?.usuario_nome ||
     aprovacaoLog?.usuario?.nome_completo ||
     aprovacaoLog?.usuario?.email ||
-    (isAprovado ? currentUserDisplayName : null);
+    (isAprovado ? (solicitacao.solicitante?.nome_completo || solicitacao.solicitante?.email || 'Atendente Responsável') : null);
 
   const dataAprovacao = aprovacaoLog
     ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
     : isAprovado
-    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
-    : null;
+      ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+      : null;
 
   const temPrazo = Boolean(solicitacao.prazo_retirada || solicitacao.prazo_limite_retirada || prazoLog);
   const quemDefiniuPrazoNome =
+    (prazoLog?.details as any)?.usuario_nome ||
     prazoLog?.usuario?.nome_completo ||
     prazoLog?.usuario?.email ||
-    (temPrazo ? currentUserDisplayName : null);
+    (temPrazo ? (solicitacao.solicitante?.nome_completo || solicitacao.solicitante?.email || 'Atendente Responsável') : null);
 
   const dataDefinicaoPrazo = prazoLog
     ? moment(prazoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
     : aprovacaoLog
-    ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
-    : temPrazo && solicitacao.created_at
-    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
-    : null;
+      ? moment(aprovacaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
+      : temPrazo && solicitacao.created_at
+        ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+        : null;
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -166,31 +406,47 @@ function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelac
         </p>
       </div>
 
-      <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
-        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Aprovado Por</p>
-        {quemAprovouNome ? (
-          <div className="mt-1">
-            <p className="font-semibold text-slate-900">{quemAprovouNome}</p>
-            <p className="text-xs text-slate-500">{dataAprovacao}</p>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500 mt-1">Aguardando aprovação</p>
-        )}
-      </div>
+      {isRecusada ? (
+        <div className="p-3 bg-red-50/70 border border-red-200 rounded-xl">
+          <p className="text-xs font-semibold text-red-700 uppercase tracking-wider">Recusado Por</p>
+          {quemRecusouNome ? (
+            <div className="mt-1">
+              <p className="font-semibold text-slate-900">{quemRecusouNome}</p>
+              <p className="text-xs text-slate-500">{dataRecusa}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 mt-1">Recusado pelo atendente</p>
+          )}
+        </div>
+      ) : (
+        <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Aprovado Por</p>
+          {quemAprovouNome ? (
+            <div className="mt-1">
+              <p className="font-semibold text-slate-900">{quemAprovouNome}</p>
+              <p className="text-xs text-slate-500">{dataAprovacao}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 mt-1">Aguardando aprovação</p>
+          )}
+        </div>
+      )}
 
-      <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl">
-        <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider">Prazo Definido Por</p>
-        {quemDefiniuPrazoNome ? (
-          <div className="mt-1">
-            <p className="font-semibold text-slate-900">{quemDefiniuPrazoNome}</p>
-            <p className="text-xs text-slate-500">{dataDefinicaoPrazo}</p>
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500 mt-1">Aguardando definição de prazo</p>
-        )}
-      </div>
+      {!isRecusada && (
+        <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl">
+          <p className="text-xs font-semibold text-purple-700 uppercase tracking-wider">Prazo Definido Por</p>
+          {quemDefiniuPrazoNome ? (
+            <div className="mt-1">
+              <p className="font-semibold text-slate-900">{quemDefiniuPrazoNome}</p>
+              <p className="text-xs text-slate-500">{dataDefinicaoPrazo}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 mt-1">Aguardando definição de prazo</p>
+          )}
+        </div>
+      )}
 
-      {solicitacao.prazo_limite_retirada && (
+      {solicitacao.prazo_limite_retirada && !isRecusada && (
         <div>
           <p className="text-sm text-slate-500">Limite para Retirada</p>
           <p className="font-medium">
@@ -198,7 +454,7 @@ function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelac
           </p>
         </div>
       )}
-      {solicitacao.prazo_retirada && (
+      {solicitacao.prazo_retirada && !isRecusada && (
         <div>
           <p className="text-sm text-slate-500">Prazo Definido para Retirada</p>
           <p className="font-medium">
@@ -206,10 +462,10 @@ function DadosSolicitacaoTab({ solicitacao }: { solicitacao: SolicitacaoComRelac
           </p>
         </div>
       )}
-      {solicitacao.motivo_solicitacao && (
+      {displayMotivoSolicitacao && (
         <div className="col-span-2">
-          <p className="text-sm text-slate-500">Motivo da solicitação</p>
-          <p className="font-medium">{solicitacao.motivo_solicitacao}</p>
+          <p className="text-sm text-slate-500">Mensagem do solicitante</p>
+          <p className="font-medium">{displayMotivoSolicitacao}</p>
         </div>
       )}
     </div>
@@ -244,18 +500,17 @@ function ImagensRetiradaTab({
   }, [logs]);
 
   const foiRetirado = Boolean(solicitacao?.data_retirada_realizada || retiradaLog || solicitacao?.status === 'equipamento_emprestado');
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
 
   const registrouNome =
     retiradaLog?.usuario?.nome_completo ||
     retiradaLog?.usuario?.email ||
-    (foiRetirado ? currentUserDisplayName : null);
+    (foiRetirado ? 'Atendente Responsável' : null);
 
   const dataHoraRegistro = retiradaLog
     ? moment(retiradaLog.created_at).format('DD/MM/YYYY [às] HH:mm')
     : foiRetirado && solicitacao?.data_retirada_realizada
-    ? moment(solicitacao.data_retirada_realizada).format('DD/MM/YYYY [às] HH:mm')
-    : null;
+      ? moment(solicitacao.data_retirada_realizada).format('DD/MM/YYYY [às] HH:mm')
+      : null;
 
   const dataRetiradaRealizada = solicitacao?.data_retirada_realizada
     ? moment(solicitacao.data_retirada_realizada).format('DD/MM/YYYY [às] HH:mm')
@@ -398,18 +653,17 @@ function ImagensDevolucaoTab({ solicitacaoId, isBackOffice, solicitacao }: Image
   }, [logs]);
 
   const foiDevolvido = Boolean(devolucaoLog || solicitacao?.status === 'encerrada' || solicitacao?.status === 'em_devolucao');
-  const currentUserDisplayName = profile?.nome_completo || user?.full_name || user?.email || 'Usuário Responsável';
 
   const registrouNome =
     devolucaoLog?.usuario?.nome_completo ||
     devolucaoLog?.usuario?.email ||
-    (foiDevolvido ? currentUserDisplayName : null);
+    (foiDevolvido ? 'Atendente Responsável' : null);
 
   const dataHoraRegistro = devolucaoLog
     ? moment(devolucaoLog.created_at).format('DD/MM/YYYY [às] HH:mm')
     : foiDevolvido && solicitacao?.created_at
-    ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
-    : null;
+      ? moment(solicitacao.created_at).format('DD/MM/YYYY [às] HH:mm')
+      : null;
 
   if (isLoading) {
     return <Skeleton className="h-48" />;
@@ -556,7 +810,7 @@ function RecibosTab({ solicitacaoId }: RecibosTabProps) {
 
 export default function Solicitacoes() {
   const { toast } = useToast();
-  const { role, user } = useAuth();
+  const { role, user, profile } = useAuth();
   const isBackOffice = isBackOfficeRole(role);
   const isManager = role === 'gerente' || role === 'ceo';
 
@@ -572,6 +826,10 @@ export default function Solicitacoes() {
   const tiposQuery = useTiposEquipamentoQuery();
   const equipamentosQuery = useEquipamentosQuery();
   const beneficiariosQuery = useBeneficiariosQuery();
+  const nucleosAdminQuery = useNucleosQuery();
+  const { data: rejectionMap } = useRejectionLogsQuery();
+  const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
+  const { data: selectedLogs = [] } = useAuditLogsQuery(selected?.id);
 
   const createMutation = useCreateSolicitacao();
   const updateMutation = useUpdateSolicitacao();
@@ -619,7 +877,6 @@ export default function Solicitacoes() {
     }
   }, [transferModalOpen]);
 
-  const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
   const [triageDecision, setTriageDecision] = useState<'aprovado' | 'recusado' | null>(null);
   const [triageMotivo, setTriageMotivo] = useState('');
   const [uploadingImages, setUploadingImages] = useState(false);
@@ -659,54 +916,52 @@ export default function Solicitacoes() {
   const [fallbackMode, setFallbackMode] = useState(false);
 
   const handleCepBlur = async () => {
-    if (cepInput.length >= 8) {
-      const data = await fetchCEP(cepInput);
-      if (data) {
+    const rawCep = cleanCPF(cepInput);
+    if (rawCep.length === 8) {
+      setFallbackMode(false);
+      const data = await fetchCEP(rawCep);
+      if (data && !data.erro) {
         const enderecoCompleto = `${data.logradouro}, ${data.bairro}, ${data.localidade}, ${data.uf}, Brasil`;
         const coords = await fetchCoordinates(enderecoCompleto);
-        
+
         if (coords) {
-          buscarNucleosProximos(coords.latitude, coords.longitude);
+          processarNucleosComCoordenadas(coords.latitude, coords.longitude);
         } else {
           setFallbackMode(true);
-          buscarTodosNucleosFallback();
         }
+      } else {
+        setFallbackMode(true);
       }
     }
   };
 
-  const buscarNucleosProximos = async (lat: number, lon: number) => {
+  const processarNucleosComCoordenadas = (userLat: number, userLon: number) => {
     setLoadingNucleos(true);
     try {
-      const { data, error } = await supabase.rpc('buscar_nucleos_proximos' as any, {
-        user_lat: lat,
-        user_lon: lon,
-        raio_km: 50
-      });
-      if (error) throw error;
-      
-      const nucleos = (data as unknown as Nucleo[]) || [];
-      setNucleosProximos(nucleos);
-      if (!nucleos.find((n: Nucleo) => n.id === selectedNucleoId)) {
-        setSelectedNucleoId('');
-      }
+      const allNucleosDb = nucleosAdminQuery.data || [];
+      const nucleosFormatados: Nucleo[] = allNucleosDb.map((n: any) => {
+        const enderecoCompleto = n.endereco || [n.logradouro || n.rua, n.numero, n.bairro, n.cidade, n.estado]
+          .filter(Boolean)
+          .join(', ');
+
+        const dist = (n.latitude && n.longitude)
+          ? calculateDistance(userLat, userLon, Number(n.latitude), Number(n.longitude))
+          : 9999;
+
+        return {
+          id: n.id,
+          nome: n.nome,
+          endereco: enderecoCompleto,
+          latitude: Number(n.latitude) || 0,
+          longitude: Number(n.longitude) || 0,
+          distancia_km: dist,
+        };
+      }).sort((a: Nucleo, b: Nucleo) => a.distancia_km - b.distancia_km);
+
+      setNucleosProximos(nucleosFormatados);
     } catch (err) {
-      console.error("Erro ao buscar núcleos próximos", err);
+      console.error("Erro ao processar núcleos no mapa", err);
       setFallbackMode(true);
-      buscarTodosNucleosFallback();
-    } finally {
-      setLoadingNucleos(false);
-    }
-  };
-
-  const buscarTodosNucleosFallback = async () => {
-    setLoadingNucleos(true);
-    try {
-      const { data, error } = await supabase.from('nucleos').select('*');
-      const nucleosFallback = (data as unknown as Nucleo[]) || [];
-      setNucleosProximos(nucleosFallback);
-    } catch (err) {
-      console.error("Erro fallback de núcleos", err);
     } finally {
       setLoadingNucleos(false);
     }
@@ -817,7 +1072,11 @@ export default function Solicitacoes() {
 
   const updateStatus = (sol: SolicitacaoComRelacoes, newStatus: StatusSolicitacao, motivo?: string) => {
     updateMutation.mutate(
-      { id: sol.id, patch: { status: newStatus, ...(motivo ? { motivo_solicitacao: motivo } : {}) } },
+      {
+        id: sol.id,
+        patch: { status: newStatus },
+        ...(newStatus === 'encerrada' && motivo ? { motivoRecusa: motivo } : {}),
+      },
       {
         onSuccess: () => {
           toast({ title: `Status atualizado: ${getStatusSolicitacaoUi(newStatus).label}` });
@@ -850,6 +1109,7 @@ export default function Solicitacoes() {
   };
 
   const handleDelete = (sol: SolicitacaoComRelacoes) => {
+    if (role === 'solicitante' || role === 'atendente') return;
     if (!confirm('Tem certeza que deseja excluir esta solicitação?')) return;
     deleteMutation.mutate(sol.id, {
       onSuccess: () => toast({ title: 'Solicitação excluída' }),
@@ -901,177 +1161,182 @@ export default function Solicitacoes() {
   const emAndamento = viewMode === 'normal' ? solicitacoesToRender.filter((s) => s.status !== 'encerrada') : [];
   const concluidas = viewMode === 'normal' ? solicitacoesToRender.filter((s) => s.status === 'encerrada') : solicitacoesToRender;
 
-  const renderSolicitacaoItem = (s: SolicitacaoComRelacoes) => (
-    <div
-      key={s.id}
-      className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-    >
-      <div className="flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${s.status === 'encerrada' ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
-          <FileText className="w-6 h-6 text-white" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="font-semibold text-slate-900">
-              #{s.protocolo || s.id.slice(0, 8)}
-            </p>
-            <StatusBadge status={s.status} />
+  const renderSolicitacaoItem = (s: SolicitacaoComRelacoes) => {
+    const refusalInfo = getSolicitacaoRefusalInfo(s, rejectionMap);
+    const isRecusada = Boolean(refusalInfo);
+
+    return (
+      <div
+        key={s.id}
+        className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${s.status === 'encerrada' ? (isRecusada ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-emerald-500 to-emerald-600') : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
+            <FileText className="w-6 h-6 text-white" />
           </div>
-          <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
-            <span className="flex items-center gap-1">
-              <User className="w-3 h-3" />
-              {solicitanteName(s)}
-            </span>
-            <span className="flex items-center gap-1">
-              <Package className="w-3 h-3" />
-              {tipoName(s)}
-            </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {moment(s.created_at).format('DD/MM/YYYY')}
-            </span>
-          </div>
-          {s.link_boleto_ressarcimento && (
-            <div className="flex items-center gap-2 mt-2 text-xs flex-wrap">
-              <span className={`px-2 py-0.5 rounded-full font-semibold ${s.pagamento_ressarcimento_realizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                {s.pagamento_ressarcimento_realizado ? 'Cobrança Paga' : 'Cobrança Pendente'}
-              </span>
-              <span className="text-slate-600 font-bold">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.valor_boleto_ressarcimento || 0)}
-              </span>
-              {!s.pagamento_ressarcimento_realizado && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 flex items-center gap-1 border border-indigo-100 rounded"
-                  onClick={(e: React.MouseEvent) => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(s.link_boleto_ressarcimento || '');
-                    toast({ title: 'Copiado!', description: 'Link da fatura copiado para a área de transferência.' });
-                  }}
-                >
-                  <Copy className="w-2.5 h-2.5" /> Copiar Link Fatura
-                </Button>
-              )}
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-slate-900">
+                #{s.protocolo || s.id.slice(0, 8)}
+              </p>
+              <StatusBadge status={s.status} isRecusada={isRecusada} />
             </div>
+            <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
+              <span className="flex items-center gap-1">
+                <User className="w-3 h-3" />
+                {solicitanteName(s)}
+              </span>
+              <span className="flex items-center gap-1">
+                <Package className="w-3 h-3" />
+                {tipoName(s)}
+              </span>
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {moment(s.created_at).format('DD/MM/YYYY')}
+              </span>
+            </div>
+            {s.link_boleto_ressarcimento && (
+              <div className="flex items-center gap-2 mt-2 text-xs flex-wrap">
+                <span className={`px-2 py-0.5 rounded-full font-semibold ${s.pagamento_ressarcimento_realizado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                  {s.pagamento_ressarcimento_realizado ? 'Cobrança Paga' : 'Cobrança Pendente'}
+                </span>
+                <span className="text-slate-600 font-bold">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.valor_boleto_ressarcimento || 0)}
+                </span>
+                {!s.pagamento_ressarcimento_realizado && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 flex items-center gap-1 border border-indigo-100 rounded"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(s.link_boleto_ressarcimento || '');
+                      toast({ title: 'Copiado!', description: 'Link da fatura copiado para a área de transferência.' });
+                    }}
+                  >
+                    <Copy className="w-2.5 h-2.5" /> Copiar Link Fatura
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isBackOffice && s.status === 'triagem' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setTriageModalOpen(true); }}
+            >
+              Iniciar Triagem
+            </Button>
           )}
+          {isBackOffice && s.status === 'aguardando_documentacao' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setReserveModalOpen(true); }}
+            >
+              Reservar
+            </Button>
+          )}
+          {isBackOffice && s.status === 'aguardando_retirada' && !s.prazo_retirada && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setPrazoModalOpen(true); }}
+              className="text-orange-600 border-orange-200"
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Definir Prazo
+            </Button>
+          )}
+          {isBackOffice && s.status === 'aguardando_retirada' && s.prazo_retirada && !s.data_retirada_realizada && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelected(s);
+                setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
+                setRetiradaResponsavel(user?.full_name || '');
+                setRetiradaNomeRetirador(s.solicitante?.nome_completo || s.beneficiario?.nome_completo || '');
+                setRetiradaCpfRetirador(s.solicitante?.cpf || s.beneficiario?.cpf || '');
+                setRetiradaParentesco('Próprio Solicitante');
+                setRetiradaObservacoes('');
+                setRetiradaFiles([]);
+                setRetiradaEquipamento(moment().add(30, 'days').format('YYYY-MM-DD'));
+                setRetiradaModalOpen(true);
+              }}
+              className="text-blue-600 border-blue-200"
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Registrar Retirada
+            </Button>
+          )}
+          {isBackOffice && s.status === 'equipamento_emprestado' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setDevolucaoModalOpen(true); }}
+              className="text-green-600 border-green-200"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Registrar Devolução
+            </Button>
+          )}
+          {isManager && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setPagamentoModalOpen(true); }}
+              className="text-emerald-600 border-emerald-200"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Recebimento
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
+                <Eye className="w-4 h-4 mr-2" /> Visualizar
+              </DropdownMenuItem>
+              {isManager && s.status === 'aguardando_retirada' && (
+                <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
+                  <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
+                </DropdownMenuItem>
+              )}
+              {isBackOffice && (
+                <>
+                  <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
+                    <Edit className="w-4 h-4 mr-2" /> Triar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSelected(s); setTransferModalOpen(true); }}>
+                    <ArrowRight className="w-4 h-4 mr-2" /> Transferir de Núcleo
+                  </DropdownMenuItem>
+                </>
+              )}
+              {isBackOffice && role !== 'atendente' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleDelete(s)}
+                    className="text-red-600"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Excluir
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        {isBackOffice && s.status === 'triagem' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSelected(s); setTriageModalOpen(true); }}
-          >
-            Iniciar Triagem
-          </Button>
-        )}
-        {isBackOffice && s.status === 'aguardando_documentacao' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSelected(s); setReserveModalOpen(true); }}
-          >
-            Reservar
-          </Button>
-        )}
-        {isBackOffice && s.status === 'aguardando_retirada' && !s.prazo_retirada && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSelected(s); setPrazoModalOpen(true); }}
-            className="text-orange-600 border-orange-200"
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            Definir Prazo
-          </Button>
-        )}
-        {isBackOffice && s.status === 'aguardando_retirada' && s.prazo_retirada && !s.data_retirada_realizada && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSelected(s);
-              setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
-              setRetiradaResponsavel(user?.full_name || '');
-              setRetiradaNomeRetirador(s.solicitante?.nome_completo || s.beneficiario?.nome_completo || '');
-              setRetiradaCpfRetirador(s.solicitante?.cpf || s.beneficiario?.cpf || '');
-              setRetiradaParentesco('Próprio Solicitante');
-              setRetiradaObservacoes('');
-              setRetiradaFiles([]);
-              setRetiradaEquipamento(moment().add(30, 'days').format('YYYY-MM-DD'));
-              setRetiradaModalOpen(true);
-            }}
-            className="text-blue-600 border-blue-200"
-          >
-            <Package className="w-4 h-4 mr-2" />
-            Registrar Retirada
-          </Button>
-        )}
-        {isBackOffice && s.status === 'equipamento_emprestado' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSelected(s); setDevolucaoModalOpen(true); }}
-            className="text-green-600 border-green-200"
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Registrar Devolução
-          </Button>
-        )}
-        {isManager && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { setSelected(s); setPagamentoModalOpen(true); }}
-            className="text-emerald-600 border-emerald-200"
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Recebimento
-          </Button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreVertical className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
-              <Eye className="w-4 h-4 mr-2" /> Visualizar
-            </DropdownMenuItem>
-            {isManager && s.status === 'aguardando_retirada' && (
-              <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
-                <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
-              </DropdownMenuItem>
-            )}
-            {isBackOffice && (
-              <>
-                <DropdownMenuItem onClick={() => { setSelected(s); setTriageModalOpen(true); }}>
-                  <Edit className="w-4 h-4 mr-2" /> Triar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSelected(s); setTransferModalOpen(true); }}>
-                  <ArrowRight className="w-4 h-4 mr-2" /> Transferir de Núcleo
-                </DropdownMenuItem>
-              </>
-            )}
-            {(isBackOffice || s.solicitante_id === user?.id) && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => handleDelete(s)}
-                  className="text-red-600"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Excluir
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -1338,7 +1603,7 @@ export default function Solicitacoes() {
                 placeholder="Descreva o motivo..."
               />
             </div>
-            
+
             {/* INÍCIO DO FLUXO DE ENDEREÇO E NÚCLEO */}
             <div className="border-t pt-4 mt-6">
               <h4 className="font-semibold text-lg mb-4">Endereço e Seleção de Núcleo</h4>
@@ -1346,10 +1611,10 @@ export default function Solicitacoes() {
                 <div>
                   <Label>CEP</Label>
                   <div className="relative">
-                    <Input 
+                    <Input
                       type="text"
                       value={cepInput}
-                      onChange={e => setCepInput(e.target.value)}
+                      onChange={e => setCepInput(formatCEP(e.target.value))}
                       onBlur={handleCepBlur}
                       placeholder="00000-000"
                       maxLength={9}
@@ -1358,17 +1623,17 @@ export default function Solicitacoes() {
                   </div>
                   {cepError && <span className="text-red-500 text-xs mt-1 block">{cepError}</span>}
                 </div>
-                
+
                 <div>
                   <Label>Rua</Label>
                   <Input readOnly value={cepData?.logradouro || ''} className="bg-slate-50 text-slate-500" />
                 </div>
-                
+
                 <div>
                   <Label>Bairro</Label>
                   <Input readOnly value={cepData?.bairro || ''} className="bg-slate-50 text-slate-500" />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label>Cidade</Label>
@@ -1385,50 +1650,44 @@ export default function Solicitacoes() {
 
               {cepData && (
                 <div className="mt-6">
-                  <h5 className="font-medium text-slate-800 mb-3">Núcleo mais próximo</h5>
-                  
-                  {geoLoading && <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin"/> Localizando endereço...</p>}
+                  <h5 className="font-medium text-slate-800 mb-3">Núcleo de Atendimento</h5>
 
-                  {!fallbackMode && coordinates ? (
-                    <>
-                      {nucleosProximos.length === 0 && !loadingNucleos && (
-                        <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg text-sm mb-4 border border-yellow-200">
-                          Nenhum núcleo encontrado em um raio de 50km.
-                        </div>
-                      )}
-                      <MapSelector 
-                        userLocation={coordinates}
-                        nucleos={nucleosProximos}
-                        selectedNucleoId={selectedNucleoId}
-                        onSelectNucleo={(n) => setSelectedNucleoId(n.id)}
-                        loading={loadingNucleos}
-                      />
-                    </>
-                  ) : fallbackMode ? (
+                  {geoLoading && <p className="text-sm text-slate-500 flex items-center gap-2 mb-3"><Loader2 className="w-4 h-4 animate-spin text-blue-600" /> Localizando endereço no mapa...</p>}
+
+                  {!fallbackMode && coordinates && import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ? (
+                    <MapSelector
+                      userLocation={coordinates}
+                      nucleos={nucleosProximos}
+                      selectedNucleoId={selectedNucleoId}
+                      onSelectNucleo={(n) => setSelectedNucleoId(n.id)}
+                      loading={loadingNucleos}
+                    />
+                  ) : (fallbackMode || !coordinates || !import.meta.env.VITE_MAPBOX_ACCESS_TOKEN) && !geoLoading ? (
                     <div className="space-y-4">
-                      <div className="p-3 bg-amber-50 text-amber-800 rounded border border-amber-200 text-sm">
-                        Mapa indisponível. Selecione o núcleo manualmente.
+                      <div className="p-3 bg-amber-50 text-amber-800 rounded border border-amber-200 text-sm flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Mapa indisponível. Selecione o núcleo de atendimento na lista abaixo.</span>
                       </div>
                       <Select value={selectedNucleoId} onValueChange={setSelectedNucleoId}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecione um núcleo" />
+                          <SelectValue placeholder="Selecione um núcleo de atendimento" />
                         </SelectTrigger>
                         <SelectContent>
-                          {nucleosProximos.map(n => (
+                          {(nucleosAdminQuery.data || []).map((n: any) => (
                             <SelectItem key={n.id} value={n.id}>
-                              {n.nome} ({n.endereco})
+                              {n.nome} ({n.cidade || ''}/{n.estado || ''} - {n.endereco || n.bairro || 'Sem endereço'})
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       {selectedNucleoId && (
-                        <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded text-sm mt-2">
+                        <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded text-sm mt-2 font-medium">
                           Núcleo selecionado com sucesso.
                         </div>
                       )}
                     </div>
                   ) : null}
-                  
+
                   {!selectedNucleoId && !geoLoading && (
                     <p className="text-sm text-red-500 mt-2 font-medium">
                       * A seleção de um núcleo é obrigatória.
@@ -1438,7 +1697,7 @@ export default function Solicitacoes() {
               )}
             </div>
             {/* FIM DO FLUXO DE ENDEREÇO E NÚCLEO */}
-            
+
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
@@ -1462,34 +1721,74 @@ export default function Solicitacoes() {
       {/* Detalhes */}
       <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              Solicitação #{selected?.protocolo || selected?.id?.slice(0, 8)}
-              {selected && <StatusBadge status={selected.status} />}
-            </DialogTitle>
-          </DialogHeader>
-          {selected && (
-            <Tabs defaultValue="dados" className="mt-4">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="dados">Dados</TabsTrigger>
-                <TabsTrigger value="imagens">Retirada</TabsTrigger>
-                <TabsTrigger value="devolucao">Devolução</TabsTrigger>
-                <TabsTrigger value="recibo">Recibo</TabsTrigger>
-              </TabsList>
-              <TabsContent value="dados" className="space-y-4 mt-4">
-                <DadosSolicitacaoTab solicitacao={selected} />
-              </TabsContent>
-              <TabsContent value="imagens" className="mt-4">
-                <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
-              </TabsContent>
-              <TabsContent value="devolucao" className="mt-4">
-                <ImagensDevolucaoTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
-              </TabsContent>
-              <TabsContent value="recibo" className="mt-4">
-                <RecibosTab solicitacaoId={selected.id} />
-              </TabsContent>
-            </Tabs>
-          )}
+          {selected && (() => {
+            const selectedRefusalInfo = getSolicitacaoRefusalInfo(selected, rejectionMap, selectedLogs);
+            const isSelectedRecusada = Boolean(selectedRefusalInfo);
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    Solicitação #{selected.protocolo || selected.id.slice(0, 8)}
+                    <StatusBadge status={selected.status} isRecusada={isSelectedRecusada} />
+                  </DialogTitle>
+                </DialogHeader>
+                {isSelectedRecusada ? (
+                  <Tabs defaultValue="dados" className="mt-4">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="dados">Dados</TabsTrigger>
+                      <TabsTrigger value="motivo_recusa">Motivo de recusa</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="dados" className="space-y-4 mt-4">
+                      <DadosSolicitacaoTab solicitacao={selected} rejectionMap={rejectionMap} />
+                    </TabsContent>
+                    <TabsContent value="motivo_recusa" className="mt-4">
+                      <div className="space-y-4">
+                        <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2">
+                            <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                            <h4 className="font-bold text-red-800 text-base">Motivo da Recusa</h4>
+                          </div>
+                          <p className="text-slate-800 text-sm leading-relaxed font-medium bg-white p-3.5 rounded-lg border border-red-100 shadow-2xs whitespace-pre-wrap">
+                            {selectedRefusalInfo?.motivo || 'Motivo não informado'}
+                          </p>
+                          {selectedRefusalInfo?.usuarioNome && (
+                            <div className="text-xs text-slate-600 flex flex-wrap justify-between items-center pt-2 border-t border-red-200/60 font-medium">
+                              <span>Recusado por: <strong className="text-slate-900">{selectedRefusalInfo.usuarioNome}</strong></span>
+                              {selectedRefusalInfo.dataRecusa && (
+                                <span>Data: {moment(selectedRefusalInfo.dataRecusa).format('DD/MM/YYYY [às] HH:mm')}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <Tabs defaultValue="dados" className="mt-4">
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="dados">Dados</TabsTrigger>
+                      <TabsTrigger value="imagens">Retirada</TabsTrigger>
+                      <TabsTrigger value="devolucao">Devolução</TabsTrigger>
+                      <TabsTrigger value="recibo">Recibo</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="dados" className="space-y-4 mt-4">
+                      <DadosSolicitacaoTab solicitacao={selected} rejectionMap={rejectionMap} />
+                    </TabsContent>
+                    <TabsContent value="imagens" className="mt-4">
+                      <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
+                    </TabsContent>
+                    <TabsContent value="devolucao" className="mt-4">
+                      <ImagensDevolucaoTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
+                    </TabsContent>
+                    <TabsContent value="recibo" className="mt-4">
+                      <RecibosTab solicitacaoId={selected.id} />
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </>
+            );
+          })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDetailModalOpen(false)}>Fechar</Button>
           </DialogFooter>
@@ -1497,8 +1796,8 @@ export default function Solicitacoes() {
       </Dialog>
 
       {/* Triagem - Aprovação/Recusa */}
-      <Dialog 
-        open={triageModalOpen} 
+      <Dialog
+        open={triageModalOpen}
         onOpenChange={(open: boolean) => {
           setTriageModalOpen(open);
           if (!open) {
@@ -1583,8 +1882,8 @@ export default function Solicitacoes() {
       </Dialog>
 
       {/* Upload de Imagens da Retirada */}
-      <Dialog 
-        open={uploadImagesModalOpen} 
+      <Dialog
+        open={uploadImagesModalOpen}
         onOpenChange={(open: boolean) => {
           setUploadImagesModalOpen(open);
           if (!open) {
@@ -1651,8 +1950,8 @@ export default function Solicitacoes() {
             </div>
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setUploadImagesModalOpen(false);
                 setSelectedFiles([]);
@@ -1665,7 +1964,7 @@ export default function Solicitacoes() {
                 if (!selected || selectedFiles.length === 0) return;
                 setUploadingImages(true);
                 let successCount = 0;
-                
+
                 try {
                   for (const file of selectedFiles) {
                     await new Promise((resolve, reject) => {
@@ -1678,17 +1977,17 @@ export default function Solicitacoes() {
                       );
                     });
                   }
-                  
+
                   if (successCount === selectedFiles.length) {
                     toast({ title: `${successCount} imagem(ns) anexada(s) com sucesso!` });
                     setUploadImagesModalOpen(false);
                     setSelectedFiles([]);
                   }
                 } catch (err: any) {
-                  toast({ 
-                    variant: 'destructive', 
-                    title: 'Erro ao anexar imagens', 
-                    description: err.message 
+                  toast({
+                    variant: 'destructive',
+                    title: 'Erro ao anexar imagens',
+                    description: err.message
                   });
                 } finally {
                   setUploadingImages(false);
@@ -1729,9 +2028,8 @@ export default function Solicitacoes() {
                 return disp.map((eq) => (
                   <div
                     key={eq.id}
-                    className={`flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer ${
-                      reservarMutation.isPending ? 'opacity-50 pointer-events-none' : ''
-                    }`}
+                    className={`flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 cursor-pointer ${reservarMutation.isPending ? 'opacity-50 pointer-events-none' : ''
+                      }`}
                     onClick={() => handleReserve(eq.id)}
                   >
                     <div className="flex items-center gap-3">
@@ -1947,11 +2245,25 @@ export default function Solicitacoes() {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                  const files = Array.from(e.dataTransfer.files);
-                  if (files.length + retiradaFiles.length <= 5) {
-                    setRetiradaFiles([...retiradaFiles, ...files]);
-                  } else {
-                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+
+                  const validImageFiles = droppedFiles.filter(file => file.type.startsWith('image/'));
+                  const invalidFiles = droppedFiles.filter(file => !file.type.startsWith('image/'));
+
+                  if (invalidFiles.length > 0) {
+                    toast({
+                      variant: "destructive",
+                      title: "Arquivo inválido",
+                      description: "Apenas imagens (JPG, PNG) podem ser anexadas na vistoria.",
+                    });
+                  }
+
+                  if (validImageFiles.length > 0) {
+                    if (validImageFiles.length + retiradaFiles.length <= 5) {
+                      setRetiradaFiles([...retiradaFiles, ...validImageFiles]);
+                    } else {
+                      toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                    }
                   }
                 }}
                 onClick={() => document.getElementById('retirada-file-input')?.click()}
@@ -2014,138 +2326,160 @@ export default function Solicitacoes() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setRetiradaModalOpen(false)}
-              disabled={uploadingRetirada || registrarRetiradaMutation.isPending}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!selected || !retiradaEquipamento) return;
-                const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
-                if (!eqId) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'Erro',
-                    description: 'Por favor, selecione um equipamento para retirada.',
-                  });
-                  return;
-                }
-
-                setUploadingRetirada(true);
-                const uploadedUrls: string[] = [];
-
-                try {
-                  // 1. Upload de cada foto para o Supabase Storage via useUploadImagemRetirada
-                  for (const file of retiradaFiles) {
-                    await new Promise((resolve, reject) => {
-                      uploadImagemMutation.mutate(
-                        {
-                          solicitacaoId: selected.id,
-                          file,
-                          descricao: `Vistoria de Retirada - ${file.name}`,
-                        },
-                        {
-                          onSuccess: (resData: any) => {
-                            if (resData?.url_imagem) {
-                              uploadedUrls.push(resData.url_imagem);
-                            }
-                            resolve(null);
-                          },
-                          onError: reject,
-                        }
-                      );
+          <DialogFooter className="gap-2 sm:gap-0 sm:flex sm:items-center sm:justify-between w-full">
+            <div className="flex justify-start">
+              <a
+                href="/docs/termo_emprestimo.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                aria-label="Abrir Termo de Empréstimo em nova guia"
+              >
+                <FileText className="w-4 h-4" /> Visualizar Termo de Empréstimo
+              </a>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setRetiradaModalOpen(false)}
+                disabled={uploadingRetirada || registrarRetiradaMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!selected || !retiradaEquipamento) return;
+                  const eqId = selected.equipamento_reservado_id || retiradaEquipamentoId;
+                  if (!eqId) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Erro',
+                      description: 'Por favor, selecione um equipamento para retirada.',
                     });
+                    return;
                   }
 
-                  // 2. Registrar a Retirada persistindo dados completos
-                  registrarRetiradaMutation.mutate(
-                    {
-                      solicitacaoId: selected.id,
-                      equipamentoId: eqId,
-                      dataPrevistaDevolucao: new Date(retiradaEquipamento),
-                      nomeResponsavel: retiradaResponsavel.trim(),
-                      nomeRetirador: retiradaNomeRetirador.trim(),
-                      cpfRetirador: retiradaCpfRetirador.trim(),
-                      parentescoRetirador: retiradaParentesco,
-                      observacoes: retiradaObservacoes.trim(),
-                      imagensUrls: uploadedUrls,
-                    },
-                    {
-                      onSuccess: () => {
-                        toast({
-                          title: 'Retirada registrada com sucesso!',
-                          description: 'O empréstimo foi iniciado e o termo PDF gerado.',
-                        });
+                  if (!retiradaFiles || retiradaFiles.length === 0) {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Vistoria Obrigatória',
+                      description: 'Você precisa anexar pelo menos 1 foto do estado do equipamento antes de confirmar a retirada.',
+                    });
+                    return;
+                  }
 
-                        // 3. Gerar e baixar automaticamente o Termo de Retirada em PDF
-                        try {
-                          const eqObj = equipamentos.find((e) => e.id === eqId);
-                          downloadTermoRetiradaPdf({
-                            solicitacao_id: selected.id,
-                            protocolo: selected.protocolo,
-                            nome_solicitante: selected.solicitante?.nome_completo || 'Solicitante',
-                            cpf_solicitante: selected.solicitante?.cpf,
-                            nome_beneficiario: selected.beneficiario?.nome_completo,
-                            cpf_beneficiario: selected.beneficiario?.cpf,
-                            descricao_equipamento: selected.tipo_equipamento?.nome || 'Equipamento',
-                            codigo_patrimonio: eqObj?.codigo_patrimonio,
-                            data_retirada: new Date(),
-                            data_prevista_devolucao: new Date(retiradaEquipamento),
-                            nome_responsavel: retiradaResponsavel.trim() || user?.full_name || 'Clube da Bengala',
-                            nome_retirador: retiradaNomeRetirador.trim() || selected.solicitante?.nome_completo || 'Solicitante',
-                            cpf_retirador: retiradaCpfRetirador.trim() || selected.solicitante?.cpf,
-                            parentesco_retirador: retiradaParentesco,
-                            observacoes: retiradaObservacoes.trim(),
-                            imagens_retirada_urls: uploadedUrls,
-                          });
-                        } catch (pdfErr) {
-                          console.warn('[PDF] Erro ao baixar termo de retirada:', pdfErr);
-                        }
+                  setUploadingRetirada(true);
+                  const uploadedUrls: string[] = [];
 
-                        setRetiradaModalOpen(false);
-                        setRetiradaData('');
-                        setRetiradaEquipamento('');
-                        setRetiradaEquipamentoId('');
-                        setRetiradaResponsavel('');
-                        setRetiradaNomeRetirador('');
-                        setRetiradaCpfRetirador('');
-                        setRetiradaFiles([]);
-                        setRetiradaObservacoes('');
-                        setUploadingRetirada(false);
-                      },
-                      onError: (err: any) => {
-                        setUploadingRetirada(false);
-                        toast({ variant: 'destructive', title: 'Erro', description: err.message });
-                      },
+                  try {
+                    // 1. Upload de cada foto para o Supabase Storage via useUploadImagemRetirada
+                    for (const file of retiradaFiles) {
+                      await new Promise((resolve, reject) => {
+                        uploadImagemMutation.mutate(
+                          {
+                            solicitacaoId: selected.id,
+                            file,
+                            descricao: `Vistoria de Retirada - ${file.name}`,
+                          },
+                          {
+                            onSuccess: (resData: any) => {
+                              if (resData?.url_imagem) {
+                                uploadedUrls.push(resData.url_imagem);
+                              }
+                              resolve(null);
+                            },
+                            onError: reject,
+                          }
+                        );
+                      });
                     }
-                  );
-                } catch (uploadErr: any) {
-                  setUploadingRetirada(false);
-                  toast({
-                    variant: 'destructive',
-                    title: 'Erro no Upload das Fotos',
-                    description: uploadErr.message || 'Falha ao enviar fotos da vistoria.',
-                  });
+
+                    // 2. Registrar a Retirada persistindo dados completos
+                    registrarRetiradaMutation.mutate(
+                      {
+                        solicitacaoId: selected.id,
+                        equipamentoId: eqId,
+                        dataPrevistaDevolucao: new Date(retiradaEquipamento),
+                        nomeResponsavel: retiradaResponsavel.trim(),
+                        nomeRetirador: retiradaNomeRetirador.trim(),
+                        cpfRetirador: retiradaCpfRetirador.trim(),
+                        parentescoRetirador: retiradaParentesco,
+                        observacoes: retiradaObservacoes.trim(),
+                        imagensUrls: uploadedUrls,
+                      },
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: 'Retirada registrada com sucesso!',
+                            description: 'O empréstimo foi iniciado e o termo PDF gerado.',
+                          });
+
+                          // 3. Gerar e baixar automaticamente o Termo de Retirada em PDF
+                          try {
+                            const eqObj = equipamentos.find((e) => e.id === eqId);
+                            downloadTermoRetiradaPdf({
+                              solicitacao_id: selected.id,
+                              protocolo: selected.protocolo,
+                              nome_solicitante: selected.solicitante?.nome_completo || 'Solicitante',
+                              cpf_solicitante: selected.solicitante?.cpf,
+                              nome_beneficiario: selected.beneficiario?.nome_completo,
+                              cpf_beneficiario: selected.beneficiario?.cpf,
+                              descricao_equipamento: selected.tipo_equipamento?.nome || 'Equipamento',
+                              codigo_patrimonio: eqObj?.codigo_patrimonio,
+                              data_retirada: new Date(),
+                              data_prevista_devolucao: new Date(retiradaEquipamento),
+                              nome_responsavel: retiradaResponsavel.trim() || user?.full_name || 'Clube da Bengala',
+                              nome_retirador: retiradaNomeRetirador.trim() || selected.solicitante?.nome_completo || 'Solicitante',
+                              cpf_retirador: retiradaCpfRetirador.trim() || selected.solicitante?.cpf,
+                              parentesco_retirador: retiradaParentesco,
+                              observacoes: retiradaObservacoes.trim(),
+                              imagens_retirada_urls: uploadedUrls,
+                            });
+                          } catch (pdfErr) {
+                            console.warn('[PDF] Erro ao baixar termo de retirada:', pdfErr);
+                          }
+
+                          setRetiradaModalOpen(false);
+                          setRetiradaData('');
+                          setRetiradaEquipamento('');
+                          setRetiradaEquipamentoId('');
+                          setRetiradaResponsavel('');
+                          setRetiradaNomeRetirador('');
+                          setRetiradaCpfRetirador('');
+                          setRetiradaFiles([]);
+                          setRetiradaObservacoes('');
+                          setUploadingRetirada(false);
+                        },
+                        onError: (err: any) => {
+                          setUploadingRetirada(false);
+                          toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                        },
+                      }
+                    );
+                  } catch (uploadErr: any) {
+                    setUploadingRetirada(false);
+                    toast({
+                      variant: 'destructive',
+                      title: 'Erro no Upload das Fotos',
+                      description: uploadErr.message || 'Falha ao enviar fotos da vistoria.',
+                    });
+                  }
+                }}
+                disabled={
+                  uploadingRetirada ||
+                  registrarRetiradaMutation.isPending ||
+                  !retiradaEquipamento ||
+                  !retiradaNomeRetirador ||
+                  (!selected?.equipamento_reservado_id && !retiradaEquipamentoId)
                 }
-              }}
-              disabled={
-                uploadingRetirada ||
-                registrarRetiradaMutation.isPending ||
-                !retiradaEquipamento ||
-                !retiradaNomeRetirador ||
-                (!selected?.equipamento_reservado_id && !retiradaEquipamentoId)
-              }
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              {(uploadingRetirada || registrarRetiradaMutation.isPending) && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              {uploadingRetirada ? 'Enviando Fotos...' : 'Confirmar Retirada & Gerar Termo'}
-            </Button>
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {(uploadingRetirada || registrarRetiradaMutation.isPending) && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                )}
+                {uploadingRetirada ? 'Enviando Fotos...' : 'Confirmar Retirada & Gerar Termo'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2188,11 +2522,25 @@ export default function Solicitacoes() {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
-                  const files = Array.from(e.dataTransfer.files);
-                  if (files.length + devolucaoFiles.length <= 5) {
-                    setDevolucaoFiles([...devolucaoFiles, ...files]);
-                  } else {
-                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+
+                  const validImageFiles = droppedFiles.filter(file => file.type.startsWith('image/'));
+                  const invalidFiles = droppedFiles.filter(file => !file.type.startsWith('image/'));
+
+                  if (invalidFiles.length > 0) {
+                    toast({
+                      variant: "destructive",
+                      title: "Arquivo inválido",
+                      description: "Apenas imagens (JPG, PNG) podem ser anexadas na vistoria.",
+                    });
+                  }
+
+                  if (validImageFiles.length > 0) {
+                    if (validImageFiles.length + devolucaoFiles.length <= 5) {
+                      setDevolucaoFiles([...devolucaoFiles, ...validImageFiles]);
+                    } else {
+                      toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                    }
                   }
                 }}
                 onClick={() => document.getElementById('devolucao-file-input')?.click()}

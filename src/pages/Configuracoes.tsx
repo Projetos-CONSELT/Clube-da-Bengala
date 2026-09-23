@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 
 // TODO: INSERIR LÓGICA DE CAPTURA DO CARGO DO USUÁRIO LOGADO AQUI
 import { useAuth } from '@/lib/AuthContext';
+import { useCeoContext } from '@/lib/CeoContext';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ export default function Configuracoes() {
 
   // TODO: INSERIR LÓGICA DE CAPTURA DO CARGO DO USUÁRIO LOGADO AQUI
   const { role: currentUserRole } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
 
   // 2. CONTROLE DE ACESSO RESTRITO (RBAC ESTRITO):
   // As configurações são exclusivas para quem tem o cargo 'gerente' ou 'ceo'.
@@ -62,6 +64,7 @@ export default function Configuracoes() {
 
   // Estados dos parâmetros da tabela 'configuracoes' (id = 1)
   const [diasMaximos, setDiasMaximos] = useState<number>(30);
+  const [diasRenovacao, setDiasRenovacao] = useState<number>(() => Number(localStorage.getItem('dias_renovacao')) || 30);
   const [limitesPorTipo, setLimitesPorTipo] = useState<LimiteItem[]>([]);
   const [bloquearInadimplentes, setBloquearInadimplentes] = useState<boolean>(true);
   const [termosUso, setTermosUso] = useState<string>('');
@@ -81,7 +84,7 @@ export default function Configuracoes() {
   // Estados de Recibo
   const [recibo, setRecibo] = useState(() => localStorage.getItem('recibo_template') || 'Recibo de empréstimo — Clube da Bengala');
   const [tipoForm, setTipoForm] = useState({ nome: '', descricao: '', limite_renovacoes: '3' });
-  
+
   // Estados Gateway (Centralizados)
   const [gatewayProvider, setGatewayProvider] = useState('simulado');
   const [gatewayApiKey, setGatewayApiKey] = useState('');
@@ -97,7 +100,7 @@ export default function Configuracoes() {
       const { data, error } = await supabase
         .from('configuracoes')
         .select('*')
-        .eq('id', 1)
+        .eq('nucleo_id', selectedNucleusId)
         .maybeSingle();
 
       if (error) {
@@ -111,12 +114,18 @@ export default function Configuracoes() {
 
         // Trata a conversão da coluna JSONB limites_por_tipo para array de pares de chave e valor
         if (data.limites_por_tipo && typeof data.limites_por_tipo === 'object' && !Array.isArray(data.limites_por_tipo)) {
-          const parsedItems: LimiteItem[] = Object.entries(data.limites_por_tipo as Record<string, unknown>).map(
-            ([key, value]) => ({
+          const jsonObj = data.limites_por_tipo as Record<string, unknown>;
+          if (jsonObj.__dias_renovacao !== undefined) {
+            const val = Number(jsonObj.__dias_renovacao) || 30;
+            setDiasRenovacao(val);
+            localStorage.setItem('dias_renovacao', String(val));
+          }
+          const parsedItems: LimiteItem[] = Object.entries(jsonObj)
+            .filter(([key]) => key !== '__dias_renovacao')
+            .map(([key, value]) => ({
               key,
               value: Number(value) || 0,
-            })
-          );
+            }));
           setLimitesPorTipo(parsedItems);
         } else {
           setLimitesPorTipo([
@@ -138,6 +147,7 @@ export default function Configuracoes() {
       }
     } catch (err: any) {
       console.error('[Configuracoes] Exceção inesperada durante busca:', err);
+      throw new Error(err.message || 'Erro ao buscar configuracoes do sistema');
     } finally {
       setIsLoading(false);
     }
@@ -151,8 +161,8 @@ export default function Configuracoes() {
     try {
       const { data, error } = await supabase
         .from('configuracoes_financeiras')
-        .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value')
-        .eq('id', 1)
+        .select('gateway_provider, gateway_api_key, gateway_environment, gateway_default_value, texto_padrao_recibo')
+        .eq('nucleo_id', selectedNucleusId)
         .maybeSingle();
 
       if (error) {
@@ -163,6 +173,9 @@ export default function Configuracoes() {
         setGatewayApiKey(data.gateway_api_key || '');
         setGatewayEnv(data.gateway_environment || 'sandbox');
         setGatewayDefaultVal(data.gateway_default_value?.toString() || '150');
+        if (data.texto_padrao_recibo) {
+          setRecibo(data.texto_padrao_recibo);
+        }
       }
     } catch (err: any) {
       console.error('[Configuracoes] Erro ao buscar config financeira:', err);
@@ -178,7 +191,7 @@ export default function Configuracoes() {
     } else {
       setIsLoading(false);
     }
-  }, [isEditable, currentUserRole]);
+  }, [isEditable, currentUserRole, selectedNucleusId]);
 
   // ==========================================
   // 2. CORREÇÃO DO UPDATE - ESTREITO .update().eq('id', 1) SEM .single()
@@ -192,30 +205,45 @@ export default function Configuracoes() {
       });
       return;
     }
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
+      });
+      return;
+    }
 
     setIsSaving(true);
     try {
       // Reconverte o array LimiteItem para o objeto JSONB exigido pela coluna limites_por_tipo
-      const limitesJsonb: Record<string, number> = {};
+      const limitesJsonb: Record<string, number> = {
+        __dias_renovacao: Number(diasRenovacao) || 30,
+      };
       limitesPorTipo.forEach((item) => {
         const cleanKey = item.key.trim();
-        if (cleanKey) {
+        if (cleanKey && cleanKey !== '__dias_renovacao') {
           limitesJsonb[cleanKey] = Number(item.value) || 0;
         }
       });
 
-      const payload = {
+      const payloadParaSalvar: any = {
         dias_maximos: Number(diasMaximos) || 0,
         limites_por_tipo: limitesJsonb,
         bloquear_inadimplentes: Boolean(bloquearInadimplentes),
         termos_uso: termosUso,
       };
 
-      // Consulta estritamente .update(payload).eq('id', 1) - SEM .single() / .maybeSingle() / .select()
+      localStorage.setItem('dias_renovacao', String(diasRenovacao));
+
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
+
       const { error } = await supabase
         .from('configuracoes')
-        .update(payload)
-        .eq('id', 1);
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
 
       if (error) {
         console.error("DEBUG SUPABASE UPDATE:", error);
@@ -318,10 +346,35 @@ export default function Configuracoes() {
     );
   };
 
-  // Salvar Recibo Local
-  const saveRecibo = () => {
-    localStorage.setItem('recibo_template', recibo);
-    sonnerToast.success('Template de recibo salvo localmente');
+  // Salvar Recibo Local e no Banco
+  const saveRecibo = async () => {
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
+      });
+      return;
+    }
+
+    try {
+      const payloadParaSalvar: any = { texto_padrao_recibo: recibo };
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
+
+      const { error } = await supabase
+        .from('configuracoes_financeiras')
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
+
+      if (error) throw error;
+
+      localStorage.setItem('recibo_template', recibo);
+      sonnerToast.success('Template de recibo salvo no sistema com sucesso');
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar recibo', description: err.message || 'Falha ao salvar o template de recibo no banco.' });
+    }
   };
 
   // Salvar Gateway no Supabase (Apenas CEO)
@@ -335,18 +388,32 @@ export default function Configuracoes() {
       return;
     }
 
+    if (!selectedNucleusId) {
+      toast({
+        variant: 'destructive',
+        title: 'Ação não permitida',
+        description: 'Nenhum núcleo selecionado ativo.',
+      });
+      return;
+    }
+
     try {
-      const payload = {
+      const payloadParaSalvar: any = {
         gateway_provider: gatewayProvider,
         gateway_api_key: gatewayApiKey,
         gateway_environment: gatewayEnv,
         gateway_default_value: Number(gatewayDefaultVal) || 150,
+        nucleo_id: selectedNucleusId,
       };
+
+      if (!payloadParaSalvar.id) {
+        delete payloadParaSalvar.id;
+      }
+      payloadParaSalvar.nucleo_id = selectedNucleusId;
 
       const { error } = await supabase
         .from('configuracoes_financeiras')
-        .update(payload)
-        .eq('id', 1);
+        .upsert(payloadParaSalvar, { onConflict: 'nucleo_id' });
 
       if (error) throw error;
 
@@ -589,6 +656,33 @@ export default function Configuracoes() {
                         </div>
                       </div>
                     </div>
+
+                    <hr className="border-slate-100" />
+
+                    {/* Tempo Disponível por Renovação */}
+                    <div className="space-y-2 max-w-md pt-2">
+                      <Label htmlFor="dias_renovacao" className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-blue-600 inline" />
+                        Tempo Disponível por Renovação
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          id="dias_renovacao"
+                          type="number"
+                          min={1}
+                          max={365}
+                          disabled={!isEditable}
+                          value={diasRenovacao}
+                          onChange={(e) => setDiasRenovacao(Math.max(1, Number(e.target.value)))}
+                          className="bg-white border-slate-200 text-slate-900 font-medium h-10 w-32"
+                        />
+                        <span className="text-sm text-slate-500 font-medium shrink-0">dias por renovação</span>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Quantidade de dias adicionados ao prazo de devolução a cada renovação efetuada pelo atendente/sistema.
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -648,7 +742,7 @@ export default function Configuracoes() {
                   />
                   <p className="text-xs text-slate-400 flex items-center gap-1.5">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-                    Este documento é exibido durante a confirmação da solicitação e na geração de recibos PDF.
+                    Este documento é exibido durante a confirmação da solicitação e na geração de recibos PDF. Você também pode consultar o <a href="/docs/termo_emprestimo.pdf" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">PDF oficial</a> salvo na pasta pública.
                   </p>
                 </CardContent>
               </Card>

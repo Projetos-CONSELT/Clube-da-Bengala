@@ -3,13 +3,15 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import type { BeneficiarioInsert, BeneficiarioUpdate } from '@/types/database.types';
 import { isBackOfficeRole } from '@/types/domain';
+import { useCeoContext } from '@/lib/CeoContext';
 
 export const BENEFICIARIOS_KEY = ['beneficiarios'] as const;
 
 export function useBeneficiariosQuery() {
   const { isAuthenticated, role, user } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useQuery({
-    queryKey: [...BENEFICIARIOS_KEY, role, user?.id],
+    queryKey: [...BENEFICIARIOS_KEY, role, user?.id, selectedNucleusId],
     enabled: isAuthenticated,
     queryFn: async () => {
       let q = supabase
@@ -18,6 +20,8 @@ export function useBeneficiariosQuery() {
         .order('nome_completo', { ascending: true });
       if (role === 'solicitante' && user?.id) {
         q = q.eq('solicitante_id', user.id);
+      } else if (selectedNucleusId) {
+        q = q.eq('nucleo_id', selectedNucleusId);
       }
       const { data, error } = await q;
       if (error) throw error;
@@ -29,6 +33,7 @@ export function useBeneficiariosQuery() {
 export function useCreateBeneficiario() {
   const qc = useQueryClient();
   const { user, role } = useAuth();
+  const { selectedNucleusId } = useCeoContext();
   return useMutation({
     mutationFn: async (payload: Omit<BeneficiarioInsert, 'solicitante_id'> & { solicitante_id?: string }) => {
       const isSol = role === 'solicitante';
@@ -36,9 +41,18 @@ export function useCreateBeneficiario() {
         ? user?.id
         : payload.solicitante_id;
       if (!solicitante_id) throw new Error('Solicitante não identificado.');
-      const row: BeneficiarioInsert = { ...payload, solicitante_id };
+
+      const nucleo_id = isSol ? user?.nucleo_id : selectedNucleusId;
+      const row: BeneficiarioInsert = { ...payload, solicitante_id, nucleo_id };
+      
       const { data, error } = await supabase.from('beneficiarios').insert(row).select().single();
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value')) {
+          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        } else {
+          throw new Error(error.message);
+        }
+      }
       return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),
@@ -55,7 +69,12 @@ export function useUpdateBeneficiario() {
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.code === '23505') {
+          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),

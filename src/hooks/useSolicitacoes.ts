@@ -31,7 +31,7 @@ export function useSolicitacoesQuery({ statuses, tipoId, includeEncerradas, page
 
       if (statuses?.length) q = q.in('status', statuses);
       if (tipoId) q = q.eq('tipo_equipamento_id', tipoId);
-      
+
       if (role === 'solicitante' && user?.id) {
         q = q.eq('solicitante_id', user.id);
       } else if (isBackOfficeRole(role) && selectedNucleusId) {
@@ -65,11 +65,11 @@ export function useEquipamentosQuery() {
       let q = supabase
         .from('equipamentos')
         .select('*, tipo:tipos_equipamento(*)');
-      
+
       if (selectedNucleusId) {
         q = q.eq('nucleo_id', selectedNucleusId);
       }
-        
+
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
@@ -159,12 +159,24 @@ export function useUpdateSolicitacaoStatus() {
 export function useUpdateSolicitacao() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: SolicitacaoUpdate }) => {
+    mutationFn: async ({
+      id,
+      patch,
+      motivoRecusa,
+    }: {
+      id: string;
+      patch: SolicitacaoUpdate;
+      motivoRecusa?: string;
+    }) => {
       const { data: current } = await supabase
         .from('solicitacoes')
         .select('*')
         .eq('id', id)
         .maybeSingle();
+
+      if (motivoRecusa) {
+        patch.observacoes_solicitante = motivoRecusa;
+      }
 
       const { data, error } = await supabase
         .from('solicitacoes')
@@ -187,16 +199,26 @@ export function useUpdateSolicitacao() {
         });
       }
 
+      const auditDetails: Record<string, Json> = {
+        from_status: current?.status ?? null,
+        to_status: patch.status ?? current?.status ?? null,
+        protocolo: current?.protocolo ?? data?.protocolo ?? null,
+        patch,
+        alteracoes,
+      };
+
+      if (motivoRecusa) {
+        auditDetails.motivo = motivoRecusa;
+        auditDetails.motivo_recusa = motivoRecusa;
+        auditDetails.triageMotivo = motivoRecusa;
+        auditDetails.recusada = true;
+        auditDetails.triageDecision = 'recusado';
+      }
+
       const audit = await createAuditLog({
         requestId: id,
         actionType: shouldTrackStatusChange ? 'STATUS_CHANGED' : 'UPDATED',
-        details: {
-          from_status: current?.status ?? null,
-          to_status: patch.status ?? current?.status ?? null,
-          protocolo: current?.protocolo ?? data?.protocolo ?? null,
-          patch,
-          alteracoes,
-        },
+        details: auditDetails,
       });
       if (audit.error) {
         console.warn('[audit] não foi possível registrar atualização da solicitação:', audit.error.message);
@@ -207,6 +229,7 @@ export function useUpdateSolicitacao() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SOLICITACOES_KEY });
+      void qc.invalidateQueries({ queryKey: ['audit_logs_rejections'] });
     },
   });
 }
@@ -227,7 +250,7 @@ export function useCreateSolicitacao() {
       nucleo_id?: string;
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado.');
-      
+
       const insertData: SolicitacaoInsert = {
         protocolo: generateProtocolo(),
         solicitante_id: user.id,
@@ -236,7 +259,7 @@ export function useCreateSolicitacao() {
         motivo_solicitacao: motivo_solicitacao || null,
         status: 'triagem',
       };
-      
+
       if (nucleo_id) {
         insertData.nucleo_id = nucleo_id;
       } else if (role === 'gerente' && user?.nucleo_id) {
@@ -258,6 +281,7 @@ export function useCreateSolicitacao() {
           solicitante_id: user.id,
           beneficiario_id,
           tipo_equipamento_id,
+          motivo_solicitacao: motivo_solicitacao || null,
           status: data.status,
         },
       });

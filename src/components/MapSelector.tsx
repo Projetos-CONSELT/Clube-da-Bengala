@@ -71,28 +71,30 @@ export function MapSelector({ userLocation, nucleos, selectedNucleoId, onSelectN
             </div>
           </Marker>
 
-          {/* Markers dos Núcleos */}
-          {nucleos.map((nucleo) => {
-            const isSelected = nucleo.id === selectedNucleoId;
-            return (
-              <Marker
-                key={nucleo.id}
-                longitude={nucleo.longitude}
-                latitude={nucleo.latitude}
-                anchor="bottom"
-                onClick={(e: any) => {
-                  e.originalEvent.stopPropagation();
-                  onSelectNucleo(nucleo);
-                }}
-              >
-                <div className={`cursor-pointer transition-transform hover:scale-110 ${isSelected ? 'scale-125 z-10' : 'z-0'}`}>
-                  <MapPin 
-                    className={`w-8 h-8 shadow-lg drop-shadow-md ${isSelected ? 'text-green-600 fill-green-600' : 'text-red-600 fill-red-600'}`} 
-                  />
-                </div>
-              </Marker>
-            );
-          })}
+          {/* Markers dos Núcleos (Pins Vermelhos) */}
+          {nucleos
+            .filter((n) => n.latitude !== 0 && n.longitude !== 0 && !isNaN(n.latitude) && !isNaN(n.longitude))
+            .map((nucleo) => {
+              const isSelected = nucleo.id === selectedNucleoId;
+              return (
+                <Marker
+                  key={nucleo.id}
+                  longitude={nucleo.longitude}
+                  latitude={nucleo.latitude}
+                  anchor="bottom"
+                  onClick={(e: any) => {
+                    e.originalEvent.stopPropagation();
+                    onSelectNucleo(nucleo);
+                  }}
+                >
+                  <div className={`cursor-pointer transition-transform hover:scale-110 ${isSelected ? 'scale-125 z-10' : 'z-0'}`} title={nucleo.nome}>
+                    <MapPin 
+                      className={`w-8 h-8 shadow-lg drop-shadow-md ${isSelected ? 'text-green-600 fill-green-600' : 'text-red-600 fill-red-600'}`} 
+                    />
+                  </div>
+                </Marker>
+              );
+            })}
         </Map>
 
         {loading && (

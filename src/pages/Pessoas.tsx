@@ -1,4 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import * as z from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useUsuariosQuery, useUpdateUsuarioPapel, useUpdateUsuario } from '@/hooks/useUsuarios';
 import {
   useBeneficiariosQuery,
@@ -6,7 +9,7 @@ import {
   useUpdateBeneficiario,
   useDeleteBeneficiario,
 } from '@/hooks/useBeneficiarios';
-import { useColaboradoresQuery, useUpdateColaborador } from '@/hooks/useColaboradores';
+import { useColaboradoresQuery, useUpdateColaborador, useVoluntariosQuery, useDeleteColaborador } from '@/hooks/useColaboradores';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +33,8 @@ import type { UserRole } from '@/types/database.types';
 import { Loader2, Plus, Trash2, UserCheck, ShieldAlert, Folder, ChevronDown, ChevronUp, Edit, Users, Search } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { isBackOfficeRole } from '@/types/domain';
+import { supabase } from '@/lib/supabase';
+import { cleanCPF, formatCPF } from '@/utils/cpf';
 
 const ROLE_LEVELS: Record<UserRole, number> = {
   ceo: 5,
@@ -37,6 +42,23 @@ const ROLE_LEVELS: Record<UserRole, number> = {
   atendente: 2,
   solicitante: 1,
 };
+
+const beneficiarioSchema = z.object({
+  id: z.string().optional(),
+  nome_completo: z.string().min(1, 'Campo obrigatório'),
+  cpf: z
+    .string()
+    .min(1, 'Campo obrigatório')
+    .refine((val) => cleanCPF(val).length === 11, {
+      message: 'CPF incompleto (digite os 11 números)',
+    }),
+  altura_cm: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  peso_kg: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  tamanho_calcado: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  solicitante_id: z.string().optional(),
+});
+
+type BeneficiarioFormData = z.infer<typeof beneficiarioSchema>;
 
 export default function Pessoas() {
   const { toast } = useToast();
@@ -50,6 +72,8 @@ export default function Pessoas() {
   const deleteBenef = useDeleteBeneficiario();
   const colaboradoresQuery = useColaboradoresQuery();
   const updateColaborador = useUpdateColaborador();
+  const voluntariosQuery = useVoluntariosQuery();
+  const deleteColaborador = useDeleteColaborador();
 
   const [searchTerm, setSearchTerm] = useState('');
   const canManageSolicitantes = isBackOfficeRole(currentUserRole);
@@ -71,10 +95,12 @@ export default function Pessoas() {
     const filtered = allBenef.filter((b: any) => {
       if (!search) return true;
       const nome = b.nome_completo?.toLowerCase() || '';
-      const cpf = b.cpf?.toLowerCase() || '';
+      const rawCpf = b.cpf?.toLowerCase() || '';
+      const cleanSearch = cleanCPF(search);
+      const cpfMatches = cleanSearch ? cleanCPF(b.cpf).includes(cleanSearch) : rawCpf.includes(search);
       const solNome = b.solicitante?.nome_completo?.toLowerCase() || '';
       const solEmail = b.solicitante?.email?.toLowerCase() || '';
-      return nome.includes(search) || cpf.includes(search) || solNome.includes(search) || solEmail.includes(search);
+      return nome.includes(search) || cpfMatches || solNome.includes(search) || solEmail.includes(search);
     });
 
     const map = new Map<string, {
@@ -110,15 +136,70 @@ export default function Pessoas() {
   );
 
   const [benefModal, setBenefModal] = useState(false);
-  const [benefForm, setBenefForm] = useState({
-    id: '',
-    nome_completo: '',
-    cpf: '',
-    altura_cm: '',
-    peso_kg: '',
-    tamanho_calcado: '',
-    solicitante_id: '',
+  const {
+    register: registerBenef,
+    handleSubmit: handleBenefSubmit,
+    reset: resetBenef,
+    setValue: setBenefValue,
+    watch: watchBenef,
+    formState: { errors: benefErrors },
+  } = useForm<BeneficiarioFormData>({
+    resolver: zodResolver(beneficiarioSchema),
+    defaultValues: {
+      id: '',
+      nome_completo: '',
+      cpf: '',
+      altura_cm: '' as any,
+      peso_kg: '' as any,
+      tamanho_calcado: '' as any,
+      solicitante_id: '',
+    },
   });
+  const watchBenefCpf = watchBenef('cpf');
+  const watchBenefId = watchBenef('id');
+
+  const cleanWatchedCpf = cleanCPF(watchBenefCpf);
+
+  const isCpfDuplicatedInLocal = useMemo(() => {
+    if (cleanWatchedCpf.length !== 11) return false;
+    const allBenef = beneficiariosQuery.data ?? [];
+    return allBenef.some(
+      (b: any) => b.id !== watchBenefId && cleanCPF(b.cpf) === cleanWatchedCpf
+    );
+  }, [cleanWatchedCpf, beneficiariosQuery.data, watchBenefId]);
+
+  const [dbCpfDuplicated, setDbCpfDuplicated] = useState(false);
+
+  useEffect(() => {
+    if (cleanWatchedCpf.length === 11 && benefModal) {
+      let active = true;
+      const checkDb = async () => {
+        try {
+          const formatted = formatCPF(cleanWatchedCpf);
+          const { data } = await supabase
+            .from('beneficiarios')
+            .select('id')
+            .or(`cpf.eq.${cleanWatchedCpf},cpf.eq.${formatted}`);
+          if (!active) return;
+          if (data && data.some((b: any) => b.id !== watchBenefId)) {
+            setDbCpfDuplicated(true);
+          } else {
+            setDbCpfDuplicated(false);
+          }
+        } catch {
+          if (active) setDbCpfDuplicated(false);
+        }
+      };
+      checkDb();
+      return () => {
+        active = false;
+      };
+    } else {
+      setDbCpfDuplicated(false);
+    }
+  }, [cleanWatchedCpf, watchBenefId, benefModal]);
+
+  const isCpfDuplicated = isCpfDuplicatedInLocal || dbCpfDuplicated;
 
   // Modal para confirmar exclusão de beneficiário
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -173,26 +254,26 @@ export default function Pessoas() {
   const openNewBenef = () => {
     // Ao cadastrar, seleciona o primeiro solicitante válido ou o usuário atual se for solicitante
     const defaultSolId = apenasSolicitantes.find((s) => s.id === currentUser?.id)?.id || apenasSolicitantes[0]?.id || currentUser?.id || '';
-    setBenefForm({
+    resetBenef({
       id: '',
       nome_completo: '',
       cpf: '',
-      altura_cm: '',
-      peso_kg: '',
-      tamanho_calcado: '',
+      altura_cm: '' as any,
+      peso_kg: '' as any,
+      tamanho_calcado: '' as any,
       solicitante_id: defaultSolId,
     });
     setBenefModal(true);
   };
 
   const openEditBenef = (b: any) => {
-    setBenefForm({
+    resetBenef({
       id: b.id,
       nome_completo: b.nome_completo || '',
-      cpf: b.cpf || '',
-      altura_cm: b.altura_cm?.toString() || '',
-      peso_kg: b.peso_kg?.toString() || '',
-      tamanho_calcado: b.tamanho_calcado?.toString() || '',
+      cpf: formatCPF(b.cpf || ''),
+      altura_cm: b.altura_cm?.toString() || ('' as any),
+      peso_kg: b.peso_kg?.toString() || ('' as any),
+      tamanho_calcado: b.tamanho_calcado?.toString() || ('' as any),
       solicitante_id: b.solicitante_id || currentUser?.id || '',
     });
     setBenefModal(true);
@@ -361,14 +442,22 @@ export default function Pessoas() {
     }
   };
 
-  const saveBenef = () => {
+  const onSubmitBenef = (data: BeneficiarioFormData) => {
+    if (isCpfDuplicated) {
+      toast({
+        variant: 'destructive',
+        title: 'CPF já cadastrado',
+        description: 'Este CPF já foi cadastrado para outro beneficiário.',
+      });
+      return;
+    }
     const payload = {
-      nome_completo: benefForm.nome_completo,
-      cpf: benefForm.cpf,
-      altura_cm: benefForm.altura_cm ? Number(benefForm.altura_cm) : null,
-      peso_kg: benefForm.peso_kg ? Number(benefForm.peso_kg) : null,
-      tamanho_calcado: benefForm.tamanho_calcado ? Number(benefForm.tamanho_calcado) : null,
-      solicitante_id: benefForm.solicitante_id || currentUser?.id,
+      nome_completo: data.nome_completo,
+      cpf: formatCPF(data.cpf),
+      altura_cm: data.altura_cm ? Number(data.altura_cm) : null,
+      peso_kg: data.peso_kg ? Number(data.peso_kg) : null,
+      tamanho_calcado: data.tamanho_calcado ? Number(data.tamanho_calcado) : null,
+      solicitante_id: data.solicitante_id || currentUser?.id,
     };
     const cb = {
       onSuccess: () => {
@@ -377,7 +466,7 @@ export default function Pessoas() {
       },
       onError: (e: Error) => toast({ variant: 'destructive', title: 'Erro ao salvar', description: e.message }),
     };
-    if (benefForm.id) updateBenef.mutate({ id: benefForm.id, patch: payload }, cb);
+    if (data.id) updateBenef.mutate({ id: data.id, patch: payload }, cb);
     else createBenef.mutate(payload, cb);
   };
 
@@ -708,7 +797,7 @@ export default function Pessoas() {
                               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                                 <div className="space-y-1">
                                   <p className="font-bold text-slate-900 text-sm">{b.nome_completo}</p>
-                                  <p className="text-xs text-slate-500">CPF: {b.cpf || 'Não informado'}</p>
+                                  <p className="text-xs text-slate-500">CPF: {b.cpf ? formatCPF(b.cpf) : 'Não informado'}</p>
                                   {(b.altura_cm || b.peso_kg || b.tamanho_calcado) && (
                                     <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600 flex-wrap">
                                       {b.altura_cm && (
@@ -898,80 +987,195 @@ export default function Pessoas() {
             )}
           </TabsContent>
         )}
+
+        {canManageSolicitantes && (
+          <TabsContent value="voluntarios" className="mt-4 space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Gerenciamento de Voluntários</h3>
+            </div>
+
+            {voluntariosQuery.isLoading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              </div>
+            ) : voluntariosQuery.isError ? (
+              <div className="p-4 bg-red-50 text-red-600 rounded-lg border border-red-100 flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5" />
+                Ocorreu um erro ao carregar os voluntários.
+              </div>
+            ) : (voluntariosQuery.data?.length ?? 0) === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-slate-900">Nenhum voluntário encontrado</h3>
+                <p className="text-slate-500 max-w-sm mx-auto mt-1">
+                  Não há registros de voluntários cadastrados para este núcleo no momento.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {voluntariosQuery.data?.map((v) => (
+                  <Card key={v.id} className="border-slate-200 shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
+                    <CardContent className="p-0">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center p-4 gap-4">
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-slate-900 text-base">{v.nome_completo}</h4>
+                            <Badge variant={v.is_ativo ? "default" : "secondary"} className={v.is_ativo ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-100 text-amber-800 hover:bg-amber-200"}>
+                              {v.is_ativo ? 'Ativo' : 'Pendente'}
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 text-sm text-slate-600 mt-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-slate-800">WhatsApp:</span> 
+                              {v.whatsapp?.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') || 'Não informado'}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-slate-800">E-mail:</span> 
+                              {v.email || 'Não informado'}
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {v.modalidades?.map((mod: string) => (
+                              <Badge key={mod} variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200 font-normal">
+                                {mod}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                          {!v.is_ativo && (
+                            <Button
+                              onClick={() => {
+                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: true } }, {
+                                  onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' })
+                                });
+                              }}
+                              disabled={updateColaborador.isPending}
+                              className="w-full sm:w-32 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              size="sm"
+                            >
+                              <UserCheck className="w-4 h-4 mr-2" />
+                              Aprovar
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            className="w-full sm:w-32 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                            size="sm"
+                            disabled={deleteColaborador.isPending || updateColaborador.isPending}
+                            onClick={() => {
+                              if (v.is_ativo) {
+                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: false } }, {
+                                  onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' })
+                                });
+                              } else {
+                                if(confirm('Deseja realmente rejeitar (excluir) este voluntário?')) {
+                                  deleteColaborador.mutate(v.id, {
+                                    onSuccess: () => toast({ title: 'Voluntário rejeitado/excluído.' })
+                                  });
+                                }
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            {v.is_ativo ? 'Desativar' : 'Rejeitar'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Modal Cadastro/Edição de Beneficiário */}
       <Dialog open={benefModal} onOpenChange={setBenefModal}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{benefForm.id ? 'Editar Beneficiário' : 'Novo Beneficiário'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label>Nome Completo</Label>
-              <Input
-                value={benefForm.nome_completo}
-                onChange={(e) => setBenefForm({ ...benefForm, nome_completo: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>CPF</Label>
-              <Input
-                value={benefForm.cpf}
-                onChange={(e) => setBenefForm({ ...benefForm, cpf: e.target.value })}
-              />
-            </div>
+          <form onSubmit={handleBenefSubmit(onSubmitBenef)}>
+            <DialogHeader>
+              <DialogTitle>{watchBenefId ? 'Editar Beneficiário' : 'Novo Beneficiário'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div>
+                <Label>Nome Completo</Label>
+                <Input {...registerBenef('nome_completo')} />
+                {benefErrors.nome_completo && <span className="text-red-500 text-xs mt-1 block">{benefErrors.nome_completo.message}</span>}
+              </div>
+              <div>
+                <Label htmlFor="benef-cpf">CPF</Label>
+                <Input
+                  id="benef-cpf"
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                  {...registerBenef('cpf')}
+                  value={watchBenefCpf || ''}
+                  onChange={(e) => {
+                    const formatted = formatCPF(e.target.value);
+                    setBenefValue('cpf', formatted, { shouldValidate: true, shouldDirty: true });
+                  }}
+                  className={isCpfDuplicated ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                />
+                {benefErrors.cpf && !isCpfDuplicated && (
+                  <span className="text-red-500 text-xs mt-1 block">{benefErrors.cpf.message}</span>
+                )}
+                {isCpfDuplicated && (
+                  <span className="text-red-500 text-xs mt-1 block font-semibold">
+                    ⚠️ Este CPF já foi cadastrado.
+                  </span>
+                )}
+              </div>
 
-            {canManageSolicitantes && (
-              <div>
-                <Label>Solicitante Responsável / Associado</Label>
-                <Select
-                  value={benefForm.solicitante_id}
-                  onValueChange={(val) => setBenefForm({ ...benefForm, solicitante_id: val })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione o solicitante" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {apenasSolicitantes.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.nome_completo || u.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+              {canManageSolicitantes && (
+                <div>
+                  <Label>Solicitante Responsável / Associado</Label>
+                  <Select
+                    value={watchBenef('solicitante_id')}
+                    onValueChange={(val) => setBenefValue('solicitante_id', val)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Selecione o solicitante" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apenasSolicitantes.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.nome_completo || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label>Altura (cm)</Label>
-                <Input
-                  value={benefForm.altura_cm}
-                  onChange={(e) => setBenefForm({ ...benefForm, altura_cm: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Peso (kg)</Label>
-                <Input
-                  value={benefForm.peso_kg}
-                  onChange={(e) => setBenefForm({ ...benefForm, peso_kg: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Calçado</Label>
-                <Input
-                  value={benefForm.tamanho_calcado}
-                  onChange={(e) => setBenefForm({ ...benefForm, tamanho_calcado: e.target.value })}
-                />
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label>Altura (cm)</Label>
+                  <Input type="number" {...registerBenef('altura_cm')} />
+                  {benefErrors.altura_cm && <span className="text-red-500 text-xs mt-1 block">{benefErrors.altura_cm.message}</span>}
+                </div>
+                <div>
+                  <Label>Peso (kg)</Label>
+                  <Input type="number" {...registerBenef('peso_kg')} />
+                  {benefErrors.peso_kg && <span className="text-red-500 text-xs mt-1 block">{benefErrors.peso_kg.message}</span>}
+                </div>
+                <div>
+                  <Label>Calçado</Label>
+                  <Input type="number" {...registerBenef('tamanho_calcado')} />
+                  {benefErrors.tamanho_calcado && <span className="text-red-500 text-xs mt-1 block">{benefErrors.tamanho_calcado.message}</span>}
+                </div>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={saveBenef} disabled={createBenef.isPending || updateBenef.isPending}>
-              Salvar
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="mt-4">
+              <Button type="submit" disabled={createBenef.isPending || updateBenef.isPending}>
+                Salvar
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

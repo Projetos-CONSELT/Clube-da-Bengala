@@ -353,7 +353,7 @@ export default function NucleosAdminTab() {
                       )}
                       {cepStatus === 'not_found' && (
                         <span className="text-[11px] text-amber-600 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> CEP não localizado
+                          <AlertCircle className="w-3.5 h-3.5" /> CEP não localizado
                         </span>
                       )}
                     </div>
