@@ -872,7 +872,7 @@ export default function Configuracoes() {
                           <TableCell className="px-6 py-3.5">
                             <Select
                               value={u.papel}
-                              disabled={currentUserRole !== 'gerente'}
+                              disabled={currentUserRole !== 'gerente' && currentUserRole !== 'ceo'}
                               onValueChange={(v) => {
                                 updatePapel.mutate(
                                   { id: u.id, papel: v as UserRole },

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-import { Eye, EyeOff, FileText } from 'lucide-react';
+import { Eye, EyeOff, FileText, Heart, ArrowRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import TermosContent from '@/components/TermosContent';
 
@@ -556,6 +556,24 @@ export default function Login() {
                 {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
               </button>
             )}
+
+            {/* CTA Seja um Voluntário (Quero Ajudar) */}
+            <div className="pt-4 border-t border-slate-100 flex flex-col items-center text-center space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                <span>Quer fazer a diferença na sua comunidade?</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/quero-ajudar')}
+                className="w-full border-rose-200 hover:border-rose-300 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 hover:text-rose-800 font-semibold gap-2 transition-all shadow-sm group h-10"
+              >
+                <Heart className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform" />
+                <span>Seja um Voluntário (Quero Ajudar)</span>
+                <ArrowRight className="w-4 h-4 ml-auto text-rose-500 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

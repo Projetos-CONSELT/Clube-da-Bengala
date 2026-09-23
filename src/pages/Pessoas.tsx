@@ -589,16 +589,17 @@ export default function Pessoas() {
                 }
 
                 const roleSections = [
+                  { key: 'ceo', label: 'CEOs / Administradores Globais', color: 'border-purple-200 bg-purple-50/50 text-purple-900', badge: 'bg-purple-100 text-purple-800' },
                   { key: 'gerente', label: 'Gerentes', color: 'border-emerald-200 bg-emerald-50/50 text-emerald-900', badge: 'bg-emerald-100 text-emerald-800' },
                   { key: 'atendente', label: 'Atendentes', color: 'border-sky-200 bg-sky-50/50 text-sky-900', badge: 'bg-sky-100 text-sky-800' },
                   { key: 'solicitante', label: 'Solicitantes', color: 'border-blue-200 bg-blue-50/50 text-blue-900', badge: 'bg-blue-100 text-blue-800' },
                 ];
 
                 const renderUserItem = (u: any) => {
-                  const isSelectDisabled = currentUserRole !== 'gerente';
+                  const isSelectDisabled = currentUserRole !== 'gerente' && currentUserRole !== 'ceo';
 
                   const getAllowedRoles = () => {
-                    if (currentUserRole === 'gerente') {
+                    if (currentUserRole === 'gerente' || currentUserRole === 'ceo') {
                       return ['gerente', 'atendente', 'solicitante'] as UserRole[];
                     }
                     return [] as UserRole[];
