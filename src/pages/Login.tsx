@@ -11,6 +11,7 @@ import { Eye, EyeOff, FileText, Heart, Gift, ArrowRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import TermosContent from '@/components/TermosContent';
 import { useUploadDocumentosUsuario } from '@/hooks/useUploadDocumentosUsuario';
+import { ImagePreview } from '@/components/ImagePreview';
 
 type AuthMode = 'signin' | 'signup' | 'forgot';
 
@@ -307,7 +308,13 @@ export default function Login() {
           </p>
         </div>
 
-        <div className="space-y-4 w-full max-w-xs">
+        <div className="space-y-4 w-full max-w-xs mt-4">
+          <div className="flex flex-col items-center text-center space-y-2 mb-2">
+            <div className="flex items-center gap-2 text-sm text-slate-200 font-medium bg-slate-800/50 px-4 py-2 rounded-full shadow-inner">
+              <Heart className="w-4 h-4 text-rose-500 fill-rose-500 animate-pulse" />
+              <span>Quer fazer a diferença na sua comunidade?</span>
+            </div>
+          </div>
           <Button
             variant="outline"
             className="w-full h-12 text-slate-900 font-bold border-transparent bg-white hover:bg-slate-100 shadow-md gap-2"
@@ -597,24 +604,46 @@ export default function Login() {
                         </Label>
                         <div className="space-y-3">
                           <div>
-                            <Label htmlFor="rg" className="text-xs">Documento com foto (RG/CNH)</Label>
-                            <Input
-                              id="rg"
-                              type="file"
-                              accept="image/*,.pdf"
-                              className="text-xs"
-                              onChange={(e) => setFileIdentidade(e.target.files?.[0] || null)}
-                            />
+                            <Label htmlFor="rg" className="text-xs mb-2 block">Documento com foto (RG/CNH)</Label>
+                            <div className="flex items-center gap-3">
+                              <ImagePreview 
+                                file={fileIdentidade} 
+                                className="w-12 h-12 object-cover rounded-md border border-slate-200 shadow-sm shrink-0" 
+                                onRemove={() => {
+                                  setFileIdentidade(null);
+                                  const input = document.getElementById('rg') as HTMLInputElement;
+                                  if (input) input.value = '';
+                                }}
+                              />
+                              <Input
+                                id="rg"
+                                type="file"
+                                accept="image/*,.pdf"
+                                className="text-xs"
+                                onChange={(e) => setFileIdentidade(e.target.files?.[0] || null)}
+                              />
+                            </div>
                           </div>
                           <div>
-                            <Label htmlFor="residencia" className="text-xs">Comprovante de residência</Label>
-                            <Input
-                              id="residencia"
-                              type="file"
-                              accept="image/*,.pdf"
-                              className="text-xs"
-                              onChange={(e) => setFileComprovante(e.target.files?.[0] || null)}
-                            />
+                            <Label htmlFor="residencia" className="text-xs mb-2 block">Comprovante de residência</Label>
+                            <div className="flex items-center gap-3">
+                              <ImagePreview 
+                                file={fileComprovante} 
+                                className="w-12 h-12 object-cover rounded-md border border-slate-200 shadow-sm shrink-0" 
+                                onRemove={() => {
+                                  setFileComprovante(null);
+                                  const input = document.getElementById('residencia') as HTMLInputElement;
+                                  if (input) input.value = '';
+                                }}
+                              />
+                              <Input
+                                id="residencia"
+                                type="file"
+                                accept="image/*,.pdf"
+                                className="text-xs"
+                                onChange={(e) => setFileComprovante(e.target.files?.[0] || null)}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -693,23 +722,6 @@ export default function Login() {
                 </p>
               )}
 
-              {/* CTA Seja um Voluntário (Quero Ajudar) */}
-              <div className="pt-4 border-t border-slate-100 flex flex-col items-center text-center space-y-2.5">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                  <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-                  <span>Quer fazer a diferença na sua comunidade?</span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate('/quero-ajudar')}
-                  className="w-full border-rose-200 hover:border-rose-300 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 hover:text-rose-800 font-semibold gap-2 transition-all shadow-sm group h-10"
-                >
-                  <Heart className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform" />
-                  <span>Seja um Voluntário (Quero Ajudar)</span>
-                  <ArrowRight className="w-4 h-4 ml-auto text-rose-500 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </div>
             </form>
           </CardContent>
         </Card>

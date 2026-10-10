@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Heart, UploadCloud, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCreateDoacaoPendente } from '@/hooks/useDoacoesPendentes';
+import { ImagePreview } from '@/components/ImagePreview';
 
 export default function QueroDoar() {
   const { toast } = useToast();
@@ -183,11 +184,30 @@ export default function QueroDoar() {
                       onChange={handleFileChange}
                     />
                     <label htmlFor="foto" className="cursor-pointer flex flex-col items-center gap-2">
-                      <UploadCloud className="w-8 h-8 text-slate-400" />
-                      <span className="text-sm font-medium text-blue-600">
-                        {imageFile ? imageFile.name : 'Clique para selecionar uma imagem'}
-                      </span>
-                      <span className="text-xs text-slate-500">Apenas imagens (JPG, PNG)</span>
+                      {imageFile ? (
+                        <div className="flex flex-col items-center gap-2" onClick={(e) => e.preventDefault()}>
+                          <ImagePreview 
+                            file={imageFile} 
+                            className="w-24 h-24 object-cover rounded-md border border-slate-200 shadow-sm"
+                            onRemove={() => {
+                              setImageFile(null);
+                              const input = document.getElementById('foto') as HTMLInputElement;
+                              if (input) input.value = '';
+                            }}
+                          />
+                          <span className="text-sm font-medium text-blue-600 truncate max-w-[200px] px-4 text-center">
+                            {imageFile.name}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-8 h-8 text-slate-400" />
+                          <span className="text-sm font-medium text-blue-600">
+                            Clique para selecionar uma imagem
+                          </span>
+                          <span className="text-xs text-slate-500">Apenas imagens (JPG, PNG)</span>
+                        </>
+                      )}
                     </label>
                   </div>
                 </div>

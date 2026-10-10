@@ -5,6 +5,7 @@
  */
 
 import { useMemo, useState, useEffect } from 'react';
+import { ImagePreview } from '@/components/ImagePreview';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
   CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard, Copy, Info,
@@ -2219,8 +2220,8 @@ export default function Solicitacoes() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                   {selectedFiles.map((file, idx) => (
                     <div key={idx} className="relative group">
-                      <img
-                        src={URL.createObjectURL(file)}
+                      <ImagePreview
+                        file={file}
                         alt={`preview-${idx}`}
                         className="w-full h-24 object-cover rounded-lg"
                       />
@@ -2609,8 +2610,8 @@ export default function Solicitacoes() {
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2">
                   {retiradaFiles.map((file, idx) => (
                     <div key={idx} className="relative group rounded-md overflow-hidden border border-slate-200">
-                      <img
-                        src={URL.createObjectURL(file)}
+                      <ImagePreview
+                        file={file}
                         alt={`preview-${idx}`}
                         className="w-full h-16 object-cover"
                       />
@@ -2863,7 +2864,7 @@ export default function Solicitacoes() {
               <div className="grid grid-cols-3 gap-2">
                 {renovacaoFiles.map((file, idx) => (
                   <div key={idx} className="relative group">
-                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-20 object-cover rounded" />
+                    <ImagePreview file={file} alt="preview" className="w-full h-20 object-cover rounded" />
                     <button
                       onClick={() => setRenovacaoFiles(prev => prev.filter((_, i) => i !== idx))}
                       className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-80 hover:opacity-100"
@@ -3013,8 +3014,8 @@ export default function Solicitacoes() {
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                   {devolucaoFiles.map((file, idx) => (
                     <div key={idx} className="relative group">
-                      <img
-                        src={URL.createObjectURL(file)}
+                      <ImagePreview
+                        file={file}
                         alt={`preview-${idx}`}
                         className="w-full h-24 object-cover rounded-lg"
                       />
