@@ -23,6 +23,7 @@ export interface AuthUser {
   full_name: string;
   role: UserRole | null;
   nucleo_id: string | null;
+  pode_criar_nucleos?: boolean | null;
 }
 
 export interface AuthContextValue {
@@ -115,7 +116,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('cb_selected_nucleus_id');
+      }
       setSession(currentSession);
       void loadProfile(currentSession?.user?.id, currentSession?.user?.email);
     });
@@ -128,6 +132,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const logout = useCallback(async () => {
+    localStorage.removeItem('cb_selected_nucleus_id');
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);
@@ -150,6 +155,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         full_name: profile?.nome_completo || session.user.email || '',
         role,
         nucleo_id,
+        pode_criar_nucleos: profile?.pode_criar_nucleos ?? null,
       }
     : null;
 

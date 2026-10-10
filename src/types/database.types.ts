@@ -123,49 +123,66 @@ export type Database = {
         Row: {
           id: string;
           nome: string;
-          cep: string;
-          estado: string;
-          cidade: string;
-          bairro: string;
-          rua: string;
-          numero: string;
+          cep: string | null;
+          estado: string | null;
+          cidade: string | null;
+          bairro: string | null;
+          rua: string | null;
+          numero: string | null;
           complemento: string | null;
+          endereco: string | null;
           latitude: number | null;
           longitude: number | null;
+          gerente_id: string | null;
+          is_ativo: boolean | null;
           created_at: string | null;
           is_ativo: boolean | null;
         };
         Insert: {
           id?: string;
           nome: string;
-          cep: string;
-          estado: string;
-          cidade: string;
-          bairro: string;
-          rua: string;
-          numero: string;
+          cep?: string | null;
+          estado?: string | null;
+          cidade?: string | null;
+          bairro?: string | null;
+          rua?: string | null;
+          numero?: string | null;
           complemento?: string | null;
+          endereco?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          gerente_id?: string | null;
+          is_ativo?: boolean | null;
           created_at?: string | null;
           is_ativo?: boolean | null;
         };
         Update: {
           id?: string;
           nome?: string;
-          cep?: string;
-          estado?: string;
-          cidade?: string;
-          bairro?: string;
-          rua?: string;
-          numero?: string;
+          cep?: string | null;
+          estado?: string | null;
+          cidade?: string | null;
+          bairro?: string | null;
+          rua?: string | null;
+          numero?: string | null;
           complemento?: string | null;
+          endereco?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          gerente_id?: string | null;
+          is_ativo?: boolean | null;
           created_at?: string | null;
           is_ativo?: boolean | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'nucleos_gerente_id_fkey';
+            columns: ['gerente_id'];
+            isOneToOne: false;
+            referencedRelation: 'usuarios';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       doacoes_pendentes: {
         Row: {
@@ -796,6 +813,7 @@ export type Database = {
       configuracoes: {
         Row: {
           id: number;
+          nucleo_id?: string | null;
           dias_maximos: number;
           limites_por_tipo: Json;
           bloquear_inadimplentes: boolean;
@@ -805,6 +823,7 @@ export type Database = {
         };
         Insert: {
           id?: number;
+          nucleo_id?: string | null;
           dias_maximos?: number;
           limites_por_tipo?: Json;
           bloquear_inadimplentes?: boolean;
@@ -814,12 +833,103 @@ export type Database = {
         };
         Update: {
           id?: number;
+          nucleo_id?: string | null;
           dias_maximos?: number;
           limites_por_tipo?: Json;
           bloquear_inadimplentes?: boolean;
           termos_uso?: string;
           created_at?: string | null;
           updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      configuracoes_financeiras: {
+        Row: {
+          id: string;
+          nucleo_id: string | null;
+          gateway_provider: string | null;
+          gateway_api_key: string | null;
+          gateway_environment: string | null;
+          gateway_default_value: number | null;
+          texto_padrao_recibo: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nucleo_id?: string | null;
+          gateway_provider?: string | null;
+          gateway_api_key?: string | null;
+          gateway_environment?: string | null;
+          gateway_default_value?: number | null;
+          texto_padrao_recibo?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nucleo_id?: string | null;
+          gateway_provider?: string | null;
+          gateway_api_key?: string | null;
+          gateway_environment?: string | null;
+          gateway_default_value?: number | null;
+          texto_padrao_recibo?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      colaboradores: {
+        Row: {
+          id: string;
+          nome_completo: string;
+          cpf: string | null;
+          email: string | null;
+          whatsapp: string | null;
+          cep: string | null;
+          endereco_completo: string | null;
+          nucleo_id: string | null;
+          modalidades: string[] | null;
+          aceitou_termo: boolean;
+          data_aceite_termo: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          is_ativo: boolean;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nome_completo: string;
+          cpf?: string | null;
+          email?: string | null;
+          whatsapp?: string | null;
+          cep?: string | null;
+          endereco_completo?: string | null;
+          nucleo_id?: string | null;
+          modalidades?: string[] | null;
+          aceitou_termo?: boolean;
+          data_aceite_termo?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          is_ativo?: boolean;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nome_completo?: string;
+          cpf?: string | null;
+          email?: string | null;
+          whatsapp?: string | null;
+          cep?: string | null;
+          endereco_completo?: string | null;
+          nucleo_id?: string | null;
+          modalidades?: string[] | null;
+          aceitou_termo?: boolean;
+          data_aceite_termo?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          is_ativo?: boolean;
+          created_at?: string | null;
         };
         Relationships: [];
       };
@@ -936,5 +1046,9 @@ export type AuditLogActionType = AuditLog['action_type'];
 export type Configuracao = Database['public']['Tables']['configuracoes']['Row'];
 export type ConfiguracaoInsert = Database['public']['Tables']['configuracoes']['Insert'];
 export type ConfiguracaoUpdate = Database['public']['Tables']['configuracoes']['Update'];
+
+export type Colaborador = Database['public']['Tables']['colaboradores']['Row'];
+export type ColaboradorInsert = Database['public']['Tables']['colaboradores']['Insert'];
+export type ColaboradorUpdate = Database['public']['Tables']['colaboradores']['Update'];
 
 

@@ -92,7 +92,7 @@ export function useCreateTipoEquipamento() {
   return useMutation({
     mutationFn: async (payload: TipoEquipamentoInsert) => {
       if (role !== 'gerente' && role !== 'ceo') {
-        throw new Error('Apenas gerentes possuem permissão para criar tipos de equipamento.');
+        throw new Error('Apenas gerentes e administradores possuem permissão para criar tipos de equipamento.');
       }
       const { data, error } = await supabase
         .from('tipos_equipamento')
@@ -102,7 +102,10 @@ export function useCreateTipoEquipamento() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: TIPOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['tipos_equipamento'] });
+    },
   });
 }
 
@@ -112,7 +115,7 @@ export function useUpdateTipoEquipamento() {
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<TipoEquipamentoInsert> }) => {
       if (role !== 'gerente' && role !== 'ceo') {
-        throw new Error('Apenas gerentes possuem permissão para editar tipos de equipamento.');
+        throw new Error('Apenas gerentes e administradores possuem permissão para editar tipos de equipamento.');
       }
       const { data, error } = await supabase
         .from('tipos_equipamento')
@@ -123,7 +126,10 @@ export function useUpdateTipoEquipamento() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: TIPOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['tipos_equipamento'] });
+    },
   });
 }
 
@@ -133,20 +139,23 @@ export function useDeleteTipoEquipamento() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (role !== 'gerente' && role !== 'ceo') {
-        throw new Error('Apenas gerentes possuem permissão para excluir tipos de equipamento.');
+        throw new Error('Apenas gerentes e administradores possuem permissão para excluir tipos de equipamento.');
       }
       const { error } = await supabase.from('tipos_equipamento').delete().eq('id', id);
       if (error) {
         if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
           throw new Error(
-            'Não é possível excluir este tipo de equipamento pois existem equipamentos vinculados a ele. Exclua ou reatribua os equipamentos antes de excluir este tipo.'
+            'Não é possível excluir este tipo de equipamento pois existem equipamentos vinculados a ele. Exclua ou transfira os equipamentos vinculados antes de remover este tipo.'
           );
         }
         throw error;
       }
       return id;
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: TIPOS_KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: TIPOS_KEY });
+      void qc.invalidateQueries({ queryKey: ['tipos_equipamento'] });
+    },
   });
 }
 
