@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -16,6 +18,22 @@ import { useCreateColaborador } from '@/hooks/useColaboradores';
 import { useNucleosQuery } from '@/hooks/useNucleos';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cleanCPF, formatCPF, formatPhone, formatCEP } from '@/utils/cpf';
+import { MapSelector, type Nucleo } from '@/components/MapSelector';
+
+function calculateDistance(lat1: number, lon1: number, lat2: number | null, lon2: number | null): number {
+  if (!lat2 || !lon2) return 9999;
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    ;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
+  return d;
+}
 
 const formSchema = z.object({
   nome_completo: z.string().min(3, 'Nome completo é obrigatório'),
@@ -65,7 +83,32 @@ export default function QueroAjudar() {
   const createMut = useCreateColaborador();
   const nucleosQuery = useNucleosQuery();
   const [isSuccess, setIsSuccess] = useState(false);
+  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [fallbackMode, setFallbackMode] = useState(false);
+  const [nucleosProximos, setNucleosProximos] = useState<Nucleo[]>([]);
+  const [termoUrl, setTermoUrl] = useState<string | null>(null);
+  const [isTermoModalOpen, setIsTermoModalOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    async function fetchTermo() {
+      try {
+        const { data } = await supabase
+          .from('configuracoes_sistema')
+          .select('valor')
+          .eq('chave', 'termo_voluntariado_url')
+          .maybeSingle();
+        
+        if (data && data.valor) {
+          setTermoUrl(data.valor);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar URL do termo", err);
+      }
+    }
+    fetchTermo();
+  }, []);
 
   const {
     register,
@@ -92,6 +135,47 @@ export default function QueroAjudar() {
   const modalidadesSelecionadas = watch('modalidades');
   const aceitou_termo = watch('aceitou_termo');
   const nucleo_id_selecionado = watch('nucleo_id');
+  const endereco_completo = watch('endereco_completo');
+  const numero = watch('numero');
+
+  useEffect(() => {
+    if (endereco_completo && numero && endereco_completo.length > 5) {
+      const fetchGeo = async () => {
+        setGeoLoading(true);
+        const fullAddress = `${endereco_completo.split(',')[0]}, ${numero}, ${endereco_completo.split(',').slice(1).join(',').trim()}`;
+        const enderecoLimpo = fullAddress.replace(' - ', ', ').replace('/', ', ') + ', Brasil';
+        try {
+          const coords = await geocoding.fetchCoordinates(enderecoLimpo);
+          if (coords) {
+            setCoordinates(coords);
+            
+            // Calcula distâncias
+            const allNucleos = nucleosQuery.data || [];
+            const formatados: Nucleo[] = allNucleos.map((n: any) => {
+              const addr = n.endereco || [n.logradouro || n.rua, n.numero, n.bairro, n.cidade, n.estado].filter(Boolean).join(', ');
+              return {
+                id: n.id,
+                nome: n.nome,
+                endereco: addr,
+                latitude: Number(n.latitude) || 0,
+                longitude: Number(n.longitude) || 0,
+                distancia_km: calculateDistance(coords.latitude, coords.longitude, Number(n.latitude), Number(n.longitude)),
+              };
+            }).sort((a, b) => a.distancia_km - b.distancia_km);
+            
+            setNucleosProximos(formatados);
+          }
+        } catch (e) {
+          console.error(e);
+          setFallbackMode(true);
+        } finally {
+          setGeoLoading(false);
+        }
+      };
+      const timeoutId = setTimeout(fetchGeo, 1000); // debounce 1s
+      return () => clearTimeout(timeoutId);
+    }
+  }, [endereco_completo, numero, nucleosQuery.data]);
 
   const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const rawCep = cleanCPF(e.target.value);
@@ -329,21 +413,26 @@ export default function QueroAjudar() {
                 <h3 className="font-semibold text-slate-800">Vínculo *</h3>
                 <div className="space-y-2">
                   <Label>Qual núcleo você deseja ajudar?</Label>
-                  <Select
-                    value={nucleo_id_selecionado}
-                    onValueChange={(val) => setValue('nucleo_id', val, { shouldValidate: true })}
-                  >
-                    <SelectTrigger className="w-full bg-white">
-                      <SelectValue placeholder="Selecione um núcleo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {nucleosQuery.data?.map((nucleo) => (
-                        <SelectItem key={nucleo.id} value={nucleo.id}>
-                          {nucleo.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  
+                  {geoLoading && <p className="text-sm text-slate-500 flex items-center gap-2 mb-3"><Loader2 className="w-4 h-4 animate-spin text-blue-600" /> Localizando endereço no mapa...</p>}
+                  
+                  {(!coordinates && !geoLoading) && <p className="text-sm text-amber-600 mb-2 mt-1">Preencha o CEP e Endereço para localizar os núcleos mais próximos de você. Ou apenas escolha diretamente no mapa.</p>}
+                  
+                  <div className="rounded-lg overflow-hidden border border-slate-200 h-[400px]">
+                    <MapSelector
+                      nucleos={nucleosProximos.length > 0 ? nucleosProximos : (nucleosQuery.data?.map(n => ({
+                        id: n.id,
+                        nome: n.nome,
+                        endereco: n.endereco || [n.logradouro || n.rua, n.numero, n.bairro, n.cidade, n.estado].filter(Boolean).join(', '),
+                        latitude: Number(n.latitude) || 0,
+                        longitude: Number(n.longitude) || 0,
+                        distancia_km: 0
+                      })) || [])}
+                      userLocation={coordinates || { latitude: -15.793889, longitude: -47.882778 }}
+                      selectedNucleoId={nucleo_id_selecionado}
+                      onSelectNucleo={(n) => setValue('nucleo_id', n.id, { shouldValidate: true })}
+                    />
+                  </div>
                   {errors.nucleo_id && <p className="text-xs text-red-500">{errors.nucleo_id.message}</p>}
                 </div>
               </div>
@@ -358,7 +447,13 @@ export default function QueroAjudar() {
                   />
                   <div className="space-y-1">
                     <Label htmlFor="aceitou_termo" className="font-medium text-amber-900 cursor-pointer">
-                      Declaro que li e aceito o <a href="/termos" target="_blank" className="underline hover:text-amber-700">Termo de Voluntariado</a>, nos termos da Lei nº 9.608/1998.
+                      Declaro que li e aceito o{' '}
+                      {termoUrl ? (
+                        <a href={termoUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-700">Termo de Voluntariado</a>
+                      ) : (
+                        <button type="button" onClick={(e) => { e.preventDefault(); setIsTermoModalOpen(true); }} className="underline hover:text-amber-700 font-medium">Termo de Voluntariado</button>
+                      )}
+                      , nos termos da Lei nº 9.608/1998.
                     </Label>
                     <p className="text-xs text-amber-700">
                       O trabalho voluntário não gera vínculo empregatício, nem obrigação de natureza trabalhista, previdenciária ou afim.
@@ -388,6 +483,20 @@ export default function QueroAjudar() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={isTermoModalOpen} onOpenChange={setIsTermoModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Termo em atualização</DialogTitle>
+            <DialogDescription>
+              O Termo de Voluntariado está sendo atualizado pela nossa equipe. Por favor, tente novamente mais tarde ou prossiga com o cadastro se já estiver ciente das diretrizes (conforme o caso, sujeito à liberação do sistema).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end pt-4">
+            <Button onClick={() => setIsTermoModalOpen(false)}>Entendi</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

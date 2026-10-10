@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-import { Eye, EyeOff, FileText, Heart, Gift } from 'lucide-react';
+import { Eye, EyeOff, FileText, Heart, Gift, ArrowRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import TermosContent from '@/components/TermosContent';
 import { useUploadDocumentosUsuario } from '@/hooks/useUploadDocumentosUsuario';
@@ -691,34 +691,6 @@ export default function Login() {
                   O cadastro será criado como solicitante e os dados informados serão usados para
                   completar seu perfil.
                 </p>
-              )}
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading
-                  ? '...'
-                  : mode === 'signin'
-                    ? 'Entrar'
-                    : mode === 'signup'
-                      ? 'Cadastrar'
-                      : 'Enviar e-mail de recuperação'}
-              </Button>
-              {mode === 'forgot' ? (
-                <button
-                  type="button"
-                  className="w-full text-sm text-slate-600 hover:underline"
-                  onClick={() => setMode('signin')}
-                  disabled={loading}
-                >
-                  Voltar para o Entrar
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="w-full text-sm text-slate-600 hover:underline"
-                  onClick={toggleMode}
-                  disabled={loading}
-                >
-                  {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
-                </button>
               )}
 
               {/* CTA Seja um Voluntário (Quero Ajudar) */}
