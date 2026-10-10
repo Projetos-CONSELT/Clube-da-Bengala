@@ -137,7 +137,7 @@ export default function Pessoas() {
     (u) => (u.papel ?? 'solicitante') === 'solicitante'
   );
 
-  const [voluntarioAcaoModal, setVoluntarioAcaoModal] = useState<{isOpen: boolean; v: any; acao: 'rejeitar' | 'desativar'}>({ isOpen: false, v: null, acao: 'rejeitar' });
+  const [voluntarioAcaoModal, setVoluntarioAcaoModal] = useState<{ isOpen: boolean; v: any; acao: 'rejeitar' | 'desativar' }>({ isOpen: false, v: null, acao: 'rejeitar' });
   const [motivoInativacao, setMotivoInativacao] = useState('');
   const [benefModal, setBenefModal] = useState(false);
   const {
@@ -723,10 +723,10 @@ export default function Pessoas() {
                 const innerSearch = (solicitanteSearchTerms[folder.solicitanteId] || '').trim().toLowerCase();
                 const filteredItems = innerSearch
                   ? folder.items.filter((b: any) => {
-                      const nome = b.nome_completo?.toLowerCase() || '';
-                      const cpf = b.cpf?.toLowerCase() || '';
-                      return nome.includes(innerSearch) || cpf.includes(innerSearch);
-                    })
+                    const nome = b.nome_completo?.toLowerCase() || '';
+                    const cpf = b.cpf?.toLowerCase() || '';
+                    return nome.includes(innerSearch) || cpf.includes(innerSearch);
+                  })
                   : folder.items;
 
                 const totalCount = folder.items.length;
@@ -765,11 +765,10 @@ export default function Pessoas() {
                           </Badge>
                           {hasMoreThanOne && !innerSearch && (
                             <Badge
-                              className={`text-[10px] font-bold cursor-pointer transition-colors ${
-                                isExpanded
-                                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                  : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
-                              }`}
+                              className={`text-[10px] font-bold cursor-pointer transition-colors ${isExpanded
+                                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
+                                }`}
                             >
                               {isExpanded ? (
                                 <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Expandido</span>
@@ -1051,25 +1050,7 @@ export default function Pessoas() {
                               variant="outline"
                               className="flex-1 sm:w-36 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5"
                               size="sm"
-<<<<<<< HEAD
-                            >
-                              <UserCheck className="w-4 h-4 mr-2" />
-                              Aprovar
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            className="w-full sm:w-32 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
-                            size="sm"
-                            disabled={deleteColaborador.isPending || updateColaborador.isPending}
-                            onClick={() => {
-                              setVoluntarioAcaoModal({ isOpen: true, v, acao: v.is_ativo ? 'desativar' : 'rejeitar' });
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {v.is_ativo ? 'Desativar' : 'Rejeitar'}
-                          </Button>
-=======
+
                               disabled={deleteColaborador.isPending || updateColaborador.isPending}
                               onClick={() => {
                                 if (confirm(`Deseja realmente remover o voluntário "${v.nome_completo}"?`)) {
@@ -1083,7 +1064,7 @@ export default function Pessoas() {
                               Excluir
                             </Button>
                           </div>
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
+
                         </div>
                       </CardContent>
                     </Card>
@@ -1107,8 +1088,8 @@ export default function Pessoas() {
               {voluntarioAcaoModal.acao === 'desativar' ? 'Desativar Voluntário' : 'Rejeitar Solicitação'}
             </DialogTitle>
             <DialogDescription>
-              {voluntarioAcaoModal.acao === 'desativar' 
-                ? 'Por favor, informe o motivo para desativar este voluntário.' 
+              {voluntarioAcaoModal.acao === 'desativar'
+                ? 'Por favor, informe o motivo para desativar este voluntário.'
                 : 'Por favor, informe o motivo da rejeição desta solicitação de voluntariado.'}
             </DialogDescription>
           </DialogHeader>
@@ -1135,7 +1116,7 @@ export default function Pessoas() {
               onClick={() => {
                 const { v, acao } = voluntarioAcaoModal;
                 if (!v) return;
-                
+
                 if (acao === 'desativar') {
                   updateColaborador.mutate({ id: v.id, patch: { is_ativo: false, motivo_desativacao: motivoInativacao } }, {
                     onSuccess: () => {

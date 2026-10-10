@@ -1,13 +1,11 @@
-import { useNotificacoesQuery, useMarcarNotificacaoLida } from '@/hooks/useNotificacoes';
+import { useNotificacoesComBadges } from '@/hooks/useNotificacoes';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Bell, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
-import moment from 'moment';
 
 export default function Notificacoes() {
-  // Buscamos diretamente as notificações da base
-  const { data: notificacoes, isLoading, isError } = useNotificacoesQuery();
-  const { mutate: marcarLida, isPending } = useMarcarNotificacaoLida();
+  const { alteracoesList, isLoading, marcarTodasLidas } = useNotificacoesComBadges();
+
 
   // Tratamento de Loading explícito e claro
   if (isLoading) {
@@ -15,16 +13,6 @@ export default function Notificacoes() {
       <div className="flex flex-col items-center justify-center py-20 text-slate-500">
         <Loader2 className="w-8 h-8 animate-spin mb-4 text-blue-600" />
         <p className="text-lg font-medium">Carregando notificações...</p>
-      </div>
-    );
-  }
-
-  // Tratamento de Erro na Query
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-red-500">
-        <AlertCircle className="w-8 h-8 mb-4" />
-        <p className="text-lg font-medium">Erro ao carregar notificações.</p>
       </div>
     );
   }
@@ -38,7 +26,7 @@ export default function Notificacoes() {
       </div>
 
       {/* Tratamento para Lista Vazia */}
-      {!notificacoes || notificacoes.length === 0 ? (
+      {!alteracoesList || alteracoesList.length === 0 ? (
         <Card className="border-dashed border-2 border-slate-200">
           <CardContent className="py-20 text-center text-slate-500 flex flex-col items-center">
             <Bell className="w-12 h-12 text-slate-300 mb-4" />
@@ -48,7 +36,7 @@ export default function Notificacoes() {
       ) : (
         <div className="space-y-4">
           {/* Renderização Direta da Lista com Optional Chaining */}
-          {notificacoes?.map((notificacao) => (
+          {alteracoesList?.map((notificacao) => (
             <Card
               key={notificacao.id}
               className={`transition-colors ${!notificacao.lido ? 'bg-blue-50/50 border-blue-200' : 'bg-white'}`}
@@ -67,7 +55,7 @@ export default function Notificacoes() {
                   </div>
                   <p className="text-sm text-slate-600">{notificacao.descricao}</p>
                   <p className="text-xs text-slate-400 mt-2 font-mono">
-                    {moment(notificacao.created_at).format('DD/MM/YYYY HH:mm')}
+                    {notificacao.dataFormatted}
                   </p>
                 </div>
 
@@ -77,8 +65,7 @@ export default function Notificacoes() {
                     variant="outline"
                     size="sm"
                     className="shrink-0 text-blue-600 border-blue-200 hover:bg-blue-100 w-full sm:w-auto"
-                    onClick={() => marcarLida(notificacao.id)}
-                    disabled={isPending}
+                    onClick={() => marcarTodasLidas()}
                   >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Marcar como lida

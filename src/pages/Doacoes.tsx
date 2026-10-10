@@ -66,12 +66,7 @@ export default function Doacoes() {
     latitude: -18.9128,
     zoom: 11,
   });
-<<<<<<< HEAD
-
-=======
   // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
-  // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
   const pasRegistrados = useMemo(() => {
     if (!pasAtivos) return [];
     return (pasAtivos as any[]).filter((pa: any) => {
@@ -156,7 +151,7 @@ export default function Doacoes() {
 
   return (
     <div className="space-y-8">
-      
+
       {/* Seção Doações Pendentes (Vindas do Site) */}
       <div className="space-y-4">
         <div>
@@ -180,14 +175,14 @@ export default function Doacoes() {
                   <div key={doacao.id} className="p-4 flex flex-col md:flex-row gap-6 items-start hover:bg-slate-50 transition-colors">
                     <div className="w-full md:w-48 h-32 bg-slate-100 rounded-lg overflow-hidden shrink-0 border">
                       <a href={doacao.imagem_url} target="_blank" rel="noreferrer" title="Ver imagem ampliada">
-                        <img 
-                          src={doacao.imagem_url} 
-                          alt="Item doado" 
+                        <img
+                          src={doacao.imagem_url}
+                          alt="Item doado"
                           className="w-full h-full object-cover hover:opacity-90 transition-opacity"
                         />
                       </a>
                     </div>
-                    
+
                     <div className="flex-1 space-y-2">
                       <div className="flex items-start justify-between">
                         <div>
@@ -199,12 +194,12 @@ export default function Doacoes() {
                           {doacao.status.toUpperCase()}
                         </Badge>
                       </div>
-                      
+
                       {doacao.status === 'pendente' && (
                         <div className="pt-2 flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             className="text-green-600 border-green-200 hover:bg-green-50"
                             onClick={() => {
                               handleStatusDoacao(doacao.id, 'aprovado');
@@ -213,9 +208,9 @@ export default function Doacoes() {
                           >
                             <Check className="w-4 h-4 mr-1" /> Aprovar e Registrar no Estoque
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
+                          <Button
+                            size="sm"
+                            variant="outline"
                             className="text-red-600 border-red-200 hover:bg-red-50"
                             onClick={() => handleStatusDoacao(doacao.id, 'rejeitado')}
                           >
@@ -243,19 +238,11 @@ export default function Doacoes() {
           </p>
         </div>
 
-<<<<<<< HEAD
-        {/* Layout Grade: Mapa */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          <div className={isMapWorking ? "lg:col-span-3" : "lg:col-span-2"}>
-            <Card className="shadow-sm border-slate-200 overflow-hidden">
-=======
         {/* Layout Grade: Mapa e Lista lateral de Pontos de Arrecadação */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          
           {/* Mapa de PAs */}
           <div className="lg:col-span-2">
             <Card className="shadow-sm border-slate-200 overflow-hidden bg-white">
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
               <CardContent className="p-0 relative overflow-hidden h-[450px] rounded-lg">
                 {!token || mapError ? (
                   <div className="flex flex-col h-full items-center justify-center p-6 bg-amber-50/60 text-amber-800 text-center space-y-2">
@@ -278,7 +265,7 @@ export default function Doacoes() {
                     mapboxAccessToken={token}
                   >
                     <NavigationControl position="top-right" />
-                    
+
                     {pasRegistrados
                       .filter(
                         (pa: any) =>
@@ -303,75 +290,61 @@ export default function Doacoes() {
                             }}
                           >
                             <div
-                              className={`group cursor-pointer transition-transform duration-200 ${
-                                isSelected ? 'scale-125 z-30' : 'hover:scale-115 z-10'
-                              }`}
+                              className={`group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-125 z-30' : 'hover:scale-115 z-10'
+                                }`}
                               title={pa.nome_completo}
                             >
                               <div className="relative flex flex-col items-center">
-<<<<<<< HEAD
-=======
+
                                 {/* Marcador em formato de Coração */}
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
                                 <div className="w-9 h-9 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white ring-2 ring-rose-200 group-hover:bg-rose-500 transition-colors">
                                   <Heart className="w-5 h-5 fill-white text-white" />
                                 </div>
                                 <div className="w-2.5 h-2.5 bg-rose-600 rotate-45 -mt-1 shadow-sm" />
-                              </div>
-                            </div>
-                          </Marker>
+                              </div >
+                            </div >
+                          </Marker >
                         );
                       })}
 
-                    {selectedPa && selectedPa.latitude && selectedPa.longitude && (
-                      <Popup
-                        longitude={Number(selectedPa.longitude)}
-                        latitude={Number(selectedPa.latitude)}
-                        anchor="top"
-                        onClose={() => setSelectedPa(null)}
-                        closeOnClick={false}
-                        className="z-50"
-                      >
-                        <div className="p-2 space-y-2 max-w-[220px]">
-                          <div className="flex items-center gap-1.5 text-rose-600 font-semibold text-xs">
-                            <Heart className="w-3.5 h-3.5 fill-rose-600" /> Ponto de Arrecadação
+                    {
+                      selectedPa && selectedPa.latitude && selectedPa.longitude && (
+                        <Popup
+                          longitude={Number(selectedPa.longitude)}
+                          latitude={Number(selectedPa.latitude)}
+                          anchor="top"
+                          onClose={() => setSelectedPa(null)}
+                          closeOnClick={false}
+                          className="z-50"
+                        >
+                          <div className="p-2 space-y-2 max-w-[220px]">
+                            <div className="flex items-center gap-1.5 text-rose-600 font-semibold text-xs">
+                              <Heart className="w-3.5 h-3.5 fill-rose-600" /> Ponto de Arrecadação
+                            </div>
+                            <h3 className="font-bold text-sm text-slate-900 leading-tight">{selectedPa.nome_completo}</h3>
+                            <p className="text-xs text-slate-600 flex items-start gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                              <span>{selectedPa.endereco_completo}</span>
+                            </p>
+                            {selectedPa.whatsapp && (
+                              <Button
+                                size="sm"
+                                className="w-full bg-green-600 hover:bg-green-700 mt-2 text-xs h-8 gap-1.5 text-white"
+                                onClick={() => window.open(`https://wa.me/55${selectedPa.whatsapp}`, '_blank')}
+                              >
+                                <Phone className="w-3.5 h-3.5" /> Chamar no WhatsApp
+                              </Button>
+                            )}
                           </div>
-                          <h3 className="font-bold text-sm text-slate-900 leading-tight">{selectedPa.nome_completo}</h3>
-                          <p className="text-xs text-slate-600 flex items-start gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                            <span>{selectedPa.endereco_completo}</span>
-                          </p>
-                          {selectedPa.whatsapp && (
-                            <Button 
-                              size="sm" 
-                              className="w-full bg-green-600 hover:bg-green-700 mt-2 text-xs h-8 gap-1.5 text-white"
-                              onClick={() => window.open(`https://wa.me/55${selectedPa.whatsapp}`, '_blank')}
-                            >
-                              <Phone className="w-3.5 h-3.5" /> Chamar no WhatsApp
-                            </Button>
-                          )}
-                        </div>
-                      </Popup>
-                    )}
-                  </Map>
+                        </Popup>
+                      )
+                    }
+                  </Map >
                 )}
-              </CardContent>
-            </Card>
-          </div>
+              </CardContent >
+            </Card >
+          </div >
 
-<<<<<<< HEAD
-          {!isMapWorking && (
-            <div className="lg:col-span-1 space-y-3">
-              <Card className="shadow-sm border-slate-200">
-                <CardHeader className="pb-3 pt-4 px-4 border-b border-slate-100 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-rose-600" /> Locais Registrados
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Pontos voluntários disponíveis
-                    </CardDescription>
-=======
           {/* Lista lateral de Pontos de Arrecadação Cadastrados */}
           <div className="lg:col-span-1 space-y-3">
             <Card className="shadow-sm border-slate-200 bg-white">
@@ -396,7 +369,6 @@ export default function Doacoes() {
                     <Heart className="w-8 h-8 text-slate-300 mx-auto" />
                     <p className="text-xs font-medium">Nenhum Ponto de Arrecadação cadastrado ainda.</p>
                     <p className="text-[11px] text-slate-400">Voluntários com modalidade PA aparecerão aqui após aprovação.</p>
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
                   </div>
                 ) : (
                   pasRegistrados.map((pa: any) => {
@@ -410,11 +382,10 @@ export default function Doacoes() {
                       <div
                         key={pa.id}
                         onClick={() => handleSelectPa(pa)}
-                        className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${
-                          isSelected
-                            ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
-                            : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
-                        }`}
+                        className={`p-3 rounded-lg border transition-all cursor-pointer space-y-2 ${isSelected
+                          ? 'bg-rose-50/70 border-rose-300 shadow-sm ring-1 ring-rose-300'
+                          : 'bg-white border-slate-200 hover:border-rose-200 hover:bg-slate-50/80'
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="font-semibold text-sm text-slate-900 line-clamp-1">{pa.nome_completo}</h4>

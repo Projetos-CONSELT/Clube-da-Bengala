@@ -12,12 +12,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
-<<<<<<< HEAD
 import { Switch } from '@/components/ui/switch';
-import { Building2, Plus, Loader2, MapPin, Trash2, Edit } from 'lucide-react';
-=======
 import { Building2, Plus, Loader2, MapPin, Trash2, Edit, CheckCircle2, AlertCircle } from 'lucide-react';
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
 import type { NucleoInsert } from '@/types/database.types';
 
 const ESTADOS_BRASIL = [
@@ -59,13 +55,7 @@ const formatCEP = (value: string) => {
 export default function NucleosAdminTab() {
   const { toast } = useToast();
   const { role: currentUserRole, user } = useAuth();
-<<<<<<< HEAD
-
   const { data: nucleos = [], isLoading, error } = useNucleosQuery(true);
-=======
-  
-  const { data: nucleos = [], isLoading } = useNucleosQuery();
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
   const { data: usuarios = [] } = useUsuariosQuery();
   const createNucleo = useCreateNucleo();
   const updateNucleo = useUpdateNucleo();
@@ -219,17 +209,10 @@ export default function NucleosAdminTab() {
     
     setIsSubmitting(true);
     let coords = { latitude: formData.latitude, longitude: formData.longitude };
-<<<<<<< HEAD
-
-    // Geocode o endereço antes de salvar
-    if (formData.cidade && formData.estado) {
-      const address = `${formData.logradouro} ${formData.numero}, ${formData.bairro}, ${formData.cidade} - ${formData.estado}, ${formData.cep}, Brasil`;
-=======
     
     // Geocode se não tiver coordenadas e tiver endereço
     if (coords.latitude === 0 && coords.longitude === 0 && formData.cidade && formData.estado) {
       const address = `${formData.rua || ''} ${formData.numero || ''}, ${formData.bairro || ''}, ${formData.cidade} - ${formData.estado}, ${formData.cep || ''}`.trim();
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
       const result = await fetchCoordinates(address);
       if (result) {
         coords = result;

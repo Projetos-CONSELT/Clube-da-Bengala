@@ -7,11 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
-<<<<<<< HEAD
 import { Eye, EyeOff, FileText, Heart, Gift } from 'lucide-react';
-=======
-import { Eye, EyeOff, FileText, Heart, ArrowRight } from 'lucide-react';
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import TermosContent from '@/components/TermosContent';
 import { useUploadDocumentosUsuario } from '@/hooks/useUploadDocumentosUsuario';
@@ -30,7 +26,7 @@ export default function Login() {
   const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
+
   // Signup fields
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
@@ -49,7 +45,7 @@ export default function Login() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedLoanTerms, setAcceptedLoanTerms] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   // File inputs
   const [fileIdentidade, setFileIdentidade] = useState<File | null>(null);
   const [fileComprovante, setFileComprovante] = useState<File | null>(null);
@@ -187,13 +183,13 @@ export default function Login() {
       if (mode === 'signin') {
         // Se estivermos em modo signIn, buscamos o e-mail real pelo CPF
         let authEmail = email; // Fallback se o usuário ainda digitar e-mail no campo de CPF
-        
+
         // Verifica se é um CPF
         const rawCpf = cpf.replace(/\D/g, '');
         if (rawCpf.length === 11) {
           const { data: realEmail, error: rpcError } = await supabase.rpc('get_email_by_cpf', { p_cpf: cpf });
           if (rpcError) {
-             throw new Error('Não foi possível encontrar a conta para este CPF.');
+            throw new Error('Não foi possível encontrar a conta para este CPF.');
           }
           if (realEmail) authEmail = realEmail;
           else throw new Error('Conta não encontrada para este CPF.');
@@ -203,7 +199,7 @@ export default function Login() {
 
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
         if (error) throw error;
-        
+
         toast({ title: 'Bem-vindo de volta!' });
         await checkUserAuth();
         navigate('/', { replace: true });
@@ -301,7 +297,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
-      
+
       {/* Lado Esquerdo - Chamada Pública */}
       <div className="md:w-1/3 bg-slate-900 p-8 flex flex-col items-center justify-center text-center text-white space-y-8 min-h-[30vh]">
         <div className="space-y-4">
@@ -312,15 +308,15 @@ export default function Login() {
         </div>
 
         <div className="space-y-4 w-full max-w-xs">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full h-12 text-slate-900 font-bold border-transparent bg-white hover:bg-slate-100 shadow-md gap-2"
             onClick={() => navigate('/quero-doar')}
           >
             <Gift className="w-5 h-5 text-rose-500" /> Quero Doar
           </Button>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full h-12 text-slate-900 font-bold border-transparent bg-white hover:bg-slate-100 shadow-md gap-2"
             onClick={() => navigate('/quero-ajudar')}
           >
@@ -339,14 +335,14 @@ export default function Login() {
             <CardDescription>
               {mode === 'forgot'
                 ? 'Insira seu e-mail para receber um link de redefinição de senha'
-                : mode === 'signup' 
-                ? 'Preencha seus dados para criar sua conta de solicitante' 
-                : 'Acesse o portal com seu CPF e senha'}
+                : mode === 'signup'
+                  ? 'Preencha seus dados para criar sua conta de solicitante'
+                  : 'Acesse o portal com seu CPF e senha'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              
+
               {/* === CAMPOS DE LOGIN === */}
               {mode === 'signin' && (
                 <div className="space-y-4">
@@ -602,20 +598,20 @@ export default function Login() {
                         <div className="space-y-3">
                           <div>
                             <Label htmlFor="rg" className="text-xs">Documento com foto (RG/CNH)</Label>
-                            <Input 
-                              id="rg" 
-                              type="file" 
-                              accept="image/*,.pdf" 
+                            <Input
+                              id="rg"
+                              type="file"
+                              accept="image/*,.pdf"
                               className="text-xs"
                               onChange={(e) => setFileIdentidade(e.target.files?.[0] || null)}
                             />
                           </div>
                           <div>
                             <Label htmlFor="residencia" className="text-xs">Comprovante de residência</Label>
-                            <Input 
-                              id="residencia" 
-                              type="file" 
-                              accept="image/*,.pdf" 
+                            <Input
+                              id="residencia"
+                              type="file"
+                              accept="image/*,.pdf"
                               className="text-xs"
                               onChange={(e) => setFileComprovante(e.target.files?.[0] || null)}
                             />
@@ -690,70 +686,62 @@ export default function Login() {
                   </button>
                 )}
               </div>
-<<<<<<< HEAD
+              {mode === 'signup' && (
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  O cadastro será criado como solicitante e os dados informados serão usados para
+                  completar seu perfil.
+                </p>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading
+                  ? '...'
+                  : mode === 'signin'
+                    ? 'Entrar'
+                    : mode === 'signup'
+                      ? 'Cadastrar'
+                      : 'Enviar e-mail de recuperação'}
+              </Button>
+              {mode === 'forgot' ? (
+                <button
+                  type="button"
+                  className="w-full text-sm text-slate-600 hover:underline"
+                  onClick={() => setMode('signin')}
+                  disabled={loading}
+                >
+                  Voltar para o Entrar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="w-full text-sm text-slate-600 hover:underline"
+                  onClick={toggleMode}
+                  disabled={loading}
+                >
+                  {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
+                </button>
+              )}
 
+              {/* CTA Seja um Voluntário (Quero Ajudar) */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col items-center text-center space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                  <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                  <span>Quer fazer a diferença na sua comunidade?</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/quero-ajudar')}
+                  className="w-full border-rose-200 hover:border-rose-300 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 hover:text-rose-800 font-semibold gap-2 transition-all shadow-sm group h-10"
+                >
+                  <Heart className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform" />
+                  <span>Seja um Voluntário (Quero Ajudar)</span>
+                  <ArrowRight className="w-4 h-4 ml-auto text-rose-500 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
       </div>
-=======
-            )}
-            {mode === 'signup' && (
-              <p className="text-xs text-slate-500 leading-relaxed">
-                O cadastro será criado como solicitante e os dados informados serão usados para
-                completar seu perfil.
-              </p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading
-                ? '...'
-                : mode === 'signin'
-                  ? 'Entrar'
-                  : mode === 'signup'
-                    ? 'Cadastrar'
-                    : 'Enviar e-mail de recuperação'}
-            </Button>
-            {mode === 'forgot' ? (
-              <button
-                type="button"
-                className="w-full text-sm text-slate-600 hover:underline"
-                onClick={() => setMode('signin')}
-                disabled={loading}
-              >
-                Voltar para o Entrar
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="w-full text-sm text-slate-600 hover:underline"
-                onClick={toggleMode}
-                disabled={loading}
-              >
-                {mode === 'signin' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
-              </button>
-            )}
-
-            {/* CTA Seja um Voluntário (Quero Ajudar) */}
-            <div className="pt-4 border-t border-slate-100 flex flex-col items-center text-center space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-                <span>Quer fazer a diferença na sua comunidade?</span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate('/quero-ajudar')}
-                className="w-full border-rose-200 hover:border-rose-300 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 hover:text-rose-800 font-semibold gap-2 transition-all shadow-sm group h-10"
-              >
-                <Heart className="w-4 h-4 text-rose-600 group-hover:scale-110 transition-transform" />
-                <span>Seja um Voluntário (Quero Ajudar)</span>
-                <ArrowRight className="w-4 h-4 ml-auto text-rose-500 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
->>>>>>> d6bb9141f441aacb5ff9d95ba775df1e42ed87b5
     </div>
   );
 }
