@@ -108,3 +108,20 @@ export function useDeleteBeneficiario() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),
   });
 }
+
+export function useTransferirBeneficiario() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, novo_solicitante_id }: { id: string; novo_solicitante_id: string }) => {
+      const { data, error } = await supabase
+        .from('beneficiarios')
+        .update({ solicitante_id: novo_solicitante_id })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: BENEFICIARIOS_KEY }),
+  });
+}

@@ -13,6 +13,7 @@ export interface EquipamentoFormPayload {
   tipo_id: string;
   status?: EquipamentoInsert['status'];
   doador_id?: string | null;
+  valor_nominal?: number | null;
   atributos?: AtributosEquipamento;
 }
 
@@ -22,6 +23,7 @@ function toEquipamentoInsert(payload: EquipamentoFormPayload): EquipamentoInsert
     tipo_id: payload.tipo_id,
     status: payload.status ?? 'disponivel',
     doador_id: payload.doador_id ?? null,
+    valor_nominal: payload.valor_nominal ?? null,
     atributos_especificos: payload.atributos ?? {},
   };
 }

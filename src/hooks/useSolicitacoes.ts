@@ -175,7 +175,7 @@ export function useUpdateSolicitacao() {
         .maybeSingle();
 
       if (motivoRecusa) {
-        patch.observacoes_solicitante = motivoRecusa;
+        patch.motivo_recusa = motivoRecusa;
       }
 
       const { data, error } = await supabase
@@ -242,11 +242,15 @@ export function useCreateSolicitacao() {
       beneficiario_id,
       tipo_equipamento_id,
       motivo_solicitacao,
+      como_conheceu,
+      tempo_estimado_meses,
       nucleo_id,
     }: {
       beneficiario_id: string;
       tipo_equipamento_id: string;
       motivo_solicitacao?: string;
+      como_conheceu?: string;
+      tempo_estimado_meses?: number;
       nucleo_id?: string;
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado.');
@@ -257,6 +261,8 @@ export function useCreateSolicitacao() {
         beneficiario_id,
         tipo_equipamento_id,
         motivo_solicitacao: motivo_solicitacao || null,
+        como_conheceu: como_conheceu || null,
+        tempo_estimado_meses: tempo_estimado_meses || null,
         status: 'triagem',
       };
 

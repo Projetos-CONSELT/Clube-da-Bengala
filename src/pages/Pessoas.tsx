@@ -55,6 +55,7 @@ const beneficiarioSchema = z.object({
   altura_cm: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
   peso_kg: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
   tamanho_calcado: z.preprocess((val) => (val === '' || val === null || val === undefined) ? '' : Number(val), z.number({ required_error: 'Campo obrigatório', invalid_type_error: 'Campo obrigatório' }).min(1, 'Campo obrigatório')),
+  data_nascimento: z.string().min(1, 'Campo obrigatório'),
   solicitante_id: z.string().optional(),
 });
 
@@ -100,7 +101,8 @@ export default function Pessoas() {
       const cpfMatches = cleanSearch ? cleanCPF(b.cpf).includes(cleanSearch) : rawCpf.includes(search);
       const solNome = b.solicitante?.nome_completo?.toLowerCase() || '';
       const solEmail = b.solicitante?.email?.toLowerCase() || '';
-      return nome.includes(search) || cpfMatches || solNome.includes(search) || solEmail.includes(search);
+      const solCpfMatches = cleanSearch ? cleanCPF(b.solicitante?.cpf || '').includes(cleanSearch) : (b.solicitante?.cpf || '').includes(search);
+      return nome.includes(search) || cpfMatches || solNome.includes(search) || solEmail.includes(search) || solCpfMatches;
     });
 
     const map = new Map<string, {
@@ -135,6 +137,8 @@ export default function Pessoas() {
     (u) => (u.papel ?? 'solicitante') === 'solicitante'
   );
 
+  const [voluntarioAcaoModal, setVoluntarioAcaoModal] = useState<{isOpen: boolean; v: any; acao: 'rejeitar' | 'desativar'}>({ isOpen: false, v: null, acao: 'rejeitar' });
+  const [motivoInativacao, setMotivoInativacao] = useState('');
   const [benefModal, setBenefModal] = useState(false);
   const {
     register: registerBenef,
@@ -152,6 +156,7 @@ export default function Pessoas() {
       altura_cm: '' as any,
       peso_kg: '' as any,
       tamanho_calcado: '' as any,
+      data_nascimento: '',
       solicitante_id: '',
     },
   });
@@ -686,12 +691,22 @@ export default function Pessoas() {
 
         <TabsContent value="beneficiarios" className="mt-4 space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <Button onClick={openNewBenef} className="gap-2 bg-blue-600 hover:bg-blue-700 font-semibold rounded-xl">
-              <Plus className="w-4 h-4" /> Novo beneficiário
-            </Button>
-            <p className="text-xs text-slate-500 font-medium">
-              Agrupados em pastas por Solicitante responsável
-            </p>
+            <div className="flex-1 max-w-md w-full">
+              <Input
+                placeholder="Pesquisar por Beneficiário ou Solicitante (Nome, CPF, Email)..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="flex items-center gap-4 w-full sm:w-auto">
+              <Button onClick={openNewBenef} className="gap-2 bg-blue-600 hover:bg-blue-700 font-semibold rounded-xl whitespace-nowrap">
+                <Plus className="w-4 h-4" /> Novo beneficiário
+              </Button>
+              <p className="text-xs text-slate-500 font-medium hidden sm:block">
+                Agrupados por Solicitante
+              </p>
+            </div>
           </div>
 
           {groupedBeneficiariosBySolicitante.length === 0 ? (
@@ -1067,17 +1082,7 @@ export default function Pessoas() {
                             size="sm"
                             disabled={deleteColaborador.isPending || updateColaborador.isPending}
                             onClick={() => {
-                              if (v.is_ativo) {
-                                updateColaborador.mutate({ id: v.id, patch: { is_ativo: false } }, {
-                                  onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' })
-                                });
-                              } else {
-                                if(confirm('Deseja realmente rejeitar (excluir) este voluntário?')) {
-                                  deleteColaborador.mutate(v.id, {
-                                    onSuccess: () => toast({ title: 'Voluntário rejeitado/excluído.' })
-                                  });
-                                }
-                              }
+                              setVoluntarioAcaoModal({ isOpen: true, v, acao: v.is_ativo ? 'desativar' : 'rejeitar' });
                             }}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
@@ -1093,6 +1098,77 @@ export default function Pessoas() {
           </TabsContent>
         )}
       </Tabs>
+
+      <Dialog open={voluntarioAcaoModal.isOpen} onOpenChange={(val) => {
+        if (!val) {
+          setVoluntarioAcaoModal({ isOpen: false, v: null, acao: 'rejeitar' });
+          setMotivoInativacao('');
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {voluntarioAcaoModal.acao === 'desativar' ? 'Desativar Voluntário' : 'Rejeitar Solicitação'}
+            </DialogTitle>
+            <DialogDescription>
+              {voluntarioAcaoModal.acao === 'desativar' 
+                ? 'Por favor, informe o motivo para desativar este voluntário.' 
+                : 'Por favor, informe o motivo da rejeição desta solicitação de voluntariado.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Motivo da Observação / Inativação *</Label>
+              <Textarea
+                placeholder="Detalhe o motivo..."
+                value={motivoInativacao}
+                onChange={(e) => setMotivoInativacao(e.target.value)}
+                className="mt-1"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setVoluntarioAcaoModal({ isOpen: false, v: null, acao: 'rejeitar' });
+              setMotivoInativacao('');
+            }}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteColaborador.isPending || updateColaborador.isPending || !motivoInativacao.trim()}
+              onClick={() => {
+                const { v, acao } = voluntarioAcaoModal;
+                if (!v) return;
+                
+                if (acao === 'desativar') {
+                  updateColaborador.mutate({ id: v.id, patch: { is_ativo: false, motivo_desativacao: motivoInativacao } }, {
+                    onSuccess: () => {
+                      toast({ title: 'Voluntário desativado com sucesso.' });
+                      setVoluntarioAcaoModal({ isOpen: false, v: null, acao: 'rejeitar' });
+                      setMotivoInativacao('');
+                    }
+                  });
+                } else {
+                  // Rejeitar: podemos excluir ou apenas atualizar is_ativo=false e salvar o motivo. O banco permite excluir.
+                  // Porém, com motivo_desativacao agora disponível, podemos querer mante-lo na base como inativo com motivo.
+                  // Pelo "Plano de ação", a inativação ou rejeição exigem motivo. Se excluirmos, o motivo some. 
+                  // Então é melhor atualizar para is_ativo=false e preencher o motivo, para manter histórico.
+                  updateColaborador.mutate({ id: v.id, patch: { is_ativo: false, motivo_desativacao: motivoInativacao } }, {
+                    onSuccess: () => {
+                      toast({ title: 'Voluntário rejeitado com sucesso.' });
+                      setVoluntarioAcaoModal({ isOpen: false, v: null, acao: 'rejeitar' });
+                      setMotivoInativacao('');
+                    }
+                  });
+                }
+              }}
+            >
+              {(deleteColaborador.isPending || updateColaborador.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Cadastro/Edição de Beneficiário */}
       <Dialog open={benefModal} onOpenChange={setBenefModal}>
@@ -1167,6 +1243,13 @@ export default function Pessoas() {
                   <Label>Calçado</Label>
                   <Input type="number" {...registerBenef('tamanho_calcado')} />
                   {benefErrors.tamanho_calcado && <span className="text-red-500 text-xs mt-1 block">{benefErrors.tamanho_calcado.message}</span>}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <Label>Data de Nascimento</Label>
+                  <Input type="date" {...registerBenef('data_nascimento')} />
+                  {benefErrors.data_nascimento && <span className="text-red-500 text-xs mt-1 block">{benefErrors.data_nascimento.message}</span>}
                 </div>
               </div>
             </div>

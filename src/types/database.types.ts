@@ -22,11 +22,17 @@ export type Database = {
           estado: string | null;
           cep: string | null;
           is_inadimplente: boolean;
+          is_negativado: boolean | null;
           aprovado: boolean;
           created_at: string | null;
           solicitacao_papel: string | null;
           nucleo_id: string | null;
           pode_criar_nucleos: boolean | null;
+          documento_identidade_url: string | null;
+          comprovante_residencia_url: string | null;
+          documentos_aprovados: boolean | null;
+          motivo_rejeicao_documentos: string | null;
+          data_nascimento: string | null;
         };
         Insert: {
           id: string;
@@ -40,11 +46,17 @@ export type Database = {
           estado?: string | null;
           cep?: string | null;
           is_inadimplente?: boolean;
+          is_negativado?: boolean | null;
           aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
           nucleo_id?: string | null;
           pode_criar_nucleos?: boolean | null;
+          documento_identidade_url?: string | null;
+          comprovante_residencia_url?: string | null;
+          documentos_aprovados?: boolean | null;
+          motivo_rejeicao_documentos?: string | null;
+          data_nascimento?: string | null;
         };
         Update: {
           id?: string;
@@ -58,13 +70,54 @@ export type Database = {
           estado?: string | null;
           cep?: string | null;
           is_inadimplente?: boolean;
+          is_negativado?: boolean | null;
           aprovado?: boolean;
           created_at?: string | null;
           solicitacao_papel?: string | null;
           nucleo_id?: string | null;
           pode_criar_nucleos?: boolean | null;
+          documento_identidade_url?: string | null;
+          comprovante_residencia_url?: string | null;
+          documentos_aprovados?: boolean | null;
+          motivo_rejeicao_documentos?: string | null;
+          data_nascimento?: string | null;
         };
         Relationships: [];
+      };
+      configuracoes_sistema: {
+        Row: {
+          id: string;
+          chave: string;
+          valor: Json;
+          descricao: string | null;
+          updated_at: string | null;
+          nucleo_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          chave: string;
+          valor?: Json;
+          descricao?: string | null;
+          updated_at?: string | null;
+          nucleo_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          chave?: string;
+          valor?: Json;
+          descricao?: string | null;
+          updated_at?: string | null;
+          nucleo_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'configuracoes_sistema_nucleo_id_fkey';
+            columns: ['nucleo_id'];
+            isOneToOne: false;
+            referencedRelation: 'nucleos';
+            referencedColumns: ['id'];
+          }
+        ];
       };
       nucleos: {
         Row: {
@@ -80,6 +133,7 @@ export type Database = {
           latitude: number | null;
           longitude: number | null;
           created_at: string | null;
+          is_ativo: boolean | null;
         };
         Insert: {
           id?: string;
@@ -94,6 +148,7 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           created_at?: string | null;
+          is_ativo?: boolean | null;
         };
         Update: {
           id?: string;
@@ -108,8 +163,53 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           created_at?: string | null;
+          is_ativo?: boolean | null;
         };
         Relationships: [];
+      };
+      doacoes_pendentes: {
+        Row: {
+          id: string;
+          nome_doador: string;
+          cpf: string;
+          data_nascimento: string;
+          item_doado: string;
+          imagem_url: string;
+          status: string;
+          nucleo_id: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          nome_doador: string;
+          cpf: string;
+          data_nascimento: string;
+          item_doado: string;
+          imagem_url: string;
+          status?: string;
+          nucleo_id?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          nome_doador?: string;
+          cpf?: string;
+          data_nascimento?: string;
+          item_doado?: string;
+          imagem_url?: string;
+          status?: string;
+          nucleo_id?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'doacoes_pendentes_nucleo_id_fkey';
+            columns: ['nucleo_id'];
+            isOneToOne: false;
+            referencedRelation: 'nucleos';
+            referencedColumns: ['id'];
+          }
+        ];
       };
       beneficiarios: {
         Row: {
@@ -120,6 +220,7 @@ export type Database = {
           altura_cm: number | null;
           peso_kg: number | null;
           tamanho_calcado: number | null;
+          data_nascimento: string | null;
           created_at: string | null;
           nucleo_id: string | null;
         };
@@ -131,6 +232,7 @@ export type Database = {
           altura_cm?: number | null;
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
+          data_nascimento?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
         };
@@ -138,10 +240,10 @@ export type Database = {
           id?: string;
           solicitante_id?: string;
           nome_completo?: string;
-          cpf?: string;
           altura_cm?: number | null;
           peso_kg?: number | null;
           tamanho_calcado?: number | null;
+          data_nascimento?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
         };
@@ -162,6 +264,7 @@ export type Database = {
           descricao: string | null;
           schema_especificacoes: Json;
           limite_renovacoes: number | null;
+          imagem_ilustrativa_url: string | null;
           created_at: string | null;
         };
         Insert: {
@@ -170,6 +273,7 @@ export type Database = {
           descricao?: string | null;
           schema_especificacoes?: Json;
           limite_renovacoes?: number | null;
+          imagem_ilustrativa_url?: string | null;
           created_at?: string | null;
         };
         Update: {
@@ -178,6 +282,7 @@ export type Database = {
           descricao?: string | null;
           schema_especificacoes?: Json;
           limite_renovacoes?: number | null;
+          imagem_ilustrativa_url?: string | null;
           created_at?: string | null;
         };
         Relationships: [];
@@ -190,6 +295,7 @@ export type Database = {
           status: Database['public']['Enums']['status_equipamento'];
           estado_conservacao: string | null;
           atributos_especificos: Json;
+          valor_nominal: number | null;
           doador_id: string | null;
           created_at: string | null;
           nucleo_id: string | null;
@@ -202,6 +308,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_equipamento'];
           estado_conservacao?: string | null;
           atributos_especificos?: Json;
+          valor_nominal?: number | null;
           doador_id?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
@@ -214,6 +321,7 @@ export type Database = {
           status?: Database['public']['Enums']['status_equipamento'];
           estado_conservacao?: string | null;
           atributos_especificos?: Json;
+          valor_nominal?: number | null;
           doador_id?: string | null;
           created_at?: string | null;
           nucleo_id?: string | null;
@@ -247,6 +355,10 @@ export type Database = {
           status: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses: number | null;
           motivo_solicitacao: string | null;
+          como_conheceu: string | null;
+          motivo_recusa: string | null;
+          terceiro_retirada_nome: string | null;
+          terceiro_retirada_cpf: string | null;
           observacoes_solicitante?: string | null;
           prazo_limite_retirada: string | null;
           prazo_retirada: string | null;
@@ -271,6 +383,10 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          como_conheceu?: string | null;
+          motivo_recusa?: string | null;
+          terceiro_retirada_nome?: string | null;
+          terceiro_retirada_cpf?: string | null;
           observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;
@@ -295,6 +411,10 @@ export type Database = {
           status?: Database['public']['Enums']['status_solicitacao'];
           tempo_estimado_meses?: number | null;
           motivo_solicitacao?: string | null;
+          como_conheceu?: string | null;
+          motivo_recusa?: string | null;
+          terceiro_retirada_nome?: string | null;
+          terceiro_retirada_cpf?: string | null;
           observacoes_solicitante?: string | null;
           prazo_limite_retirada?: string | null;
           prazo_retirada?: string | null;

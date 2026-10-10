@@ -23,6 +23,8 @@ interface MapSelectorProps {
 export function MapSelector({ userLocation, nucleos, selectedNucleoId, onSelectNucleo, loading }: MapSelectorProps) {
   const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
   
+  const mapRef = React.useRef<any>(null);
+
   // Viewport inicial focado no usuário
   const [viewState, setViewState] = useState({
     longitude: userLocation.longitude,
@@ -30,14 +32,28 @@ export function MapSelector({ userLocation, nucleos, selectedNucleoId, onSelectN
     zoom: 10
   });
 
-  // Atualiza o viewState se a location do usuário mudar
-  useMemo(() => {
-    setViewState(prev => ({
-      ...prev,
-      longitude: userLocation.longitude,
-      latitude: userLocation.latitude
-    }));
-  }, [userLocation.latitude, userLocation.longitude]);
+  // Atualiza o bounds do mapa sempre que a location do usuário ou os núcleos mudarem
+  React.useEffect(() => {
+    if (mapRef.current && nucleos.length > 0) {
+      // Calcular bounds envolvendo user e o primeiro nucleo mais próximo (ou selected)
+      const targetNucleo = selectedNucleoId ? nucleos.find(n => n.id === selectedNucleoId) : nucleos[0];
+      
+      if (targetNucleo && targetNucleo.latitude && targetNucleo.longitude) {
+        const minLng = Math.min(userLocation.longitude, targetNucleo.longitude);
+        const minLat = Math.min(userLocation.latitude, targetNucleo.latitude);
+        const maxLng = Math.max(userLocation.longitude, targetNucleo.longitude);
+        const maxLat = Math.max(userLocation.latitude, targetNucleo.latitude);
+
+        mapRef.current.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat]
+          ],
+          { padding: 60, duration: 1000 }
+        );
+      }
+    }
+  }, [userLocation.latitude, userLocation.longitude, nucleos, selectedNucleoId]);
 
   if (!token) {
     return (
@@ -54,6 +70,7 @@ export function MapSelector({ userLocation, nucleos, selectedNucleoId, onSelectN
       {/* Mapa */}
       <div className="w-full h-80 rounded-lg overflow-hidden border border-gray-300 shadow-sm relative">
         <Map
+          ref={mapRef}
           {...viewState}
           onMove={(evt: any) => setViewState(evt.viewState)}
           mapStyle="mapbox://styles/mapbox/streets-v12"
@@ -73,7 +90,7 @@ export function MapSelector({ userLocation, nucleos, selectedNucleoId, onSelectN
 
           {/* Markers dos Núcleos (Pins Vermelhos) */}
           {nucleos
-            .filter((n) => n.latitude !== 0 && n.longitude !== 0 && !isNaN(n.latitude) && !isNaN(n.longitude))
+            .filter((n) => n.latitude != null && n.longitude != null && !isNaN(n.latitude) && !isNaN(n.longitude) && n.latitude !== 0 && n.longitude !== 0)
             .map((nucleo) => {
               const isSelected = nucleo.id === selectedNucleoId;
               return (

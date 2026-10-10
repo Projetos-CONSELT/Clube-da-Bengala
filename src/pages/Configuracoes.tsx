@@ -91,6 +91,32 @@ export default function Configuracoes() {
   const [gatewayEnv, setGatewayEnv] = useState('sandbox');
   const [gatewayDefaultVal, setGatewayDefaultVal] = useState('150');
 
+  // Estados de Termos Legais
+  const [termoFile, setTermoFile] = useState<File | null>(null);
+  const [termoTipo, setTermoTipo] = useState<string>('emprestimo');
+  const [uploadingTermo, setUploadingTermo] = useState(false);
+  const [termosLinks, setTermosLinks] = useState<{ [key: string]: string }>({});
+
+  const fetchTermosLinks = async () => {
+    try {
+      const { data, error } = await supabase.storage.from('termos-legais').list('');
+      if (!error && data) {
+        const newLinks: { [key: string]: string } = {};
+        for (const file of data) {
+          const { data: publicData } = supabase.storage.from('termos-legais').getPublicUrl(file.name);
+          newLinks[file.name] = publicData.publicUrl;
+        }
+        setTermosLinks(newLinks);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTermosLinks();
+  }, []);
+
   // ==========================================
   // 1. CORREÇÃO DO FETCH - SUBST. .single() POR .maybeSingle()
   // ==========================================
@@ -487,6 +513,10 @@ export default function Configuracoes() {
           <TabsTrigger value="gateway" className="gap-2 rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <CreditCard className="w-4 h-4 text-indigo-600" />
             Integração Financeira & Recibos
+          </TabsTrigger>
+          <TabsTrigger value="termos" className="gap-2 rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <FileText className="w-4 h-4 text-orange-600" />
+            Termos Legais
           </TabsTrigger>
         </TabsList>
 
@@ -1000,6 +1030,105 @@ export default function Configuracoes() {
             <CardContent className="space-y-3">
               <Textarea rows={6} value={recibo} onChange={(e) => setRecibo(e.target.value)} />
               <Button onClick={saveRecibo}>Salvar Template de Recibo</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ==========================================
+            ABA 5: TERMOS LEGAIS
+           ========================================== */}
+        <TabsContent value="termos" className="space-y-6 focus-visible:outline-none">
+          <Card className="border-slate-200/80 shadow-sm bg-white">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+              <CardTitle className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-orange-600" />
+                Upload de Termos Legais
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500">
+                Faça o upload dos documentos oficiais (PDF). Estes termos ficarão disponíveis para download.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6 p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Tipo de Termo</Label>
+                  <Select value={termoTipo} onValueChange={setTermoTipo}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="emprestimo">Termo de Empréstimo</SelectItem>
+                      <SelectItem value="voluntariado">Termo de Voluntariado</SelectItem>
+                      <SelectItem value="doacao">Termo de Doação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Arquivo (PDF)</Label>
+                  <Input 
+                    type="file" 
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        setTermoFile(e.target.files[0]);
+                      }
+                    }} 
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={async () => {
+                  if (!termoFile) {
+                    toast({ variant: 'destructive', title: 'Selecione um arquivo' });
+                    return;
+                  }
+                  setUploadingTermo(true);
+                  try {
+                    const ext = termoFile.name.split('.').pop();
+                    const fileName = `termo_${termoTipo}.${ext}`;
+                    
+                    const { error } = await supabase.storage
+                      .from('termos-legais')
+                      .upload(fileName, termoFile, { upsert: true });
+                      
+                    if (error) throw error;
+                    
+                    toast({ title: 'Termo enviado com sucesso!' });
+                    setTermoFile(null);
+                    fetchTermosLinks();
+                  } catch (err: any) {
+                    toast({ variant: 'destructive', title: 'Erro no upload', description: err.message });
+                  } finally {
+                    setUploadingTermo(false);
+                  }
+                }}
+                disabled={uploadingTermo || !termoFile}
+              >
+                {uploadingTermo && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Fazer Upload
+              </Button>
+
+              <hr className="my-6 border-slate-100" />
+              
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-3">Links Atuais:</h4>
+                <div className="space-y-2">
+                  {Object.entries(termosLinks).map(([name, link]) => (
+                    <div key={name} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <span className="text-sm font-medium text-slate-700">{name}</span>
+                      <a 
+                        href={link} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Visualizar
+                      </a>
+                    </div>
+                  ))}
+                  {Object.keys(termosLinks).length === 0 && (
+                    <p className="text-sm text-slate-500 italic">Nenhum termo cadastrado ainda.</p>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

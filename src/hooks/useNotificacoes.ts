@@ -154,8 +154,8 @@ export function useDeletarNotificacao() {
  */
 export function useNotificacoesComBadges() {
   const { user } = useAuth();
-  const { data: notificacoesData = [], refetch: refetchNotif } = useNotificacoesQuery();
-  const { data: solicitacoesData = [] } = useSolicitacoesQuery();
+  const { data: notificacoesData = [], refetch: refetchNotif, isLoading: isLoadingNotif } = useNotificacoesQuery();
+  const { data: solicitacoesData = [], isLoading: isLoadingSol } = useSolicitacoesQuery();
 
   const localStorageKey = `notif_last_seen_${user?.id || 'guest'}`;
   const [lastSeenTime, setLastSeenTime] = useState<number>(() => {
@@ -241,5 +241,6 @@ export function useNotificacoesComBadges() {
     unreadCount,
     alteracoesList,
     marcarTodasLidas,
+    isLoading: isLoadingNotif || isLoadingSol,
   };
 }

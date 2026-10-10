@@ -66,6 +66,8 @@ export function useRegistrarRetirada() {
       parentescoRetirador,
       observacoes,
       imagensUrls,
+      valorNominal,
+      atributosAtualizados,
     }: {
       solicitacaoId: string;
       equipamentoId: string;
@@ -76,6 +78,8 @@ export function useRegistrarRetirada() {
       parentescoRetirador?: string;
       observacoes?: string;
       imagensUrls?: string[];
+      valorNominal?: number;
+      atributosAtualizados?: any;
     }) => {
       const { data: current, error: currentError } = await supabase
         .from('solicitacoes')
@@ -95,9 +99,13 @@ export function useRegistrarRetirada() {
       if (solError) throw solError;
 
       // Atualizar status do equipamento
+      const updatePayload: any = { status: 'emprestado' };
+      if (valorNominal !== undefined) updatePayload.valor_nominal = valorNominal;
+      if (atributosAtualizados !== undefined) updatePayload.atributos = atributosAtualizados;
+
       const { error: eqError } = await supabase
         .from('equipamentos')
-        .update({ status: 'emprestado' })
+        .update(updatePayload)
         .eq('id', equipamentoId);
       if (eqError) throw eqError;
 

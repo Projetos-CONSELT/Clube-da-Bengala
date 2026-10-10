@@ -7,7 +7,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
   Search, Plus, MoreVertical, FileText, User, Package, Calendar, Loader2, Eye, Edit, Trash2,
-  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard, Copy,
+  CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, RefreshCw, Image, X, Upload, Sparkles, CreditCard, Copy, Info,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { gerarCobrancaGateway } from '@/utils/gatewayService';
@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { downloadReceiptPdf, downloadTermoRetiradaPdf } from '@/lib/receiptPdf';
 import RequestHistoryTimeline from '@/components/solicitacoes/RequestHistoryTimeline';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -42,8 +43,9 @@ import {
   useReservarEquipamento,
   useTransferirSolicitacao,
 } from '@/hooks/useSolicitacoes';
-import { useBeneficiariosQuery } from '@/hooks/useBeneficiarios';
+import { useBeneficiariosQuery, useCreateBeneficiario } from '@/hooks/useBeneficiarios';
 import { useAuditLogsQuery, useRejectionLogsQuery } from '@/hooks/useAuditLogs';
+import { useConfiguracoesSistema } from '@/hooks/useConfiguracoesSistema';
 import { useImagensRetiradaQuery, useUploadImagemRetirada, useDeleteImagemRetirada } from '@/hooks/useImagensRetirada';
 import {
   useImagensDevolucaoQuery, useUploadImagemDevolucao, useDeleteImagemDevolucao
@@ -56,6 +58,7 @@ import {
   useRegistrarPagamentoRessarcimento,
   useReciboQuery,
 } from '@/hooks/useFluxoRetiradaDevolucao';
+import { DocumentosUsuarioTab } from '@/components/solicitacoes/DocumentosUsuarioTab';
 import {
   getStatusSolicitacaoUi,
   getSubtiposTipo,
@@ -72,8 +75,7 @@ import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
 import { MapSelector, type Nucleo } from '@/components/MapSelector';
 import { useNucleosQuery } from '@/hooks/useNucleos';
-import { supabase } from '@/lib/supabase';
-import { formatCEP, cleanCPF } from '@/utils/cpf';
+import { formatCEP, cleanCPF, formatCPF } from '@/utils/cpf';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number | null, lon2: number | null): number {
   if (lat2 === null || lon2 === null || lat2 === 0 || lon2 === 0) return 9999;
@@ -830,6 +832,7 @@ export default function Solicitacoes() {
   const { data: rejectionMap } = useRejectionLogsQuery();
   const [selected, setSelected] = useState<SolicitacaoComRelacoes | null>(null);
   const { data: selectedLogs = [] } = useAuditLogsQuery(selected?.id);
+  const { data: configSistema } = useConfiguracoesSistema('geral');
 
   const createMutation = useCreateSolicitacao();
   const updateMutation = useUpdateSolicitacao();
@@ -890,10 +893,16 @@ export default function Solicitacoes() {
   const [retiradaCpfRetirador, setRetiradaCpfRetirador] = useState('');
   const [retiradaParentesco, setRetiradaParentesco] = useState('Próprio Solicitante');
   const [retiradaObservacoes, setRetiradaObservacoes] = useState('');
+  const [retiradaValorNominal, setRetiradaValorNominal] = useState<string>('');
+  const [retiradaAtributos, setRetiradaAtributos] = useState<Record<string, any>>({});
   const [retiradaFiles, setRetiradaFiles] = useState<File[]>([]);
   const [uploadingRetirada, setUploadingRetirada] = useState(false);
   const [devolucaoFiles, setDevolucaoFiles] = useState<File[]>([]);
   const [devolucaoEstado, setDevolucaoEstado] = useState('bom');
+  const [renovacaoModalOpen, setRenovacaoModalOpen] = useState(false);
+  const [renovacaoFiles, setRenovacaoFiles] = useState<File[]>([]);
+  const [renovacaoJustificativa, setRenovacaoJustificativa] = useState('');
+  const [uploadingRenovacao, setUploadingRenovacao] = useState(false);
   const [boletoLink, setBoletoLink] = useState('');
   const [boletoValor, setBoletoValor] = useState('');
   const [boloPrazo, setBoloPrazo] = useState('');
@@ -905,7 +914,21 @@ export default function Solicitacoes() {
     tipo_equipamento_id: '',
     subtipo_id: '',
     motivo_solicitacao: '',
+    como_conheceu: '',
+    tempo_estimado_meses: '',
+    aceitou_termos: false,
   });
+
+  const [novoBeneficiario, setNovoBeneficiario] = useState({
+    nome_completo: '',
+    cpf: '',
+    data_nascimento: '',
+    altura_cm: '',
+    peso_kg: '',
+    tamanho_calcado: '',
+  });
+
+  const createBeneficiario = useCreateBeneficiario();
 
   const { data: cepData, loading: cepLoading, error: cepError, fetchCEP } = useViaCEP();
   const { coordinates, loading: geoLoading, error: geoError, fetchCoordinates } = useGeocoding();
@@ -972,6 +995,18 @@ export default function Solicitacoes() {
   const equipamentos = equipamentosQuery.data ?? [];
   const beneficiarios = beneficiariosQuery.data ?? [];
 
+  useEffect(() => {
+    if (
+      role === 'solicitante' &&
+      !solicitacoesQuery.isLoading &&
+      !beneficiariosQuery.isLoading &&
+      solicitacoes.length === 0 &&
+      beneficiarios.length === 0
+    ) {
+      setModalOpen(true);
+    }
+  }, [role, solicitacoes.length, beneficiarios.length, solicitacoesQuery.isLoading, beneficiariosQuery.isLoading]);
+
   const availableSubtipos = useMemo(() => {
     if (!formData.tipo_equipamento_id) return [];
     const tipoObj = tipos.find((t) => t.id === formData.tipo_equipamento_id);
@@ -1032,7 +1067,8 @@ export default function Solicitacoes() {
   );
 
   const openNewModal = () => {
-    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', subtipo_id: '', motivo_solicitacao: '' });
+    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', subtipo_id: '', motivo_solicitacao: '', como_conheceu: '', tempo_estimado_meses: '', aceitou_termos: false });
+    setNovoBeneficiario({ nome_completo: '', cpf: '', data_nascimento: '', altura_cm: '', peso_kg: '', tamanho_calcado: '' });
     setCepInput('');
     setSelectedNucleoId('');
     setNucleosProximos([]);
@@ -1040,11 +1076,43 @@ export default function Solicitacoes() {
     setModalOpen(true);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formData.tipo_equipamento_id || !formData.beneficiario_id) return;
     if (availableSubtipos.length > 0 && !formData.subtipo_id) {
       toast({ variant: 'destructive', title: 'Selecione o subtipo de equipamento' });
       return;
+    }
+    if (!formData.aceitou_termos) {
+      toast({ variant: 'destructive', title: 'Aceite os termos de empréstimo para continuar.' });
+      return;
+    }
+
+    let finalBeneficiarioId = formData.beneficiario_id;
+
+    if (finalBeneficiarioId === 'novo') {
+      if (!novoBeneficiario.nome_completo || !novoBeneficiario.cpf || !novoBeneficiario.data_nascimento) {
+        toast({ variant: 'destructive', title: 'Preencha os dados obrigatórios do novo beneficiário.' });
+        return;
+      }
+      try {
+        const payload = {
+          nome_completo: novoBeneficiario.nome_completo,
+          cpf: cleanCPF(novoBeneficiario.cpf),
+          data_nascimento: novoBeneficiario.data_nascimento,
+          altura_cm: novoBeneficiario.altura_cm ? Number(novoBeneficiario.altura_cm) : null,
+          peso_kg: novoBeneficiario.peso_kg ? Number(novoBeneficiario.peso_kg) : null,
+          tamanho_calcado: novoBeneficiario.tamanho_calcado ? Number(novoBeneficiario.tamanho_calcado) : null,
+        };
+        const benefData = await createBeneficiario.mutateAsync(payload);
+        if (benefData) {
+          finalBeneficiarioId = benefData.id;
+        } else {
+          throw new Error('Falha ao criar o beneficiário.');
+        }
+      } catch (err: any) {
+        toast({ variant: 'destructive', title: 'Erro', description: err.message });
+        return;
+      }
     }
 
     const selectedSubtipoObj = availableSubtipos.find((s) => s.id === formData.subtipo_id);
@@ -1054,14 +1122,16 @@ export default function Solicitacoes() {
 
     createMutation.mutate(
       {
-        beneficiario_id: formData.beneficiario_id,
+        beneficiario_id: finalBeneficiarioId,
         tipo_equipamento_id: formData.tipo_equipamento_id,
         motivo_solicitacao: motivoFinal || undefined,
+        como_conheceu: formData.como_conheceu || undefined,
+        tempo_estimado_meses: formData.tempo_estimado_meses ? Number(formData.tempo_estimado_meses) : undefined,
         nucleo_id: selectedNucleoId || undefined,
       },
       {
         onSuccess: () => {
-          toast({ title: 'Solicitação criada com sucesso' });
+          toast({ title: 'Sucesso', description: 'A solicitação foi registrada e está em andamento.' });
           setModalOpen(false);
         },
         onError: (err) =>
@@ -1078,9 +1148,23 @@ export default function Solicitacoes() {
         ...(newStatus === 'encerrada' && motivo ? { motivoRecusa: motivo } : {}),
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           toast({ title: `Status atualizado: ${getStatusSolicitacaoUi(newStatus).label}` });
           setTriageModalOpen(false);
+
+          if (newStatus === 'encerrada' && motivo && sol.solicitante_id) {
+            try {
+              await supabase.from('notificacoes').insert({
+                solicitacao_id: sol.id,
+                usuario_id: sol.solicitante_id,
+                tipo: 'retirada',
+                titulo: `Solicitação ${sol.protocolo || ''} Recusada`,
+                descricao: `Sua solicitação foi recusada. Motivo: ${motivo}`,
+                lido: false,
+              });
+            } catch (e) {}
+          }
+
           // Abre modal de upload se foi aprovado
           if (newStatus === 'aguardando_retirada') {
             setSelected(sol);
@@ -1176,19 +1260,18 @@ export default function Solicitacoes() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-slate-900">
-                #{s.protocolo || s.id.slice(0, 8)}
+              <p className="font-semibold text-slate-900 text-base">
+                {tipoName(s)}
               </p>
               <StatusBadge status={s.status} isRecusada={isRecusada} />
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
+              <span className="flex items-center gap-1 font-mono text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                #{s.protocolo || s.id.slice(0, 8)}
+              </span>
               <span className="flex items-center gap-1">
                 <User className="w-3 h-3" />
                 {solicitanteName(s)}
-              </span>
-              <span className="flex items-center gap-1">
-                <Package className="w-3 h-3" />
-                {tipoName(s)}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
@@ -1257,7 +1340,10 @@ export default function Solicitacoes() {
               size="sm"
               onClick={() => {
                 setSelected(s);
+                const eq = s.equipamento_reservado_id ? equipamentos.find(e => e.id === s.equipamento_reservado_id) : undefined;
                 setRetiradaEquipamentoId(s.equipamento_reservado_id || '');
+                setRetiradaValorNominal(eq?.valor_nominal ? String(eq.valor_nominal) : '');
+                setRetiradaAtributos(eq?.atributos ? (eq.atributos as Record<string, any>) : {});
                 setRetiradaResponsavel(user?.full_name || '');
                 setRetiradaNomeRetirador(s.solicitante?.nome_completo || s.beneficiario?.nome_completo || '');
                 setRetiradaCpfRetirador(s.solicitante?.cpf || s.beneficiario?.cpf || '');
@@ -1284,6 +1370,16 @@ export default function Solicitacoes() {
               Registrar Devolução
             </Button>
           )}
+          {!isBackOffice && s.status === 'equipamento_emprestado' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setSelected(s); setRenovacaoModalOpen(true); }}
+              className="text-blue-600 border-blue-200"
+            >
+              Solicitar Renovação
+            </Button>
+          )}
           {isManager && s.status === 'em_cobranca' && !s.pagamento_ressarcimento_realizado && (
             <Button
               variant="outline"
@@ -1305,9 +1401,18 @@ export default function Solicitacoes() {
               <DropdownMenuItem onClick={() => { setSelected(s); setDetailModalOpen(true); }}>
                 <Eye className="w-4 h-4 mr-2" /> Visualizar
               </DropdownMenuItem>
-              {isManager && s.status === 'aguardando_retirada' && (
-                <DropdownMenuItem onClick={() => { setSelected(s); setBoletoModalOpen(true); }}>
-                  <FileText className="w-4 h-4 mr-2" /> Registrar Boleto
+              {isManager && (s.status === 'equipamento_emprestado' || s.status === 'em_cobranca' || s.status === 'em_devolucao') && (
+                <DropdownMenuItem onClick={() => { 
+                  setSelected(s); 
+                  const eq = s.equipamento_reservado_id ? equipamentos.find(e => e.id === s.equipamento_reservado_id) : undefined;
+                  if (eq && eq.valor_nominal) {
+                    setBoletoValor(String(eq.valor_nominal));
+                  } else {
+                    setBoletoValor('');
+                  }
+                  setBoletoModalOpen(true); 
+                }}>
+                  <FileText className="w-4 h-4 mr-2" /> Registrar Boleto / Multa
                 </DropdownMenuItem>
               )}
               {isBackOffice && (
@@ -1364,19 +1469,25 @@ export default function Solicitacoes() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
-        <div className="flex flex-1 flex-col sm:flex-row gap-3 max-w-2xl">
-          <div className="relative flex-1 min-w-[220px]">
+      <div className="flex flex-col gap-4 mb-2">
+        {/* Superior: Barra de Pesquisa e Botão Nova Solicitação */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+          <div className="relative flex-1 max-w-2xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Buscar por protocolo, responsável..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 text-sm"
+              className="pl-9 text-sm w-full"
             />
           </div>
+          <Button onClick={openNewModal} className="gap-2 bg-blue-600 hover:bg-blue-700 whitespace-nowrap">
+            <Plus className="w-4 h-4" /> Nova Solicitação
+          </Button>
+        </div>
 
-          {/* Filtro por Data ao lado da Barra de Pesquisa */}
+        {/* Inferior: Filtros */}
+        <div className="flex flex-wrap gap-3 items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
           <div className="flex items-center gap-2">
             <Select
               value={dateFilter}
@@ -1408,10 +1519,9 @@ export default function Solicitacoes() {
               />
             )}
           </div>
-        </div>
-        <div className="flex gap-3 flex-wrap">
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="w-40 bg-white"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               {Object.entries(STATUS_SOLICITACAO_UI).map(([k, v]) => (
@@ -1419,8 +1529,9 @@ export default function Solicitacoes() {
               ))}
             </SelectContent>
           </Select>
+
           <Select value={tipoFilter} onValueChange={setTipoFilter}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Tipo" /></SelectTrigger>
+            <SelectTrigger className="w-48 bg-white"><SelectValue placeholder="Tipo" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os tipos</SelectItem>
               {tipos.map((tipo) => (
@@ -1428,27 +1539,29 @@ export default function Solicitacoes() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={handleRefresh} className="gap-2">
-            <RefreshCw className={`w-4 h-4 ${solicitacoesQuery.isFetching ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            variant={viewMode === 'historico' ? 'default' : 'outline'}
-            onClick={() => {
-              if (viewMode === 'historico') {
-                setViewMode('normal');
-                setHistoricoPage(0);
-              } else {
-                setViewMode('historico');
-                setHistoricoPage(0);
-              }
-            }}
-            className="gap-2"
-          >
-            <History className="w-4 h-4" /> {viewMode === 'historico' ? 'Voltar' : 'Ver Histórico'}
-          </Button>
-          <Button onClick={openNewModal} className="gap-2 bg-blue-600 hover:bg-blue-700">
-            <Plus className="w-4 h-4" /> Nova Solicitação
-          </Button>
+          
+          <div className="flex-1 min-w-[20px]"></div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleRefresh} className="gap-2 bg-white hover:bg-slate-100">
+              <RefreshCw className={`w-4 h-4 ${solicitacoesQuery.isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant={viewMode === 'historico' ? 'default' : 'outline'}
+              onClick={() => {
+                if (viewMode === 'historico') {
+                  setViewMode('normal');
+                  setHistoricoPage(0);
+                } else {
+                  setViewMode('historico');
+                  setHistoricoPage(0);
+                }
+              }}
+              className={`gap-2 ${viewMode !== 'historico' ? 'bg-white hover:bg-slate-100' : ''}`}
+            >
+              <History className="w-4 h-4" /> {viewMode === 'historico' ? 'Voltar' : 'Ver Histórico'}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1525,22 +1638,107 @@ export default function Solicitacoes() {
           <div className="space-y-4 py-4">
             <div>
               <Label>Beneficiário *</Label>
-              <Select
-                value={formData.beneficiario_id || 'none'}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, beneficiario_id: v === 'none' ? '' : v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {beneficiarios.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.nome_completo}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.beneficiario_id || 'none'}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, beneficiario_id: v === 'none' ? '' : v })
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Selecione ou crie um novo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="novo" className="font-bold text-blue-600">
+                      + Novo Beneficiário
+                    </SelectItem>
+                    {beneficiarios.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.nome_completo}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.beneficiario_id === 'novo' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setNovoBeneficiario((prev) => ({
+                        ...prev,
+                        nome_completo: user?.full_name || '',
+                        cpf: profile?.cpf || '',
+                      }));
+                    }}
+                  >
+                    Sou eu mesmo
+                  </Button>
+                )}
+              </div>
             </div>
+
+            {formData.beneficiario_id === 'novo' && (
+              <div className="bg-slate-50 p-4 rounded-md border border-slate-200 space-y-3 mb-4">
+                <h4 className="text-sm font-semibold text-slate-800">Dados do Novo Beneficiário</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Nome Completo *</Label>
+                    <Input
+                      value={novoBeneficiario.nome_completo}
+                      onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, nome_completo: e.target.value })}
+                      className="bg-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">CPF *</Label>
+                    <Input
+                      value={novoBeneficiario.cpf}
+                      onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, cpf: formatCPF(e.target.value) })}
+                      maxLength={14}
+                      placeholder="000.000.000-00"
+                      className="bg-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Data de Nascimento *</Label>
+                    <Input
+                      type="date"
+                      value={novoBeneficiario.data_nascimento}
+                      onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, data_nascimento: e.target.value })}
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">Altura (cm)</Label>
+                      <Input
+                        type="number"
+                        value={novoBeneficiario.altura_cm}
+                        onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, altura_cm: e.target.value })}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Peso (kg)</Label>
+                      <Input
+                        type="number"
+                        value={novoBeneficiario.peso_kg}
+                        onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, peso_kg: e.target.value })}
+                        className="bg-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Calçado</Label>
+                      <Input
+                        type="number"
+                        value={novoBeneficiario.tamanho_calcado}
+                        onChange={(e) => setNovoBeneficiario({ ...novoBeneficiario, tamanho_calcado: e.target.value })}
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <Label>Tipo de Equipamento *</Label>
               <Select
@@ -1595,18 +1793,60 @@ export default function Solicitacoes() {
                 />
               )}
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Motivo da solicitação</Label>
+                <Textarea
+                  value={formData.motivo_solicitacao}
+                  onChange={(e) => setFormData({ ...formData, motivo_solicitacao: e.target.value })}
+                  placeholder="Descreva o motivo..."
+                  className="resize-none"
+                />
+              </div>
+              <div>
+                <Label>Como conheceu o projeto?</Label>
+                <Select
+                  value={formData.como_conheceu}
+                  onValueChange={(v) => setFormData({ ...formData, como_conheceu: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma opção" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Instagram">Instagram</SelectItem>
+                    <SelectItem value="Facebook">Facebook</SelectItem>
+                    <SelectItem value="Google">Google / Pesquisa</SelectItem>
+                    <SelectItem value="Indicação">Indicação de amigo/familiar</SelectItem>
+                    <SelectItem value="Posto de Saúde">Posto de Saúde / Hospital</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
             <div>
-              <Label>Motivo da solicitação</Label>
-              <Textarea
-                value={formData.motivo_solicitacao}
-                onChange={(e) => setFormData({ ...formData, motivo_solicitacao: e.target.value })}
-                placeholder="Descreva o motivo..."
-              />
+              <Label>Tempo previsto de empréstimo (dias)</Label>
+              <Select
+                value={formData.tempo_estimado_meses}
+                onValueChange={(v) => setFormData({ ...formData, tempo_estimado_meses: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o prazo previsto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {((configSistema?.valor as any)?.opcoes_tempo_emprestimo || []).map((opcao: number) => (
+                    <SelectItem key={opcao} value={String(opcao)}>
+                      {opcao} dias
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* INÍCIO DO FLUXO DE ENDEREÇO E NÚCLEO */}
             <div className="border-t pt-4 mt-6">
-              <h4 className="font-semibold text-lg mb-4">Endereço e Seleção de Núcleo</h4>
+              <h4 className="font-semibold text-lg mb-2">Endereço e Seleção de Núcleo</h4>
+              <p className="text-sm text-slate-500 mb-4">Digite aqui seu endereço para encontrarmos o núcleo mais próximo.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>CEP</Label>
@@ -1698,6 +1938,30 @@ export default function Solicitacoes() {
             </div>
             {/* FIM DO FLUXO DE ENDEREÇO E NÚCLEO */}
 
+            <div className="border-t pt-4 mt-6">
+              <label className="flex items-center gap-2 p-4 bg-blue-50 border border-blue-100 rounded-lg cursor-pointer hover:bg-blue-100/50 transition-colors">
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                  checked={formData.aceitou_termos}
+                  onChange={(e) => setFormData({ ...formData, aceitou_termos: e.target.checked })}
+                />
+                <span className="text-sm font-medium text-blue-900">
+                  Declaro que li e concordo com os{' '}
+                  <a
+                    href={(configSistema?.valor as any)?.links_termos?.termo_emprestimo_url || '/docs/termo_emprestimo.pdf'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-bold text-blue-700 hover:text-blue-800"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Termos de Empréstimo
+                  </a>{' '}
+                  do Clube da Bengala. *
+                </span>
+              </label>
+            </div>
+
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
@@ -1705,13 +1969,15 @@ export default function Solicitacoes() {
               onClick={handleCreate}
               disabled={
                 createMutation.isPending ||
+                createBeneficiario.isPending ||
                 !formData.tipo_equipamento_id ||
                 !formData.beneficiario_id ||
+                (formData.beneficiario_id === 'novo' && (!novoBeneficiario.nome_completo || !novoBeneficiario.cpf || !novoBeneficiario.data_nascimento)) ||
                 (availableSubtipos.length > 0 && !formData.subtipo_id) ||
                 !selectedNucleoId
               }
             >
-              {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {(createMutation.isPending || createBeneficiario.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Criar Solicitação
             </Button>
           </DialogFooter>
@@ -1766,14 +2032,34 @@ export default function Solicitacoes() {
                   </Tabs>
                 ) : (
                   <Tabs defaultValue="dados" className="mt-4">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-5">
                       <TabsTrigger value="dados">Dados</TabsTrigger>
+                      <TabsTrigger value="documentos">Documentos</TabsTrigger>
                       <TabsTrigger value="imagens">Retirada</TabsTrigger>
                       <TabsTrigger value="devolucao">Devolução</TabsTrigger>
                       <TabsTrigger value="recibo">Recibo</TabsTrigger>
                     </TabsList>
                     <TabsContent value="dados" className="space-y-4 mt-4">
                       <DadosSolicitacaoTab solicitacao={selected} rejectionMap={rejectionMap} />
+                    </TabsContent>
+                    <TabsContent value="documentos" className="mt-4">
+                      {selected.solicitante ? (
+                        <DocumentosUsuarioTab
+                          solicitanteId={selected.solicitante.id}
+                          solicitacaoId={selected.id}
+                          isBackOffice={isBackOffice}
+                          documentoIdentidadeUrl={selected.solicitante.documento_identidade_url}
+                          comprovanteResidenciaUrl={selected.solicitante.comprovante_residencia_url}
+                          documentosAprovados={selected.solicitante.documentos_aprovados}
+                          motivoRejeicaoDocumentos={selected.solicitante.motivo_rejeicao_documentos}
+                          onUpdateStatus={() => {
+                            // Invalidate solicitacoes to get updated applicant info
+                            solicitacoesQuery.refetch();
+                          }}
+                        />
+                      ) : (
+                        <div className="p-4 text-center text-slate-500">Solicitante não encontrado para esta solicitação.</div>
+                      )}
                     </TabsContent>
                     <TabsContent value="imagens" className="mt-4">
                       <ImagensRetiradaTab solicitacaoId={selected.id} isBackOffice={isBackOffice} solicitacao={selected} />
@@ -1812,71 +2098,80 @@ export default function Solicitacoes() {
             <DialogDescription>#{selected?.protocolo || selected?.id?.slice(0, 8)}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
-              <Label>Decisão *</Label>
-              <Select value={triageDecision || 'none'} onValueChange={(v) => {
-                setTriageDecision(v === 'none' ? null : (v as 'aprovado' | 'recusado'));
-                if (v === 'aprovado') setTriageMotivo('');
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma opção" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="aprovado">
-                    <span className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-emerald-600" /> Aprovado
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="recusado">
-                    <span className="flex items-center gap-2">
-                      <XCircle className="w-4 h-4 text-red-600" /> Recusado
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {triageDecision === 'recusado' && (
+            {triageDecision === 'recusado' ? (
               <div>
-                <Label>Motivo da Recusa *</Label>
+                <Label className="text-red-700 flex items-center gap-2 mb-2">
+                  <XCircle className="w-4 h-4" />
+                  Motivo da Recusa *
+                </Label>
                 <Textarea
-                  placeholder="Informe o motivo da recusa..."
+                  placeholder="Informe o motivo da recusa (será enviado ao solicitante)..."
                   value={triageMotivo}
                   onChange={(e) => setTriageMotivo(e.target.value)}
                   className="min-h-24"
                 />
               </div>
-            )}
-
-            {triageDecision === 'aprovado' && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                <p className="text-sm text-emerald-700">
-                  <CheckCircle className="w-4 h-4 inline mr-2" />
-                  Solicitação será enviada para retirada. Você poderá anexar imagens na próxima etapa.
-                </p>
+            ) : (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-700 text-center">
+                <p>Analise os dados da solicitação.</p>
+                <p className="mt-2 text-xs text-slate-500">Se o usuário já possuir documentos aprovados, a solicitação irá direto para <b>Aguardando Retirada</b>. Caso contrário, irá para <b>Aguardando Documentação</b>.</p>
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTriageModalOpen(false)}>Cancelar</Button>
-            <Button
-              onClick={() => {
-                if (!selected || !triageDecision) return;
-                if (triageDecision === 'recusado' && !triageMotivo.trim()) {
-                  toast({ variant: 'destructive', title: 'Informe o motivo da recusa' });
-                  return;
-                }
-                updateStatus(
-                  selected,
-                  triageDecision === 'aprovado' ? 'aguardando_retirada' : 'encerrada',
-                  triageDecision === 'recusado' ? triageMotivo : undefined
-                );
-              }}
-              disabled={updateMutation.isPending || !triageDecision || (triageDecision === 'recusado' && !triageMotivo.trim())}
-            >
-              {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Confirmar Decisão
-            </Button>
+          <DialogFooter className="flex sm:justify-between w-full">
+            <div className="flex-1">
+              {triageDecision !== 'recusado' && (
+                <Button
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => setTriageDecision('recusado')}
+                >
+                  Rejeitar
+                </Button>
+              )}
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => {
+                setTriageModalOpen(false);
+                setTriageDecision(null);
+                setTriageMotivo('');
+              }}>
+                Cancelar
+              </Button>
+              {triageDecision === 'recusado' ? (
+                <Button
+                  onClick={() => {
+                    if (!selected) return;
+                    if (!triageMotivo.trim()) {
+                      toast({ variant: 'destructive', title: 'Informe o motivo da recusa' });
+                      return;
+                    }
+                    updateStatus(selected, 'encerrada', triageMotivo);
+                  }}
+                  variant="destructive"
+                  disabled={updateMutation.isPending || !triageMotivo.trim()}
+                >
+                  {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Confirmar Rejeição
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    if (!selected) return;
+                    const proximoStatus = selected.solicitante?.documentos_aprovados 
+                      ? 'aguardando_retirada' 
+                      : 'aguardando_documentacao';
+                    updateStatus(selected, proximoStatus);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Aprovar
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2116,7 +2411,12 @@ export default function Solicitacoes() {
                     <Label className="text-xs">Selecionar Equipamento *</Label>
                     <Select
                       value={retiradaEquipamentoId}
-                      onValueChange={setRetiradaEquipamentoId}
+                      onValueChange={(val) => {
+                        setRetiradaEquipamentoId(val);
+                        const eq = equipamentos.find(e => e.id === val);
+                        setRetiradaValorNominal(eq?.valor_nominal ? String(eq.valor_nominal) : '');
+                        setRetiradaAtributos(eq?.atributos ? (eq.atributos as Record<string, any>) : {});
+                      }}
                     >
                       <SelectTrigger className="mt-1">
                         <SelectValue placeholder="Selecione um equipamento" />
@@ -2164,6 +2464,23 @@ export default function Solicitacoes() {
                     onChange={setRetiradaEquipamento}
                     placeholder="Selecione a data prevista de devolução"
                   />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 mt-4 pt-4">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3">Valor Nominal e Características Base</h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Valor Nominal (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      className="mt-1 bg-white"
+                      placeholder="Ex: 150.00"
+                      value={retiradaValorNominal}
+                      onChange={(e) => setRetiradaValorNominal(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -2406,6 +2723,8 @@ export default function Solicitacoes() {
                         parentescoRetirador: retiradaParentesco,
                         observacoes: retiradaObservacoes.trim(),
                         imagensUrls: uploadedUrls,
+                        valorNominal: retiradaValorNominal ? parseFloat(retiradaValorNominal) : undefined,
+                        atributosAtualizados: Object.keys(retiradaAtributos).length > 0 ? retiradaAtributos : undefined,
                       },
                       {
                         onSuccess: () => {
@@ -2480,6 +2799,128 @@ export default function Solicitacoes() {
                 {uploadingRetirada ? 'Enviando Fotos...' : 'Confirmar Retirada & Gerar Termo'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Solicitar Renovação (Solicitante) */}
+      <Dialog open={renovacaoModalOpen} onOpenChange={setRenovacaoModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Solicitar Renovação de Empréstimo</DialogTitle>
+            <DialogDescription>Para solicitar a renovação, envie fotos atuais do equipamento.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Justificativa para Renovação *</Label>
+              <Textarea
+                placeholder="Por que você precisa renovar o empréstimo?"
+                value={renovacaoJustificativa}
+                onChange={(e) => setRenovacaoJustificativa(e.target.value)}
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Fotos do Estado Atual (1 a 5 imagens) *</Label>
+              <div
+                className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors mt-1"
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+                  const validImageFiles = droppedFiles.filter(file => file.type.startsWith('image/'));
+                  if (validImageFiles.length > 0) {
+                    if (validImageFiles.length + renovacaoFiles.length <= 5) {
+                      setRenovacaoFiles([...renovacaoFiles, ...validImageFiles]);
+                    } else {
+                      toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                    }
+                  }
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onClick={() => document.getElementById('renovacao-file-input')?.click()}
+              >
+                <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                <p className="text-sm font-medium text-slate-700">Clique ou arraste imagens aqui</p>
+              </div>
+              <input
+                id="renovacao-file-input"
+                type="file"
+                multiple
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length + renovacaoFiles.length <= 5) {
+                    setRenovacaoFiles([...renovacaoFiles, ...files]);
+                  } else {
+                    toast({ variant: 'destructive', title: 'Máximo de 5 imagens permitidas' });
+                  }
+                }}
+              />
+            </div>
+            {renovacaoFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {renovacaoFiles.map((file, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-20 object-cover rounded" />
+                    <button
+                      onClick={() => setRenovacaoFiles(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-80 hover:opacity-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenovacaoModalOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={async () => {
+                if (!selected || renovacaoFiles.length === 0 || !renovacaoJustificativa.trim()) return;
+                setUploadingRenovacao(true);
+                try {
+                  const urls: string[] = [];
+                  for (const file of renovacaoFiles) {
+                    await new Promise((resolve, reject) => {
+                      uploadImagemMutation.mutate(
+                        { solicitacaoId: selected.id, file, descricao: 'Foto Renovação' },
+                        {
+                          onSuccess: (res: any) => { if (res?.url_imagem) urls.push(res.url_imagem); resolve(null); },
+                          onError: reject
+                        }
+                      );
+                    });
+                  }
+                  
+                  // Inserir log e solicitar renovação (poderia ser uma table separada, mas usaremos log por simplicidade)
+                  await supabase.from('audit_logs').insert({
+                    solicitacao_id: selected.id,
+                    action_type: 'RENOVACAO_SOLICITADA',
+                    details: {
+                      justificativa: renovacaoJustificativa,
+                      fotos: urls,
+                    }
+                  });
+                  
+                  toast({ title: 'Renovação Solicitada', description: 'Seu pedido de renovação foi enviado e está em análise.' });
+                  setRenovacaoModalOpen(false);
+                  setRenovacaoFiles([]);
+                  setRenovacaoJustificativa('');
+                } catch (err: any) {
+                  toast({ variant: 'destructive', title: 'Erro', description: err.message });
+                } finally {
+                  setUploadingRenovacao(false);
+                }
+              }}
+              disabled={uploadingRenovacao || renovacaoFiles.length === 0 || !renovacaoJustificativa.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {uploadingRenovacao && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Enviar Solicitação
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2641,7 +3082,7 @@ export default function Solicitacoes() {
                   setUploadingDevolucao(false);
                 }
               }}
-              disabled={uploadingDevolucao || !devolucaoEstado}
+              disabled={uploadingDevolucao || !devolucaoEstado || devolucaoFiles.length === 0}
             >
               {uploadingDevolucao && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Confirmar Devolução

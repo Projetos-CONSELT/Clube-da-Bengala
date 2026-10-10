@@ -2,7 +2,6 @@ import Dashboard from './pages/Dashboard';
 import Pessoas from './pages/Pessoas';
 import Solicitacoes from './pages/Solicitacoes';
 import Equipamentos from './pages/Equipamentos';
-import Emprestimos from './pages/Emprestimos';
 import Relatorios from './pages/Relatorios';
 import Configuracoes from './pages/Configuracoes';
 import Fila from './pages/Fila';
@@ -18,7 +17,6 @@ export const PAGES = {
   Pessoas,
   Solicitacoes,
   Equipamentos,
-  Emprestimos,
   Relatorios,
   Configuracoes,
   Fila,

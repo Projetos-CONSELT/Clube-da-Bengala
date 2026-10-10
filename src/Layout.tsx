@@ -74,7 +74,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: 'Dashboard', icon: LayoutDashboard, group: null, backOfficeOnly: true },
   { name: 'Atendimento', href: 'Atendimento', icon: Headphones, group: 'Operacional', backOfficeOnly: true },
-  { name: 'Pessoas', href: 'Pessoas', icon: Users, group: 'Operacional' },
+  { name: 'Pessoas', href: 'Pessoas', icon: Users, group: 'Operacional', backOfficeOnly: true },
   { name: 'Solicitações', href: 'Solicitacoes', icon: ClipboardList, group: 'Operacional' },
   { name: 'Fila', href: 'Fila', icon: ListOrdered, group: 'Operacional', backOfficeOnly: true },
   { name: 'Empréstimos', href: 'Emprestimos', icon: Truck, group: 'Operacional', backOfficeOnly: true },

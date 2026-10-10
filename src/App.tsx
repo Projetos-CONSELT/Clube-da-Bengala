@@ -21,6 +21,7 @@ import Termos from '@/pages/Termos';
 import ResetPassword from '@/pages/ResetPassword';
 import FaturaPagamento from '@/pages/FaturaPagamento';
 import QueroAjudar from '@/pages/QueroAjudar';
+import QueroDoar from '@/pages/QueroDoar';
 import VerificarEmail from '@/pages/VerificarEmail';
 import type { UserRole } from '@/types/database.types';
 import type { ReactNode } from 'react';
@@ -50,7 +51,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Notificacoes: ALL_ROLES,
   Pessoas: ALL_ROLES,
   Equipamentos: BACK_OFFICE_ROLES,
-  Emprestimos: BACK_OFFICE_ROLES,
+
   Relatorios: ['ceo', 'gerente'],
   Fila: BACK_OFFICE_ROLES,
   Doacoes: BACK_OFFICE_ROLES,
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/termos" element={<Termos />} />
       <Route path="/quero-ajudar" element={<QueroAjudar />} />
+      <Route path="/quero-doar" element={<QueroDoar />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/verificar-email" element={<VerificarEmail />} />
       <Route path="/fatura/:solicitacaoId" element={<FaturaPagamento />} />

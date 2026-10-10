@@ -67,6 +67,7 @@ interface FormState {
   status: string;
   localizacao: string;
   observacoes: string;
+  valor_nominal?: number | '';
 }
 
 const EMPTY_FORM: FormState = {
@@ -79,6 +80,7 @@ const EMPTY_FORM: FormState = {
   status: 'disponivel',
   localizacao: '',
   observacoes: '',
+  valor_nominal: '',
 };
 
 function formToPayload(form: FormState): EquipamentoFormPayload {
@@ -86,6 +88,7 @@ function formToPayload(form: FormState): EquipamentoFormPayload {
     codigo_patrimonio: form.codigo_patrimonio,
     tipo_id: form.tipo_id,
     status: form.status as EquipamentoFormPayload['status'],
+    valor_nominal: form.valor_nominal === '' ? null : Number(form.valor_nominal),
     atributos: {
       estado_conservacao: form.estado_conservacao,
       localizacao: form.localizacao,
@@ -109,6 +112,7 @@ function equipamentoToForm(eq: EquipamentoComTipo): FormState {
     status: eq.status,
     localizacao: String(attrs.localizacao || ''),
     observacoes: String(attrs.observacoes || ''),
+    valor_nominal: eq.valor_nominal ?? '',
   };
 }
 
@@ -197,7 +201,13 @@ export default function Equipamentos() {
   const [selected, setSelected] = useState<EquipamentoComTipo | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
-  const [tipoFormData, setTipoFormData] = useState({ nome: '', descricao: '' });
+  const [tipoFormData, setTipoFormData] = useState({ 
+    nome: '', 
+    descricao: '', 
+    imagem_ilustrativa_url: '', 
+    limite_renovacoes: 2, 
+    schema_especificacoes: '{}' 
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -379,7 +389,7 @@ export default function Equipamentos() {
     }
     setIsEditingTipo(false);
     setSelectedTipoForEdit(null);
-    setTipoFormData({ nome: '', descricao: '' });
+    setTipoFormData({ nome: '', descricao: '', imagem_ilustrativa_url: '', limite_renovacoes: 2, schema_especificacoes: '{}' });
     setTipoModalOpen(true);
   };
 
@@ -394,7 +404,13 @@ export default function Equipamentos() {
     }
     setIsEditingTipo(true);
     setSelectedTipoForEdit(tipo);
-    setTipoFormData({ nome: tipo.nome, descricao: tipo.descricao || '' });
+    setTipoFormData({ 
+      nome: tipo.nome, 
+      descricao: tipo.descricao || '', 
+      imagem_ilustrativa_url: tipo.imagem_ilustrativa_url || '', 
+      limite_renovacoes: tipo.limite_renovacoes ?? 2, 
+      schema_especificacoes: JSON.stringify(tipo.schema_especificacoes || {}) 
+    });
     setTipoModalOpen(true);
   };
 
@@ -409,10 +425,19 @@ export default function Equipamentos() {
     }
     if (!tipoFormData.nome.trim()) return;
     if (isEditingTipo && selectedTipoForEdit) {
+      let parsedSchema = {};
+      try { parsedSchema = JSON.parse(tipoFormData.schema_especificacoes); } catch(e) {}
+      
       updateTipoMut.mutate(
         {
           id: selectedTipoForEdit.id,
-          patch: { nome: tipoFormData.nome.trim(), descricao: tipoFormData.descricao.trim() || null },
+          patch: { 
+            nome: tipoFormData.nome.trim(), 
+            descricao: tipoFormData.descricao.trim() || null,
+            imagem_ilustrativa_url: tipoFormData.imagem_ilustrativa_url.trim() || null,
+            limite_renovacoes: tipoFormData.limite_renovacoes,
+            schema_especificacoes: parsedSchema,
+          },
         },
         {
           onSuccess: () => {
@@ -424,11 +449,20 @@ export default function Equipamentos() {
         }
       );
     } else {
-      createTipoMut.mutate(tipoFormData, {
+      let parsedSchema = {};
+      try { parsedSchema = JSON.parse(tipoFormData.schema_especificacoes); } catch(e) {}
+
+      createTipoMut.mutate({
+        nome: tipoFormData.nome.trim(),
+        descricao: tipoFormData.descricao.trim() || null,
+        imagem_ilustrativa_url: tipoFormData.imagem_ilustrativa_url.trim() || null,
+        limite_renovacoes: tipoFormData.limite_renovacoes,
+        schema_especificacoes: parsedSchema,
+      }, {
         onSuccess: () => {
           toast({ title: 'Novo tipo de equipamento cadastrado com sucesso' });
           setTipoModalOpen(false);
-          setTipoFormData({ nome: '', descricao: '' });
+          setTipoFormData({ nome: '', descricao: '', imagem_ilustrativa_url: '', limite_renovacoes: 2, schema_especificacoes: '{}' });
         },
         onError: (err) =>
           toast({ variant: 'destructive', title: 'Erro ao criar tipo', description: err.message }),
@@ -870,6 +904,11 @@ export default function Equipamentos() {
                                           <Badge className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
                                             {String(attrs.estado_conservacao || 'bom')}
                                           </Badge>
+                                          {eq.valor_nominal && (
+                                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">
+                                              R$ {Number(eq.valor_nominal).toFixed(2).replace('.', ',')}
+                                            </Badge>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
@@ -1458,6 +1497,18 @@ export default function Equipamentos() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label>Valor Nominal (R$)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.valor_nominal}
+                      onChange={(e) => setFormData({ ...formData, valor_nominal: e.target.value })}
+                      placeholder="Ex: 150.00"
+                      className="bg-white"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -1526,6 +1577,79 @@ export default function Equipamentos() {
                 value={tipoFormData.descricao}
                 onChange={(e) => setTipoFormData({ ...tipoFormData, descricao: e.target.value })}
                 placeholder="Descrição geral sobre os equipamentos desta pasta..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-amber-500" /> Imagem Ilustrativa (URL ou Arquivo)
+              </Label>
+              <Input
+                value={tipoFormData.imagem_ilustrativa_url}
+                onChange={(e) => setTipoFormData({ ...tipoFormData, imagem_ilustrativa_url: e.target.value })}
+                placeholder="Cole a URL da imagem (https://...)"
+              />
+              <div className="flex items-center gap-3 pt-1">
+                <Label
+                  htmlFor="tipo-image-file"
+                  className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-2 rounded-lg font-medium transition-colors inline-flex items-center gap-1.5"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" /> Escolher arquivo
+                </Label>
+                <input
+                  id="tipo-image-file"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setTipoFormData((prev) => ({ ...prev, imagem_ilustrativa_url: reader.result as string }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                {tipoFormData.imagem_ilustrativa_url && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-red-600 hover:text-red-700 px-2"
+                    onClick={() => setTipoFormData((prev) => ({ ...prev, imagem_ilustrativa_url: '' }))}
+                  >
+                    Remover Imagem
+                  </Button>
+                )}
+              </div>
+
+              {tipoFormData.imagem_ilustrativa_url && (
+                <div className="mt-2 relative w-full h-32 bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+                  <img
+                    src={tipoFormData.imagem_ilustrativa_url}
+                    alt="Pré-visualização"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Limite de Renovações</Label>
+              <Input
+                type="number"
+                value={tipoFormData.limite_renovacoes}
+                onChange={(e) => setTipoFormData({ ...tipoFormData, limite_renovacoes: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <Label>Características (JSON)</Label>
+              <Textarea
+                value={tipoFormData.schema_especificacoes}
+                onChange={(e) => setTipoFormData({ ...tipoFormData, schema_especificacoes: e.target.value })}
+                placeholder='Ex: {"peso_suportado": ["85kg", "100kg"], "reclinavel": ["Sim", "Nao"]}'
+                className="font-mono text-xs"
+                rows={3}
               />
             </div>
           </div>

@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import { useViaCEP } from '@/hooks/useViaCEP';
 import { useGeocoding } from '@/hooks/useGeocoding';
+import { Switch } from '@/components/ui/switch';
 import { Building2, Plus, Loader2, MapPin, Trash2, Edit } from 'lucide-react';
 import type { NucleoInsert } from '@/types/database.types';
 
@@ -20,7 +21,7 @@ export default function NucleosAdminTab() {
   const { toast } = useToast();
   const { role: currentUserRole, user } = useAuth();
 
-  const { data: nucleos = [], isLoading, error } = useNucleosQuery();
+  const { data: nucleos = [], isLoading, error } = useNucleosQuery(true);
   const { data: usuarios = [] } = useUsuariosQuery();
   const createNucleo = useCreateNucleo();
   const updateNucleo = useUpdateNucleo();
@@ -113,12 +114,18 @@ export default function NucleosAdminTab() {
     setIsSubmitting(true);
     let coords = { latitude: formData.latitude, longitude: formData.longitude };
 
-    // Geocode se não tiver coordenadas e tiver endereço
-    if (coords.latitude === 0 && coords.longitude === 0 && formData.cidade && formData.estado) {
-      const address = `${formData.logradouro} ${formData.numero}, ${formData.bairro}, ${formData.cidade} - ${formData.estado}, ${formData.cep}`;
+    // Geocode o endereço antes de salvar
+    if (formData.cidade && formData.estado) {
+      const address = `${formData.logradouro} ${formData.numero}, ${formData.bairro}, ${formData.cidade} - ${formData.estado}, ${formData.cep}, Brasil`;
       const result = await fetchCoordinates(address);
       if (result) {
         coords = result;
+      } else {
+        toast({
+          title: 'Coordenadas não encontradas',
+          description: 'O endereço foi salvo, mas a localização no mapa precisará de revisão.',
+          variant: 'destructive',
+        });
       }
     }
 
@@ -275,9 +282,9 @@ export default function NucleosAdminTab() {
 
       <Card className="border-slate-200/80 shadow-sm overflow-hidden rounded-xl">
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
-          <CardTitle className="text-lg font-semibold text-slate-800">Núcleos Ativos</CardTitle>
+          <CardTitle className="text-lg font-semibold text-slate-800">Gestão de Núcleos</CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Gerenciamento das unidades de atendimento.
+            Gerenciamento das unidades de atendimento. Núcleos inativos não aparecerão nas listagens públicas ou formulários.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
@@ -287,6 +294,7 @@ export default function NucleosAdminTab() {
                 <TableHead className="font-semibold text-slate-700 h-11 px-6">Nome</TableHead>
                 <TableHead className="font-semibold text-slate-700 h-11 px-6">Localização</TableHead>
                 <TableHead className="font-semibold text-slate-700 h-11 px-6">Gerente</TableHead>
+                <TableHead className="font-semibold text-slate-700 h-11 px-6 text-center">Status</TableHead>
                 <TableHead className="font-semibold text-slate-700 h-11 px-6 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -310,6 +318,22 @@ export default function NucleosAdminTab() {
                       </TableCell>
                       <TableCell className="px-6 py-4 text-sm text-slate-600">
                         {gerente?.nome_completo || <span className="italic text-slate-400">Não atribuído</span>}
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-center">
+                        <div className="flex justify-center items-center">
+                          <Switch
+                            checked={n.is_ativo !== false}
+                            onCheckedChange={async (checked) => {
+                              try {
+                                await updateNucleo.mutateAsync({ id: n.id, updates: { is_ativo: checked } });
+                                toast({ title: checked ? 'Núcleo ativado' : 'Núcleo desativado' });
+                              } catch (err: any) {
+                                toast({ variant: 'destructive', title: 'Erro ao alterar status', description: err.message });
+                              }
+                            }}
+                            disabled={updateNucleo.isPending || !podeCriarNucleos}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="px-6 py-4 text-right">
                         {podeCriarNucleos && (

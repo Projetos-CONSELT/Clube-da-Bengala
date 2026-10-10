@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useUsuariosQuery } from '@/hooks/useUsuarios';
 import { useTiposEquipamentoQuery } from '@/hooks/useSolicitacoes';
 import { useCreateEquipamento } from '@/hooks/useEquipamentos';
+import { useDoacoesPendentesQuery, useUpdateDoacaoPendenteStatus } from '@/hooks/useDoacoesPendentes';
 import { generateCodigoPatrimonio } from '@/types/domain';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Heart, Plus, MapPin, Phone, Navigation, Building2 } from 'lucide-react';
+import { Heart, Plus, MapPin, Phone, Navigation, Building2, ExternalLink, Check, X } from 'lucide-react';
 import Map, { Marker, NavigationControl, Popup } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useAtivosColaboradoresQuery } from '@/hooks/useColaboradores';
@@ -21,6 +22,8 @@ export default function Doacoes() {
   const usuariosQuery = useUsuariosQuery();
   const tiposQuery = useTiposEquipamentoQuery();
   const createMut = useCreateEquipamento();
+  const doacoesPendentesQuery = useDoacoesPendentesQuery();
+  const updateDoacaoMut = useUpdateDoacaoPendenteStatus();
 
   const [form, setForm] = useState({
     codigo_patrimonio: generateCodigoPatrimonio(),
@@ -28,6 +31,28 @@ export default function Doacoes() {
     doador_id: '',
     observacoes: '',
   });
+
+  // State para preencher o formulário a partir de uma doação pendente
+  const preencherFormularioDoacao = (doacao: any) => {
+    setForm(prev => ({
+      ...prev,
+      observacoes: `Doação via site.\nItem: ${doacao.item_doado}\nDoador: ${doacao.nome_doador}\nCPF: ${doacao.cpf}\nNascimento: ${doacao.data_nascimento}`,
+    }));
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    toast({
+      title: 'Formulário preenchido',
+      description: 'Preencha o Tipo de Equipamento, crie/selecione o Doador e cadastre no estoque.',
+    });
+  };
+
+  const handleStatusDoacao = async (id: string, status: 'aprovado' | 'rejeitado') => {
+    try {
+      await updateDoacaoMut.mutateAsync({ id, status });
+      toast({ title: `Doação marcada como ${status}` });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Erro', description: e.message });
+    }
+  };
 
   const { data: pasAtivos, isLoading: isLoadingPas } = useAtivosColaboradoresQuery();
   const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -38,10 +63,10 @@ export default function Doacoes() {
 
   const [viewState, setViewState] = useState({
     longitude: -48.2772,
-    latitude: -18.9128, // Uberlândia coordinates as default center
+    latitude: -18.9128,
     zoom: 11,
   });
-  // Filtra voluntários cadastrados que são Pontos de Arrecadação (PAs)
+
   const pasRegistrados = useMemo(() => {
     if (!pasAtivos) return [];
     return (pasAtivos as any[]).filter((pa: any) =>
@@ -84,6 +109,81 @@ export default function Doacoes() {
   return (
     <div className="space-y-8">
       
+      {/* Seção Doações Pendentes (Vindas do Site) */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
+            <Gift className="w-6 h-6 text-rose-500" /> Doações Recebidas pelo Site
+          </h2>
+          <p className="text-sm text-slate-500">
+            Pessoas que preencheram o formulário público "Quero Doar". Avalie os itens e registre no estoque.
+          </p>
+        </div>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardContent className="p-0">
+            {doacoesPendentesQuery.isLoading ? (
+              <div className="p-6 text-center text-slate-500">Carregando doações...</div>
+            ) : doacoesPendentesQuery.data?.length === 0 ? (
+              <div className="p-6 text-center text-slate-500">Nenhuma doação pendente no momento.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {doacoesPendentesQuery.data?.map((doacao) => (
+                  <div key={doacao.id} className="p-4 flex flex-col md:flex-row gap-6 items-start hover:bg-slate-50 transition-colors">
+                    <div className="w-full md:w-48 h-32 bg-slate-100 rounded-lg overflow-hidden shrink-0 border">
+                      <a href={doacao.imagem_url} target="_blank" rel="noreferrer" title="Ver imagem ampliada">
+                        <img 
+                          src={doacao.imagem_url} 
+                          alt="Item doado" 
+                          className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                        />
+                      </a>
+                    </div>
+                    
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-bold text-lg text-slate-900">{doacao.item_doado}</h3>
+                          <p className="text-sm text-slate-500">Enviado por: {doacao.nome_doador} (CPF: {doacao.cpf})</p>
+                          <p className="text-xs text-slate-400">Nascimento: {new Date(doacao.data_nascimento).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                        <Badge variant={doacao.status === 'pendente' ? 'secondary' : doacao.status === 'aprovado' ? 'default' : 'destructive'}>
+                          {doacao.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                      
+                      {doacao.status === 'pendente' && (
+                        <div className="pt-2 flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => {
+                              handleStatusDoacao(doacao.id, 'aprovado');
+                              preencherFormularioDoacao(doacao);
+                            }}
+                          >
+                            <Check className="w-4 h-4 mr-1" /> Aprovar e Registrar no Estoque
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleStatusDoacao(doacao.id, 'rejeitado')}
+                          >
+                            <X className="w-4 h-4 mr-1" /> Rejeitar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Seção Pontos de Arrecadação (PAs) */}
       <div className="space-y-4">
         <div>
@@ -95,10 +195,8 @@ export default function Doacoes() {
           </p>
         </div>
 
-        {/* Layout Grade: Mapa (e Lista apenas se o mapa não funcionar) */}
+        {/* Layout Grade: Mapa */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          
-          {/* Mapa de PAs */}
           <div className={isMapWorking ? "lg:col-span-3" : "lg:col-span-2"}>
             <Card className="shadow-sm border-slate-200 overflow-hidden">
               <CardContent className="p-0 relative overflow-hidden h-[450px] rounded-lg">
@@ -142,7 +240,6 @@ export default function Doacoes() {
                               title={pa.nome_completo}
                             >
                               <div className="relative flex flex-col items-center">
-                                {/* Marcador em formato de Coração (igual a Quero Ajudar) */}
                                 <div className="w-9 h-9 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white ring-2 ring-rose-200 group-hover:bg-rose-500 transition-colors">
                                   <Heart className="w-5 h-5 fill-white text-white" />
                                 </div>
@@ -189,7 +286,6 @@ export default function Doacoes() {
             </Card>
           </div>
 
-          {/* Lista de Pontos de Arrecadação Cadastrados (exibida apenas quando o mapa não estiver funcionando) */}
           {!isMapWorking && (
             <div className="lg:col-span-1 space-y-3">
               <Card className="shadow-sm border-slate-200">
@@ -276,7 +372,7 @@ export default function Doacoes() {
       </div>
 
       {/* Formulário de Registro de Doação em Estoque */}
-      <div className="max-w-xl space-y-4 pt-6 border-t border-slate-200">
+      <div className="max-w-xl space-y-4 pt-6 border-t border-slate-200" id="form-estoque">
         <h2 className="text-xl font-bold flex items-center gap-2 text-slate-900">
           <Plus className="w-5 h-5 text-blue-600" /> Registrar doação no Estoque
         </h2>
@@ -313,6 +409,7 @@ export default function Doacoes() {
                 value={form.observacoes}
                 onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
                 placeholder="Observações ou detalhes do item doado..."
+                rows={5}
               />
             </div>
             <Button onClick={submit} disabled={createMut.isPending} className="gap-2 w-full bg-slate-900 hover:bg-slate-800">

@@ -3,14 +3,20 @@ import { supabase } from '@/lib/supabase';
 import type { Nucleo, NucleoInsert, NucleoUpdate } from '@/types/database.types';
 import { useAuth } from '@/lib/AuthContext';
 
-export function useNucleosQuery() {
+export function useNucleosQuery(includeInactive = false) {
   return useQuery({
-    queryKey: ['nucleos'],
+    queryKey: ['nucleos', includeInactive],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('nucleos')
         .select('*')
         .order('nome', { ascending: true });
+
+      if (!includeInactive) {
+        q = q.eq('is_ativo', true);
+      }
+
+      const { data, error } = await q;
 
       if (error) {
         throw new Error(error.message);
