@@ -30,6 +30,8 @@ export type Database = {
           pode_criar_nucleos: boolean | null;
           documento_identidade_url: string | null;
           comprovante_residencia_url: string | null;
+          url_documento_foto?: string | null;
+          url_comprovante_residencia?: string | null;
           documentos_aprovados: boolean | null;
           motivo_rejeicao_documentos: string | null;
           data_nascimento: string | null;
@@ -54,6 +56,8 @@ export type Database = {
           pode_criar_nucleos?: boolean | null;
           documento_identidade_url?: string | null;
           comprovante_residencia_url?: string | null;
+          url_documento_foto?: string | null;
+          url_comprovante_residencia?: string | null;
           documentos_aprovados?: boolean | null;
           motivo_rejeicao_documentos?: string | null;
           data_nascimento?: string | null;
@@ -78,6 +82,8 @@ export type Database = {
           pode_criar_nucleos?: boolean | null;
           documento_identidade_url?: string | null;
           comprovante_residencia_url?: string | null;
+          url_documento_foto?: string | null;
+          url_comprovante_residencia?: string | null;
           documentos_aprovados?: boolean | null;
           motivo_rejeicao_documentos?: string | null;
           data_nascimento?: string | null;

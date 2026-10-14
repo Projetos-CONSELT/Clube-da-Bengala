@@ -13,6 +13,8 @@ interface DocumentosUsuarioTabProps {
   isBackOffice: boolean;
   documentoIdentidadeUrl?: string | null;
   comprovanteResidenciaUrl?: string | null;
+  urlDocumentoFoto?: string | null;
+  urlComprovanteResidencia?: string | null;
   documentosAprovados?: boolean | null;
   motivoRejeicaoDocumentos?: string | null;
   onUpdateStatus?: () => void;
@@ -24,10 +26,15 @@ export function DocumentosUsuarioTab({
   isBackOffice,
   documentoIdentidadeUrl,
   comprovanteResidenciaUrl,
+  urlDocumentoFoto,
+  urlComprovanteResidencia,
   documentosAprovados,
   motivoRejeicaoDocumentos,
   onUpdateStatus
 }: DocumentosUsuarioTabProps) {
+  const docIdentidade = documentoIdentidadeUrl || urlDocumentoFoto;
+  const docResidencia = comprovanteResidenciaUrl || urlComprovanteResidencia;
+
   const { uploadDocumento, isUploading } = useUploadDocumentosUsuario();
   const { toast } = useToast();
   const [motivoRejeicao, setMotivoRejeicao] = useState('');
@@ -123,9 +130,9 @@ export function DocumentosUsuarioTab({
             <FileText className="w-4 h-4 text-slate-500" />
             Documento de Identidade
           </h4>
-          {documentoIdentidadeUrl ? (
+          {docIdentidade ? (
             <div className="space-y-3">
-              <a href={documentoIdentidadeUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+              <a href={docIdentidade} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm break-all">
                 Visualizar Arquivo Atual
               </a>
               {(!documentosAprovados || isBackOffice) && (
@@ -168,9 +175,9 @@ export function DocumentosUsuarioTab({
             <FileText className="w-4 h-4 text-slate-500" />
             Comprovante de Residência
           </h4>
-          {comprovanteResidenciaUrl ? (
+          {docResidencia ? (
             <div className="space-y-3">
-              <a href={comprovanteResidenciaUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm break-all">
+              <a href={docResidencia} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm break-all">
                 Visualizar Arquivo Atual
               </a>
               {(!documentosAprovados || isBackOffice) && (
@@ -209,14 +216,14 @@ export function DocumentosUsuarioTab({
       </div>
 
       {/* Ações do Backoffice */}
-      {isBackOffice && (!documentosAprovados || documentosAprovados === false) && (
+      {isBackOffice && !documentosAprovados && (
         <div className="border-t pt-4 mt-6">
           <h4 className="font-semibold text-slate-800 mb-4">Ações de Aprovação</h4>
           <div className="space-y-4 max-w-lg">
             <div className="flex gap-4">
               <Button 
                 onClick={handleAprovar} 
-                disabled={!documentoIdentidadeUrl || !comprovanteResidenciaUrl || isUpdating}
+                disabled={!docIdentidade || !docResidencia || isUpdating}
                 className="bg-emerald-600 hover:bg-emerald-700"
               >
                 {isUpdating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
@@ -234,7 +241,7 @@ export function DocumentosUsuarioTab({
               <Button 
                 variant="destructive" 
                 onClick={handleRejeitar}
-                disabled={isUpdating || !motivoRejeicao.trim() || (!documentoIdentidadeUrl && !comprovanteResidenciaUrl)}
+                disabled={isUpdating || !motivoRejeicao.trim() || (!docIdentidade && !docResidencia)}
               >
                 {isUpdating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
                 Rejeitar Documentos

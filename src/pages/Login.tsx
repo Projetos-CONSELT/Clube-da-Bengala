@@ -208,6 +208,61 @@ export default function Login() {
       }
 
       // Signup flow
+      // 1. Upload Inicial (Supabase Storage) antes da criação do usuário
+      let docIdentidadeUrl: string | null = null;
+      let docResidenciaUrl: string | null = null;
+
+      if (fileIdentidade) {
+        try {
+          const fileExt = fileIdentidade.name.split('.').pop()?.toLowerCase() || 'jpg';
+          const fileName = `cadastros/rg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('documentos-usuarios')
+            .upload(fileName, fileIdentidade, {
+              upsert: true,
+              contentType: fileIdentidade.type || undefined,
+            });
+
+          if (uploadError) {
+            console.warn('Upload inicial de identidade não concluído:', uploadError.message);
+          } else {
+            // 2. Geração da URL pública
+            const { data: pubData } = supabase.storage
+              .from('documentos-usuarios')
+              .getPublicUrl(fileName);
+            docIdentidadeUrl = pubData.publicUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('Erro ao processar upload inicial de identidade:', uploadErr);
+        }
+      }
+
+      if (fileComprovante) {
+        try {
+          const fileExt = fileComprovante.name.split('.').pop()?.toLowerCase() || 'jpg';
+          const fileName = `cadastros/residencia_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('documentos-usuarios')
+            .upload(fileName, fileComprovante, {
+              upsert: true,
+              contentType: fileComprovante.type || undefined,
+            });
+
+          if (uploadError) {
+            console.warn('Upload inicial de comprovante não concluído:', uploadError.message);
+          } else {
+            // 2. Geração da URL pública
+            const { data: pubData } = supabase.storage
+              .from('documentos-usuarios')
+              .getPublicUrl(fileName);
+            docResidenciaUrl = pubData.publicUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('Erro ao processar upload inicial de comprovante:', uploadErr);
+        }
+      }
+
+      // 3. Criação do Usuário/Perfil com as URLs salvas no payload (metadados)
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -227,6 +282,10 @@ export default function Login() {
             cep: cep.trim() || null,
             papel: 'solicitante' as const,
             nucleo_id: null,
+            documento_identidade_url: docIdentidadeUrl,
+            comprovante_residencia_url: docResidenciaUrl,
+            url_documento_foto: docIdentidadeUrl,
+            url_comprovante_residencia: docResidenciaUrl,
           },
         },
       });
@@ -242,15 +301,75 @@ export default function Login() {
         return;
       }
 
-      if (data.session) {
-        // Usuário logou direto, podemos fazer o upload dos documentos opcionais
-        try {
-          if (fileIdentidade) await uploadDocumento(fileIdentidade, 'identidade', data.user.id);
-          if (fileComprovante) await uploadDocumento(fileComprovante, 'residencia', data.user.id);
-        } catch (uploadErr) {
-          console.error("Upload error on signup", uploadErr);
+      const createdUserId = data?.user?.id;
+
+      // 4. Se o usuário foi criado, executa fallback de upload usando o user.id (caso o storage exija auth)
+      if (createdUserId) {
+        if (!docIdentidadeUrl && fileIdentidade) {
+          try {
+            const fileExt = fileIdentidade.name.split('.').pop()?.toLowerCase() || 'jpg';
+            const fileName = `${createdUserId}/rg_${Date.now()}.${fileExt}`;
+            const { error: upErr } = await supabase.storage
+              .from('documentos-usuarios')
+              .upload(fileName, fileIdentidade, { upsert: true });
+
+            if (!upErr) {
+              const { data: pData } = supabase.storage
+                .from('documentos-usuarios')
+                .getPublicUrl(fileName);
+              docIdentidadeUrl = pData.publicUrl;
+            }
+          } catch (e) {
+            console.warn('Tentativa de upload com user.id falhou:', e);
+          }
         }
 
+        if (!docResidenciaUrl && fileComprovante) {
+          try {
+            const fileExt = fileComprovante.name.split('.').pop()?.toLowerCase() || 'jpg';
+            const fileName = `${createdUserId}/residencia_${Date.now()}.${fileExt}`;
+            const { error: upErr } = await supabase.storage
+              .from('documentos-usuarios')
+              .upload(fileName, fileComprovante, { upsert: true });
+
+            if (!upErr) {
+              const { data: pData } = supabase.storage
+                .from('documentos-usuarios')
+                .getPublicUrl(fileName);
+              docResidenciaUrl = pData.publicUrl;
+            }
+          } catch (e) {
+            console.warn('Tentativa de upload de comprovante com user.id falhou:', e);
+          }
+        }
+
+        // 5. UPDATE explícito na tabela usuarios para persistência imediata
+        if (docIdentidadeUrl || docResidenciaUrl) {
+          try {
+            await supabase
+              .from('usuarios')
+              .update({
+                documento_identidade_url: docIdentidadeUrl,
+                comprovante_residencia_url: docResidenciaUrl,
+                url_documento_foto: docIdentidadeUrl,
+                url_comprovante_residencia: docResidenciaUrl,
+              } as any)
+              .eq('id', createdUserId);
+          } catch (updateErr) {
+            console.warn('Aviso: Update explícito em usuarios não concluído (aguardando confirmação de e-mail):', updateErr);
+          }
+        }
+      }
+
+      // Aviso suave caso algum arquivo selecionado não tenha conseguido ser enviado
+      if ((fileIdentidade && !docIdentidadeUrl) || (fileComprovante && !docResidenciaUrl)) {
+        toast({
+          title: 'Documentos pendentes',
+          description: 'Sua conta foi criada, mas não foi possível carregar os documentos anexados. Você poderá enviá-los posteriormente na plataforma.',
+        });
+      }
+
+      if (data.session && data.user) {
         toast({
           title: 'Cadastro concluído',
           description: 'Bem-vindo ao Clube da Bengala!',
@@ -259,8 +378,8 @@ export default function Login() {
         navigate('/', { replace: true });
       } else {
         toast({
-          title: 'Cadastro criado',
-          description: 'Verifique seu e-mail para confirmar a conta antes de entrar. Se você anexou documentos, precisará enviá-los novamente após o login.',
+          title: 'Cadastro criado com sucesso',
+          description: 'Verifique seu e-mail para confirmar a conta antes de entrar.',
         });
         resetSignupFields();
         navigate(`/verificar-email?email=${encodeURIComponent(email)}`);

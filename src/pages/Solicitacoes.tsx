@@ -2049,8 +2049,8 @@ export default function Solicitacoes() {
                           solicitanteId={selected.solicitante.id}
                           solicitacaoId={selected.id}
                           isBackOffice={isBackOffice}
-                          documentoIdentidadeUrl={selected.solicitante.documento_identidade_url}
-                          comprovanteResidenciaUrl={selected.solicitante.comprovante_residencia_url}
+                          documentoIdentidadeUrl={selected.solicitante.url_documento_foto || selected.solicitante.documento_identidade_url}
+                          comprovanteResidenciaUrl={selected.solicitante.url_comprovante_residencia || selected.solicitante.comprovante_residencia_url}
                           documentosAprovados={selected.solicitante.documentos_aprovados}
                           motivoRejeicaoDocumentos={selected.solicitante.motivo_rejeicao_documentos}
                           onUpdateStatus={() => {
