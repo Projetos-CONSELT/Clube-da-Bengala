@@ -44,8 +44,25 @@ export function useRegistrarPrazoRetirada() {
 
       return data;
     },
-    onSuccess: (_, { solicitacaoId }) => {
-      qc.invalidateQueries({ queryKey: ['solicitacoes', { solicitacaoId }] });
+    onSuccess: (data, { solicitacaoId }) => {
+      qc.invalidateQueries({ queryKey: ['solicitacoes'] });
+      qc.setQueriesData({ queryKey: ['solicitacoes'] }, (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
+          return old.map((item: any) =>
+            item.id === solicitacaoId ? { ...item, ...data, prazo_retirada: data.prazo_retirada } : item
+          );
+        }
+        if (old?.data && Array.isArray(old.data)) {
+          return {
+            ...old,
+            data: old.data.map((item: any) =>
+              item.id === solicitacaoId ? { ...item, ...data, prazo_retirada: data.prazo_retirada } : item
+            ),
+          };
+        }
+        return old;
+      });
     },
   });
 }
@@ -59,6 +76,7 @@ export function useRegistrarRetirada() {
     mutationFn: async ({
       solicitacaoId,
       equipamentoId,
+      dataRetirada,
       dataPrevistaDevolucao,
       nomeResponsavel,
       nomeRetirador,
@@ -71,6 +89,7 @@ export function useRegistrarRetirada() {
     }: {
       solicitacaoId: string;
       equipamentoId: string;
+      dataRetirada?: Date | string;
       dataPrevistaDevolucao: Date;
       nomeResponsavel?: string;
       nomeRetirador?: string;
@@ -88,11 +107,13 @@ export function useRegistrarRetirada() {
         .single();
       if (currentError) throw currentError;
 
+      const finalDataRetirada = dataRetirada ? new Date(dataRetirada) : new Date();
+
       const { error: solError } = await supabase
         .from('solicitacoes')
         .update({
           status: 'equipamento_emprestado' as StatusSolicitacao,
-          data_retirada_realizada: new Date().toISOString(),
+          data_retirada_realizada: finalDataRetirada.toISOString(),
           equipamento_reservado_id: equipamentoId,
         })
         .eq('id', solicitacaoId);
@@ -124,7 +145,7 @@ export function useRegistrarRetirada() {
         .insert({
           solicitacao_id: solicitacaoId,
           equipamento_id: equipamentoId,
-          data_retirada: new Date().toISOString(),
+          data_retirada: finalDataRetirada.toISOString(),
           data_prevista_devolucao: dataPrevistaDevolucao.toISOString(),
           recibo_texto_customizado: reciboTextoInfo,
         })
@@ -140,6 +161,7 @@ export function useRegistrarRetirada() {
           to_status: 'equipamento_emprestado',
           protocolo: current?.protocolo ?? null,
           equipamento_id: equipamentoId,
+          data_retirada: finalDataRetirada.toISOString(),
           data_prevista_devolucao: dataPrevistaDevolucao.toISOString(),
           nome_responsavel: nomeResponsavel || null,
           nome_retirador: nomeRetirador || null,
@@ -157,8 +179,9 @@ export function useRegistrarRetirada() {
       return empreData;
     },
     onSuccess: (_, { solicitacaoId }) => {
-      qc.invalidateQueries({ queryKey: ['solicitacoes', { solicitacaoId }] });
+      qc.invalidateQueries({ queryKey: ['solicitacoes'] });
       qc.invalidateQueries({ queryKey: ['emprestimos'] });
+      qc.invalidateQueries({ queryKey: ['equipamentos'] });
     },
   });
 }

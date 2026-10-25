@@ -10,6 +10,7 @@ import Notificacoes from './pages/Notificacoes';
 import Manutencao from './pages/Manutencao';
 import Atendimento from './pages/Atendimento';
 import AdminPanel from './pages/AdminPanel';
+import TriagemNucleo from './pages/TriagemNucleo';
 import Layout from './Layout';
 
 export const PAGES = {
@@ -25,6 +26,7 @@ export const PAGES = {
   Manutencao,
   Atendimento,
   AdminPanel,
+  TriagemNucleo,
 } as const;
 
 export const pagesConfig = {

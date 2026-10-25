@@ -226,8 +226,12 @@ export default function Fila() {
         <div className="grid lg:grid-cols-2 gap-6">
           {tiposFiltrados.map(({ tipo, itens }) => {
             if (itens.length === 0 && tipoSelecionado === 'todos') return null;
+            const isEmManut = (e: any) =>
+              e.status === 'manutencao' ||
+              Boolean(e.em_manutencao) ||
+              Boolean(e.atributos_especificos?.em_manutencao);
             const disponiveis = equipamentos.filter(
-              (e) => e.tipo_id === tipo.id && e.status === 'disponivel'
+              (e) => e.tipo_id === tipo.id && e.status === 'disponivel' && !isEmManut(e)
             ).length;
             return (
               <Card key={tipo.id} className="overflow-hidden">

@@ -901,6 +901,7 @@ export type Database = {
           latitude: number | null;
           longitude: number | null;
           is_ativo: boolean;
+          motivo_desativacao?: string | null;
           created_at: string | null;
         };
         Insert: {
@@ -918,6 +919,7 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           is_ativo?: boolean;
+          motivo_desativacao?: string | null;
           created_at?: string | null;
         };
         Update: {
@@ -935,6 +937,7 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           is_ativo?: boolean;
+          motivo_desativacao?: string | null;
           created_at?: string | null;
         };
         Relationships: [];

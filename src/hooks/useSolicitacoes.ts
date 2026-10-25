@@ -77,6 +77,30 @@ export function useEquipamentosQuery() {
   });
 }
 
+export function useEquipamentosDisponiveisQuery(tipoId?: string, nucleoId?: string | null) {
+  const { isAuthenticated, role } = useAuth();
+  return useQuery({
+    queryKey: ['equipamentos_disponiveis', { tipoId, nucleoId }],
+    enabled: isAuthenticated && isBackOfficeRole(role) && Boolean(tipoId),
+    queryFn: async () => {
+      if (!tipoId) return [];
+      let q = supabase
+        .from('equipamentos')
+        .select('id, codigo_patrimonio, estado_conservacao, valor_nominal, atributos_especificos, nucleo_id, tipo_id, status')
+        .eq('tipo_id', tipoId)
+        .eq('status', 'disponivel');
+
+      if (nucleoId) {
+        q = q.eq('nucleo_id', nucleoId);
+      }
+
+      const { data, error } = await q;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 export function useTiposEquipamentoQuery() {
   const { isAuthenticated } = useAuth();
   return useQuery({
@@ -178,13 +202,35 @@ export function useUpdateSolicitacao() {
         patch.motivo_recusa = motivoRecusa;
       }
 
-      const { data, error } = await supabase
+      let data: any;
+      const res = await supabase
         .from('solicitacoes')
         .update(patch)
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+
+      if (res.error) {
+        if (res.error.message?.includes('motivo_recusa') || res.error.message?.includes('column')) {
+          const fallbackPatch = { ...patch };
+          delete (fallbackPatch as any).motivo_recusa;
+          if (motivoRecusa && !fallbackPatch.observacoes_solicitante) {
+            fallbackPatch.observacoes_solicitante = motivoRecusa;
+          }
+          const retryRes = await supabase
+            .from('solicitacoes')
+            .update(fallbackPatch)
+            .eq('id', id)
+            .select()
+            .single();
+          if (retryRes.error) throw retryRes.error;
+          data = retryRes.data;
+        } else {
+          throw res.error;
+        }
+      } else {
+        data = res.data;
+      }
 
       const shouldTrackStatusChange = typeof patch.status !== 'undefined';
       const alteracoes: Record<string, { de: Json; para: Json }> = {};

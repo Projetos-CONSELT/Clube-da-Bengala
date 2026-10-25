@@ -1011,32 +1011,51 @@ export default function Pessoas() {
                                 Aceitou o Termo de Voluntariado em: {new Date(v.data_aceite_termo).toLocaleString('pt-BR')}
                               </p>
                             )}
+
+                            {v.motivo_desativacao && !v.is_ativo && (
+                              <p className="text-xs text-red-700 font-medium bg-red-50 border border-red-200/80 p-2 rounded-lg mt-2">
+                                <strong>Motivo da Inativação/Recusa:</strong> {v.motivo_desativacao}
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                             {!v.is_ativo ? (
-                              <Button
-                                onClick={() => {
-                                  updateColaborador.mutate(
-                                    { id: v.id, patch: { is_ativo: true } },
-                                    { onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' }) }
-                                  );
-                                }}
-                                disabled={updateColaborador.isPending}
-                                className="flex-1 sm:w-36 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
-                                size="sm"
-                              >
-                                <UserCheck className="w-4 h-4" />
-                                Aprovar
-                              </Button>
+                              <>
+                                <Button
+                                  onClick={() => {
+                                    updateColaborador.mutate(
+                                      { id: v.id, patch: { is_ativo: true } },
+                                      { onSuccess: () => toast({ title: 'Voluntário aprovado com sucesso!' }) }
+                                    );
+                                  }}
+                                  disabled={updateColaborador.isPending}
+                                  className="flex-1 sm:w-36 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                                  size="sm"
+                                >
+                                  <UserCheck className="w-4 h-4" />
+                                  Aprovar
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 sm:w-36 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5"
+                                  size="sm"
+                                  disabled={deleteColaborador.isPending || updateColaborador.isPending}
+                                  onClick={() => {
+                                    setVoluntarioAcaoModal({ isOpen: true, v, acao: 'rejeitar' });
+                                    setMotivoInativacao('');
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Rejeitar
+                                </Button>
+                              </>
                             ) : (
                               <Button
                                 variant="outline"
                                 onClick={() => {
-                                  updateColaborador.mutate(
-                                    { id: v.id, patch: { is_ativo: false } },
-                                    { onSuccess: () => toast({ title: 'Voluntário desativado com sucesso.' }) }
-                                  );
+                                  setVoluntarioAcaoModal({ isOpen: true, v, acao: 'desativar' });
+                                  setMotivoInativacao('');
                                 }}
                                 disabled={updateColaborador.isPending}
                                 className="flex-1 sm:w-36 text-amber-700 border-amber-200 hover:bg-amber-50"
@@ -1045,24 +1064,6 @@ export default function Pessoas() {
                                 Desativar
                               </Button>
                             )}
-
-                            <Button
-                              variant="outline"
-                              className="flex-1 sm:w-36 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 gap-1.5"
-                              size="sm"
-
-                              disabled={deleteColaborador.isPending || updateColaborador.isPending}
-                              onClick={() => {
-                                if (confirm(`Deseja realmente remover o voluntário "${v.nome_completo}"?`)) {
-                                  deleteColaborador.mutate(v.id, {
-                                    onSuccess: () => toast({ title: 'Voluntário removido com sucesso.' })
-                                  });
-                                }
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Excluir
-                            </Button>
                           </div>
 
                         </div>

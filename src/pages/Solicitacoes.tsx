@@ -38,6 +38,7 @@ import {
   useSolicitacoesQuery,
   useTiposEquipamentoQuery,
   useEquipamentosQuery,
+  useEquipamentosDisponiveisQuery,
   useCreateSolicitacao,
   useUpdateSolicitacao,
   useDeleteSolicitacao,
@@ -883,6 +884,9 @@ export default function Solicitacoes() {
 
   const [triageDecision, setTriageDecision] = useState<'aprovado' | 'recusado' | null>(null);
   const [triageMotivo, setTriageMotivo] = useState('');
+  const [showTriageRejectInput, setShowTriageRejectInput] = useState(false);
+  const [retiradaDataRealizada, setRetiradaDataRealizada] = useState(moment().format('YYYY-MM-DD'));
+
   const [uploadingImages, setUploadingImages] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [prazoData, setPrazoData] = useState('');
@@ -995,6 +999,27 @@ export default function Solicitacoes() {
   const tipos = tiposQuery.data ?? [];
   const equipamentos = equipamentosQuery.data ?? [];
   const beneficiarios = beneficiariosQuery.data ?? [];
+
+  const { data: equipamentosDisponiveisLazy = [] } = useEquipamentosDisponiveisQuery(
+    retiradaModalOpen && !selected?.equipamento_reservado_id ? selected?.tipo_equipamento_id : undefined,
+    selected?.nucleo_id
+  );
+
+  const listaEquipamentosRetirada = useMemo(() => {
+    const isEmManutencao = (e: any) =>
+      e.status === 'manutencao' ||
+      Boolean(e.em_manutencao) ||
+      Boolean(e.atributos_especificos?.em_manutencao);
+
+    if (equipamentosDisponiveisLazy.length > 0) {
+      return (equipamentosDisponiveisLazy as any[]).filter(
+        (e) => e.status === 'disponivel' && !isEmManutencao(e)
+      );
+    }
+    return (equipamentos as any[]).filter(
+      (e) => e.status === 'disponivel' && !isEmManutencao(e) && e.tipo_id === selected?.tipo_equipamento_id
+    );
+  }, [equipamentosDisponiveisLazy, equipamentos, selected?.tipo_equipamento_id]);
 
   useEffect(() => {
     if (
@@ -1310,7 +1335,7 @@ export default function Solicitacoes() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setSelected(s); setTriageModalOpen(true); }}
+              onClick={() => { setSelected(s); setShowTriageRejectInput(false); setDetailModalOpen(true); }}
             >
               Iniciar Triagem
             </Button>
@@ -1352,6 +1377,7 @@ export default function Solicitacoes() {
                 setRetiradaObservacoes('');
                 setRetiradaFiles([]);
                 setRetiradaEquipamento(moment().add(30, 'days').format('YYYY-MM-DD'));
+                setRetiradaDataRealizada(moment().format('YYYY-MM-DD'));
                 setRetiradaModalOpen(true);
               }}
               className="text-blue-600 border-blue-200"

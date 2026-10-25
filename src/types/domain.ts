@@ -83,6 +83,7 @@ export interface SubtipoEquipamento {
   descricao?: string;
   imagem_url?: string;
   categorias?: CategoriaSubtipo[];
+  caracteristicas?: Record<string, any>;
   created_at?: string;
 }
 

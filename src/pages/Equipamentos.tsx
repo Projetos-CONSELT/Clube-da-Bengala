@@ -21,7 +21,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/AuthContext';
 import { useEquipamentosQuery, useTiposEquipamentoQuery } from '@/hooks/useSolicitacoes';
@@ -139,23 +138,11 @@ export default function Equipamentos() {
   const tipos = tiposQuery.data ?? [];
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('todos');
-  const [tipoFilter, setTipoFilter] = useState('todos');
-  const [activeTab, setActiveTab] = useState('equipamentos');
 
   const [expandedTipos, setExpandedTipos] = useState<Record<string, boolean>>({});
 
   const toggleTipoExpand = (tipoId: string) => {
     setExpandedTipos((prev) => ({
-      ...prev,
-      [tipoId]: !prev[tipoId],
-    }));
-  };
-
-  const [expandedEquipamentoTipos, setExpandedEquipamentoTipos] = useState<Record<string, boolean>>({});
-
-  const toggleEquipamentoTipoExpand = (tipoId: string) => {
-    setExpandedEquipamentoTipos((prev) => ({
       ...prev,
       [tipoId]: !prev[tipoId],
     }));
@@ -182,18 +169,30 @@ export default function Equipamentos() {
   const [selectedTipoForEdit, setSelectedTipoForEdit] = useState<TipoEquipamento | null>(null);
 
   const [subtipoModalOpen, setSubtipoModalOpen] = useState(false);
+  const [itensModalOpen, setItensModalOpen] = useState(false);
+  const [selectedSubtipoParaItens, setSelectedSubtipoParaItens] = useState<{
+    tipoId: string;
+    tipoNome: string;
+    subtipo: SubtipoEquipamento;
+  } | null>(null);
   const [targetTipoId, setTargetTipoId] = useState<string | null>(null);
   const [selectedSubtipo, setSelectedSubtipo] = useState<SubtipoEquipamento | null>(null);
+  interface CaracteristicaItem {
+    id: string;
+    chave: string;
+    valor: string;
+  }
+
   const [subtipoFormData, setSubtipoFormData] = useState<{
     nome: string;
     descricao: string;
     imagem_url: string;
-    categorias: CategoriaSubtipo[];
+    caracteristicas: CaracteristicaItem[];
   }>({
     nome: '',
     descricao: '',
     imagem_url: '',
-    categorias: [],
+    caracteristicas: [],
   });
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -201,13 +200,22 @@ export default function Equipamentos() {
   const [selected, setSelected] = useState<EquipamentoComTipo | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
-  const [tipoFormData, setTipoFormData] = useState({ 
-    nome: '', 
-    descricao: '', 
-    imagem_ilustrativa_url: '', 
-    limite_renovacoes: 2, 
-    schema_especificacoes: '{}' 
-  });
+
+  interface TipoFormState {
+    nome: string;
+    descricao: string;
+    imagem_ilustrativa_url: string;
+    limite_renovacoes: number;
+  }
+
+  const EMPTY_TIPO_FORM: TipoFormState = {
+    nome: '',
+    descricao: '',
+    imagem_ilustrativa_url: '',
+    limite_renovacoes: 2,
+  };
+
+  const [tipoFormData, setTipoFormData] = useState<TipoFormState>(EMPTY_TIPO_FORM);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -215,76 +223,25 @@ export default function Equipamentos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
-    let list = [...equipamentos];
-    if (searchTerm) {
-      const t = searchTerm.toLowerCase();
-      list = list.filter(
-        (e) =>
-          e.codigo_patrimonio?.toLowerCase().includes(t) ||
-          tipoOf(e).toLowerCase().includes(t) ||
-          String(getAtributosEquipamento(e.atributos_especificos).localizacao || '').toLowerCase().includes(t) ||
-          String(getAtributosEquipamento(e.atributos_especificos).subtipo_nome || '').toLowerCase().includes(t)
-      );
-    }
-    if (statusFilter !== 'todos') list = list.filter((e) => e.status === statusFilter);
-    if (tipoFilter !== 'todos') list = list.filter((e) => e.tipo_id === tipoFilter);
-    return list;
-  }, [equipamentos, searchTerm, statusFilter, tipoFilter]);
-
-  const groupedEquipamentos = useMemo(() => {
-    if (filtered.length === 0) return [];
-
-    const groupsMap = new Map<
-      string,
-      {
-        tipoId: string;
-        tipoNome: string;
-        subtiposMap: Map<
-          string,
-          {
-            subtipoId: string;
-            subtipoNome: string;
-            items: EquipamentoComTipo[];
-          }
-        >;
-      }
-    >();
-
-    filtered.forEach((eq) => {
-      const tipoId = eq.tipo_id || 'sem-tipo';
-      const tipoNome = tipoOf(eq);
-      const attrs = getAtributosEquipamento(eq.atributos_especificos);
-      const subtipoId = String(attrs.subtipo_id || attrs.subtipo_nome || 'sem-subtipo');
-      const subtipoNome = attrs.subtipo_nome ? String(attrs.subtipo_nome) : 'Geral / Sem subtipo específico';
-
-      if (!groupsMap.has(tipoId)) {
-        groupsMap.set(tipoId, {
-          tipoId,
-          tipoNome,
-          subtiposMap: new Map(),
-        });
-      }
-
-      const tipoGroup = groupsMap.get(tipoId)!;
-      if (!tipoGroup.subtiposMap.has(subtipoId)) {
-        tipoGroup.subtiposMap.set(subtipoId, {
-          subtipoId,
-          subtipoNome,
-          items: [],
-        });
-      }
-
-      tipoGroup.subtiposMap.get(subtipoId)!.items.push(eq);
+  const filteredTipos = useMemo(() => {
+    if (!searchTerm.trim()) return tipos;
+    const term = searchTerm.toLowerCase();
+    return tipos.filter((tipo) => {
+      if (tipo.nome.toLowerCase().includes(term)) return true;
+      if (tipo.descricao?.toLowerCase().includes(term)) return true;
+      const subs = getSubtiposTipo(tipo.schema_especificacoes);
+      return subs.some((s) => {
+        if (s.nome.toLowerCase().includes(term)) return true;
+        if (s.descricao?.toLowerCase().includes(term)) return true;
+        if (s.caracteristicas) {
+          return Object.entries(s.caracteristicas).some(([k, v]) =>
+            k.toLowerCase().includes(term) || String(v).toLowerCase().includes(term)
+          );
+        }
+        return false;
+      });
     });
-
-    return Array.from(groupsMap.values()).map((group) => ({
-      tipoId: group.tipoId,
-      tipoNome: group.tipoNome,
-      totalItems: Array.from(group.subtiposMap.values()).reduce((acc, s) => acc + s.items.length, 0),
-      subtipoGroups: Array.from(group.subtiposMap.values()),
-    }));
-  }, [filtered]);
+  }, [tipos, searchTerm]);
 
   const counts = useMemo(
     () => ({
@@ -311,8 +268,14 @@ export default function Equipamentos() {
     return availableSubtipos.find((s) => s.id === formData.subtipo_id) || null;
   }, [availableSubtipos, formData.subtipo_id]);
 
-  function openNewModal() {
-    setFormData({ ...EMPTY_FORM, codigo_patrimonio: generateCodigoPatrimonio() });
+  function openNewModal(tipoId?: string, subtipoId?: string, subtipoNome?: string) {
+    setFormData({
+      ...EMPTY_FORM,
+      codigo_patrimonio: generateCodigoPatrimonio(),
+      tipo_id: tipoId || '',
+      subtipo_id: subtipoId || '',
+      subtipo_nome: subtipoNome || '',
+    });
     setIsEditing(false);
     setSelected(null);
     setModalOpen(true);
@@ -369,6 +332,37 @@ export default function Equipamentos() {
     }
   };
 
+  const toggleManutencao = async (eq: EquipamentoComTipo, ativarManutencao: boolean) => {
+    try {
+      const currentAttrs = getAtributosEquipamento(eq.atributos_especificos);
+      const updatedAttrs = {
+        ...currentAttrs,
+        em_manutencao: ativarManutencao,
+      };
+
+      await updateMut.mutateAsync({
+        id: eq.id,
+        patch: {
+          status: ativarManutencao ? 'manutencao' : 'disponivel',
+          atributos_especificos: updatedAttrs as any,
+        },
+      });
+
+      toast({
+        title: ativarManutencao ? 'Tag de Manutenção aplicada' : 'Manutenção concluída',
+        description: ativarManutencao
+          ? `O item ${eq.codigo_patrimonio} agora está em manutenção e indisponível para novos empréstimos.`
+          : `O item ${eq.codigo_patrimonio} voltou a ficar disponível para novos empréstimos.`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar manutenção',
+        description: err.message,
+      });
+    }
+  };
+
   const handleDelete = (eq: EquipamentoComTipo) => {
     setDeleteConfirmState({
       open: true,
@@ -389,7 +383,7 @@ export default function Equipamentos() {
     }
     setIsEditingTipo(false);
     setSelectedTipoForEdit(null);
-    setTipoFormData({ nome: '', descricao: '', imagem_ilustrativa_url: '', limite_renovacoes: 2, schema_especificacoes: '{}' });
+    setTipoFormData(EMPTY_TIPO_FORM);
     setTipoModalOpen(true);
   };
 
@@ -409,7 +403,6 @@ export default function Equipamentos() {
       descricao: tipo.descricao || '', 
       imagem_ilustrativa_url: tipo.imagem_ilustrativa_url || '', 
       limite_renovacoes: tipo.limite_renovacoes ?? 2, 
-      schema_especificacoes: JSON.stringify(tipo.schema_especificacoes || {}) 
     });
     setTipoModalOpen(true);
   };
@@ -424,10 +417,8 @@ export default function Equipamentos() {
       return;
     }
     if (!tipoFormData.nome.trim()) return;
+
     if (isEditingTipo && selectedTipoForEdit) {
-      let parsedSchema = {};
-      try { parsedSchema = JSON.parse(tipoFormData.schema_especificacoes); } catch(e) {}
-      
       updateTipoMut.mutate(
         {
           id: selectedTipoForEdit.id,
@@ -436,7 +427,6 @@ export default function Equipamentos() {
             descricao: tipoFormData.descricao.trim() || null,
             imagem_ilustrativa_url: tipoFormData.imagem_ilustrativa_url.trim() || null,
             limite_renovacoes: tipoFormData.limite_renovacoes,
-            schema_especificacoes: parsedSchema,
           },
         },
         {
@@ -449,20 +439,17 @@ export default function Equipamentos() {
         }
       );
     } else {
-      let parsedSchema = {};
-      try { parsedSchema = JSON.parse(tipoFormData.schema_especificacoes); } catch(e) {}
-
       createTipoMut.mutate({
         nome: tipoFormData.nome.trim(),
         descricao: tipoFormData.descricao.trim() || null,
         imagem_ilustrativa_url: tipoFormData.imagem_ilustrativa_url.trim() || null,
         limite_renovacoes: tipoFormData.limite_renovacoes,
-        schema_especificacoes: parsedSchema,
+        schema_especificacoes: { subtipos: [] },
       }, {
         onSuccess: () => {
           toast({ title: 'Novo tipo de equipamento cadastrado com sucesso' });
           setTipoModalOpen(false);
-          setTipoFormData({ nome: '', descricao: '', imagem_ilustrativa_url: '', limite_renovacoes: 2, schema_especificacoes: '{}' });
+          setTipoFormData(EMPTY_TIPO_FORM);
         },
         onError: (err) =>
           toast({ variant: 'destructive', title: 'Erro ao criar tipo', description: err.message }),
@@ -511,7 +498,12 @@ export default function Equipamentos() {
     }
     setTargetTipoId(tipoId);
     setSelectedSubtipo(null);
-    setSubtipoFormData({ nome: '', descricao: '', imagem_url: '', categorias: [] });
+    setSubtipoFormData({
+      nome: '',
+      descricao: '',
+      imagem_url: '',
+      caracteristicas: [],
+    });
     setSubtipoModalOpen(true);
   };
 
@@ -526,41 +518,60 @@ export default function Equipamentos() {
     }
     setTargetTipoId(tipoId);
     setSelectedSubtipo(subtipo);
+
+    // Extract characteristics from subtipo.caracteristicas
+    const caractsList: CaracteristicaItem[] = [];
+    const rawCaracts = subtipo.caracteristicas || {};
+    if (typeof rawCaracts === 'object' && rawCaracts !== null && !Array.isArray(rawCaracts)) {
+      Object.entries(rawCaracts).forEach(([key, val]) => {
+        let valStr = '';
+        if (Array.isArray(val)) {
+          valStr = val.join(', ');
+        } else if (typeof val === 'object' && val !== null) {
+          valStr = JSON.stringify(val);
+        } else {
+          valStr = String(val ?? '');
+        }
+        caractsList.push({
+          id: crypto.randomUUID(),
+          chave: key,
+          valor: valStr,
+        });
+      });
+    }
+
     setSubtipoFormData({
       nome: subtipo.nome,
       descricao: subtipo.descricao || '',
       imagem_url: subtipo.imagem_url || '',
-      categorias: subtipo.categorias ? [...subtipo.categorias] : [],
+      caracteristicas: caractsList,
     });
     setSubtipoModalOpen(true);
   };
 
-  const handleAddCategoryRow = () => {
+  const handleAddSubtipoCaracteristica = () => {
     setSubtipoFormData((prev) => ({
       ...prev,
-      categorias: [
-        ...prev.categorias,
-        {
-          id: crypto.randomUUID(),
-          nome: '',
-          tipo_dado: 'booleano',
-          obrigatorio: false,
-        },
+      caracteristicas: [
+        ...prev.caracteristicas,
+        { id: crypto.randomUUID(), chave: '', valor: '' },
       ],
     }));
   };
 
-  const handleRemoveCategoryRow = (id: string) => {
+  const handleUpdateSubtipoCaracteristica = (id: string, field: 'chave' | 'valor', value: string) => {
     setSubtipoFormData((prev) => ({
       ...prev,
-      categorias: prev.categorias.filter((c) => c.id !== id),
+      caracteristicas: prev.caracteristicas.map((item) =>
+        item.id === id ? { ...item, [field]: value } : item
+      ),
     }));
   };
 
-  const handleUpdateCategoryRow = (id: string, field: keyof CategoriaSubtipo, value: any) => {
+  const handleRemoveSubtipoCaracteristica = (id: string) => {
     setSubtipoFormData((prev) => ({
       ...prev,
-      categorias: prev.categorias.map((c) => (c.id === id ? { ...c, [field]: value } : c)),
+      caracteristicas: prev.caracteristicas.filter((item) => item.id !== id),
     }));
   };
 
@@ -573,16 +584,22 @@ export default function Equipamentos() {
       });
       return;
     }
-    if (!targetTipoId || !subtipoFormData.nome.trim()) return;
-    const cleanedCategories = subtipoFormData.categorias
-      .filter((c) => c.nome.trim().length > 0)
-      .map((c) => ({ ...c, nome: c.nome.trim() }));
+    // Serialize visual key-value characteristics into a clean JSON object for Supabase
+    const caracteristicasObj: Record<string, string> = {};
+    subtipoFormData.caracteristicas.forEach((item) => {
+      const k = item.chave.trim();
+      const v = item.valor.trim();
+      if (k) {
+        caracteristicasObj[k] = v;
+      }
+    });
 
     const payload = {
-      nome: subtipoFormData.nome,
-      descricao: subtipoFormData.descricao,
-      imagem_url: subtipoFormData.imagem_url,
-      categorias: cleanedCategories,
+      nome: subtipoFormData.nome.trim(),
+      descricao: subtipoFormData.descricao.trim() || undefined,
+      imagem_url: subtipoFormData.imagem_url.trim() || undefined,
+      categorias: selectedSubtipo?.categorias || [],
+      caracteristicas: caracteristicasObj,
     };
 
     if (selectedSubtipo) {
@@ -609,8 +626,14 @@ export default function Equipamentos() {
         },
         {
           onSuccess: () => {
-            toast({ title: 'Subtipo cadastrado com sucesso!' });
+            toast({ title: 'Novo subtipo adicionado com sucesso!' });
             setSubtipoModalOpen(false);
+            setSubtipoFormData({
+              nome: '',
+              descricao: '',
+              imagem_url: '',
+              caracteristicas: [],
+            });
           },
           onError: (err) =>
             toast({ variant: 'destructive', title: 'Erro ao cadastrar subtipo', description: err.message }),
@@ -727,21 +750,12 @@ export default function Equipamentos() {
 
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-slate-200/60 p-1 rounded-xl">
-          <TabsTrigger value="equipamentos" className="rounded-lg font-medium">Equipamentos</TabsTrigger>
-          <TabsTrigger value="tipos" className="rounded-lg font-medium flex items-center gap-1.5">
-            <Folder className="w-4 h-4 text-amber-500" /> Tipos de equipamento
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="equipamentos" className="space-y-6 mt-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {kpiCards.map(({ key, label, value, color, icon: Icon }) => (
               <Card
                 key={key}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => setStatusFilter(key)}
+                className="hover:shadow-md transition-shadow"
+                
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -758,247 +772,59 @@ export default function Equipamentos() {
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-between">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <Input
-                placeholder="Buscar por código, tipo, subtipo ou localização..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-3 flex-wrap">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {Object.entries(STATUS_EQUIPAMENTO_UI).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={tipoFilter} onValueChange={setTipoFilter}>
-                <SelectTrigger className="w-48"><SelectValue placeholder="Tipo" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os tipos</SelectItem>
-                  {tipos.map((tipo) => (
-                    <SelectItem key={tipo.id} value={tipo.id}>{tipo.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button variant="outline" onClick={handleRefresh} className="gap-2">
-                <RefreshCw className={`w-4 h-4 ${equipamentosQuery.isFetching ? 'animate-spin' : ''}`} />
-              </Button>
-              <Button onClick={openNewModal} className="gap-2 bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4" /> Novo Equipamento
-              </Button>
-            </div>
-          </div>
 
-          {filtered.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12 text-slate-500">
-                <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhum equipamento encontrado</p>
-              </CardContent>
-            </Card>
+          {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-md">
+        <div>
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <FolderOpen className="w-6 h-6 text-amber-400" />
+            Equipamentos
+          </h3>
+          <p className="text-slate-300 text-xs md:text-sm mt-1">
+            Gerencie as pastas de equipamentos (tipos), seus modelos/subtipos específicos, características e estoque.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Button
+            onClick={() => openNewModal()}
+            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Novo Equipamento
+          </Button>
+          {isManager ? (
+            <Button
+              onClick={openNewTipoModal}
+              className="gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg shrink-0"
+            >
+              <FolderPlus className="w-5 h-5" /> Nova Pasta (Tipo)
+            </Button>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {groupedEquipamentos.map((tipoGroup) => {
-                const totalCount = tipoGroup.totalItems;
-                const hasMoreThanTwo = totalCount > 2;
-                const isExpanded = expandedEquipamentoTipos[tipoGroup.tipoId] ?? false;
-
-                // Slice subtipos/items to show max 2 items when compressed
-                let limitRemaining = 2;
-                const visibleSubGroupList = (hasMoreThanTwo && !isExpanded)
-                  ? tipoGroup.subtipoGroups.reduce((acc, subGroup) => {
-                      if (limitRemaining <= 0) return acc;
-                      const sliced = subGroup.items.slice(0, limitRemaining);
-                      if (sliced.length > 0) {
-                        limitRemaining -= sliced.length;
-                        acc.push({ ...subGroup, items: sliced });
-                      }
-                      return acc;
-                    }, [] as typeof tipoGroup.subtipoGroups)
-                  : tipoGroup.subtipoGroups;
-
-                return (
-                  <Card key={tipoGroup.tipoId} className="overflow-hidden border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                      {/* Cabeçalho do Tipo */}
-                      <div
-                        className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
-                        onClick={() => hasMoreThanTwo && toggleEquipamentoTipoExpand(tipoGroup.tipoId)}
-                        title={hasMoreThanTwo ? (isExpanded ? 'Clique para compactar' : 'Clique para descompactar') : undefined}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                            <Folder className="w-4 h-4 fill-amber-400" />
-                          </div>
-                          <h3 className="font-bold text-base text-white flex items-center gap-2">
-                            {tipoGroup.tipoNome}
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge className="bg-slate-800 text-slate-200 border border-slate-700 font-medium text-xs">
-                            <Package className="w-3.5 h-3.5 mr-1 text-blue-400" />
-                            {totalCount} {totalCount === 1 ? 'item' : 'itens'}
-                          </Badge>
-                          {hasMoreThanTwo && (
-                            <Badge
-                              className={`text-[10px] font-bold cursor-pointer transition-colors ${
-                                isExpanded
-                                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                                  : 'bg-amber-500 text-slate-950 hover:bg-amber-600'
-                              }`}
-                            >
-                              {isExpanded ? (
-                                <span className="flex items-center gap-1"><ChevronUp className="w-3 h-3" /> Descompactado</span>
-                              ) : (
-                                <span className="flex items-center gap-1"><ChevronDown className="w-3 h-3" /> Compactado (+{totalCount - 2})</span>
-                              )}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Subtipos e Equipamentos */}
-                      <CardContent className="p-4 space-y-4 bg-slate-50/50">
-                        {visibleSubGroupList.map((subGroup) => (
-                          <div key={subGroup.subtipoId} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                            <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Tag className="w-3.5 h-3.5 text-indigo-600" />
-                                <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">{subGroup.subtipoNome}</span>
-                              </div>
-                              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold">
-                                {subGroup.items.length} {subGroup.items.length === 1 ? 'item' : 'itens'}
-                              </Badge>
-                            </div>
-
-                            <div className="divide-y divide-slate-100">
-                              {subGroup.items.map((eq) => {
-                                const attrs = getAtributosEquipamento(eq.atributos_especificos);
-                                return (
-                                  <div
-                                    key={eq.id}
-                                    className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-3.5">
-                                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shrink-0 shadow-xs">
-                                        <Package className="w-5 h-5 text-white" />
-                                      </div>
-                                      <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <p className="font-semibold text-slate-900 text-sm">{eq.codigo_patrimonio}</p>
-                                          <StatusBadge status={eq.status} />
-                                        </div>
-                                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
-                                          {attrs.localizacao && (
-                                            <span className="flex items-center gap-1">
-                                              <MapPin className="w-3 h-3 text-slate-400" /> {String(attrs.localizacao)}
-                                            </span>
-                                          )}
-                                          <Badge className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px]">
-                                            {String(attrs.estado_conservacao || 'bom')}
-                                          </Badge>
-                                          {eq.valor_nominal && (
-                                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">
-                                              R$ {Number(eq.valor_nominal).toFixed(2).replace('.', ',')}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                                          <MoreVertical className="w-4 h-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={() => { setSelected(eq); setDetailModalOpen(true); }}>
-                                          <Eye className="w-4 h-4 mr-2" /> Visualizar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => openEditModal(eq)}>
-                                          <Edit className="w-4 h-4 mr-2" /> Editar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          onClick={() => handleDelete(eq)}
-                                          className="text-red-600"
-                                        >
-                                          <Trash2 className="w-4 h-4 mr-2" /> Excluir
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </CardContent>
-                    </div>
-
-                    {/* Botão de Descompactar / Compactar se tiver mais que 2 equipamentos */}
-                    {hasMoreThanTwo && (
-                      <div className="p-4 pt-0 bg-slate-50/50">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => toggleEquipamentoTipoExpand(tipoGroup.tipoId)}
-                          className="w-full border-amber-300 bg-amber-50/90 hover:bg-amber-100 text-amber-900 font-semibold text-xs flex items-center justify-center gap-1.5 rounded-xl py-2 shadow-2xs transition-colors"
-                        >
-                          {isExpanded ? (
-                            <>
-                              <ChevronUp className="w-4 h-4 text-amber-700" /> Compactar equipamentos
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="w-4 h-4 text-amber-700" /> Descompactar {totalCount} equipamentos (+{totalCount - 2} ocultos)
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
+            <Badge variant="outline" className="bg-slate-800 text-amber-300 border-slate-700 px-3 py-1.5 font-medium text-xs flex items-center gap-1.5 shrink-0">
+              <Lock className="w-3.5 h-3.5 text-amber-400" /> Apenas gerentes podem criar e editar tipos
+            </Badge>
           )}
-        </TabsContent>
+        </div>
+      </div>
 
-        <TabsContent value="tipos" className="space-y-6 mt-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-md">
-            <div>
-              <h3 className="text-xl font-bold flex items-center gap-2">
-                <FolderOpen className="w-6 h-6 text-amber-400" />
-                Tipos de Equipamento
-              </h3>
-              <p className="text-slate-300 text-xs md:text-sm mt-1">
-                Cada tipo representa uma categoria principal de equipamento. Dentro de cada tipo, cadastre subtipos com imagem de referência e especificações personalizadas (Booleano/Número).
-              </p>
-            </div>
-            {isManager ? (
-              <Button
-                onClick={openNewTipoModal}
-                className="gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow-lg shrink-0"
-              >
-                <FolderPlus className="w-5 h-5" /> Novo Tipo
-              </Button>
-            ) : (
-              <Badge variant="outline" className="bg-slate-800 text-amber-300 border-slate-700 px-3 py-1.5 font-medium text-xs flex items-center gap-1.5 shrink-0">
-                <Lock className="w-3.5 h-3.5 text-amber-400" /> Apenas gerentes podem criar e editar tipos
-              </Badge>
-            )}
-          </div>
+      {/* Barra de Busca e Ações */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+        <div className="relative flex-1 w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <Input
+            placeholder="Buscar por pasta, modelo ou característica..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Button variant="outline" onClick={handleRefresh} className="gap-2 shrink-0 self-end sm:self-auto">
+          <RefreshCw className={`w-4 h-4 ${equipamentosQuery.isFetching ? 'animate-spin' : ''}`} />
+          Atualizar
+        </Button>
+      </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {tipos.map((tipo) => {
+            {filteredTipos.map((tipo) => {
               const subtipos = getSubtiposTipo(tipo.schema_especificacoes);
               const totalItemsDoTipo = equipamentos.filter((e) => e.tipo_id === tipo.id).length;
 
@@ -1191,6 +1017,27 @@ export default function Equipamentos() {
                                       {sub.descricao || 'Sem descrição cadastrada.'}
                                     </p>
 
+                                    {/* Badges de Características / Especificações */}
+                                    {sub.caracteristicas && Object.keys(sub.caracteristicas).length > 0 && (
+                                      <div className="pt-1">
+                                        <p className="text-[10px] font-semibold uppercase text-slate-400 mb-1">
+                                          Características:
+                                        </p>
+                                        <div className="flex flex-wrap gap-1">
+                                          {Object.entries(sub.caracteristicas).map(([k, v]) => (
+                                            <Badge
+                                              key={k}
+                                              variant="outline"
+                                              className="text-[10px] px-1.5 py-0.5 font-medium bg-amber-50 text-amber-800 border-amber-200"
+                                            >
+                                              <Sparkles className="w-2.5 h-2.5 mr-1 text-amber-600 inline" />
+                                              {k}: {String(v)}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {/* Badges de Categorias / Campos Definidos */}
                                     {cats.length > 0 && (
                                       <div className="pt-1">
@@ -1264,7 +1111,7 @@ export default function Equipamentos() {
               );
             })}
 
-            {tipos.length === 0 && (
+            {filteredTipos.length === 0 && (
               <div className="col-span-full text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
                 <Folder className="w-16 h-16 mx-auto mb-3 text-amber-300 opacity-60" />
                 <h4 className="text-lg font-bold text-slate-800">Nenhum tipo cadastrado</h4>
@@ -1277,8 +1124,6 @@ export default function Equipamentos() {
               </div>
             )}
           </div>
-        </TabsContent>
-      </Tabs>
 
       {/* Modal Equipamento com Etapas Sequenciais (Tipo -> Subtipo -> Especificações -> Dados) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -1550,7 +1395,7 @@ export default function Equipamentos() {
 
       {/* Modal Tipo (Pasta) */}
       <Dialog open={tipoModalOpen} onOpenChange={setTipoModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Folder className="w-5 h-5 text-amber-500 fill-amber-200" />
@@ -1558,7 +1403,7 @@ export default function Equipamentos() {
             </DialogTitle>
             <DialogDescription>
               {isEditingTipo
-                ? 'Atualize o nome e descrição desta categoria/pasta'
+                ? 'Atualize o nome e descrição desta categoria/pasta.'
                 : 'Cadastre um novo tipo de equipamento que funcionará como uma pasta de categoria.'}
             </DialogDescription>
           </DialogHeader>
@@ -1569,6 +1414,7 @@ export default function Equipamentos() {
                 value={tipoFormData.nome}
                 onChange={(e) => setTipoFormData({ ...tipoFormData, nome: e.target.value })}
                 placeholder="Ex: Cadeira de Rodas, Muleta, Andador"
+                className="mt-1"
               />
             </div>
             <div>
@@ -1577,6 +1423,8 @@ export default function Equipamentos() {
                 value={tipoFormData.descricao}
                 onChange={(e) => setTipoFormData({ ...tipoFormData, descricao: e.target.value })}
                 placeholder="Descrição geral sobre os equipamentos desta pasta..."
+                rows={3}
+                className="mt-1"
               />
             </div>
             <div className="space-y-2">
@@ -1638,18 +1486,10 @@ export default function Equipamentos() {
               <Label>Limite de Renovações</Label>
               <Input
                 type="number"
+                min="0"
                 value={tipoFormData.limite_renovacoes}
                 onChange={(e) => setTipoFormData({ ...tipoFormData, limite_renovacoes: Number(e.target.value) })}
-              />
-            </div>
-            <div>
-              <Label>Características (JSON)</Label>
-              <Textarea
-                value={tipoFormData.schema_especificacoes}
-                onChange={(e) => setTipoFormData({ ...tipoFormData, schema_especificacoes: e.target.value })}
-                placeholder='Ex: {"peso_suportado": ["85kg", "100kg"], "reclinavel": ["Sim", "Nao"]}'
-                className="font-mono text-xs"
-                rows={3}
+                className="mt-1"
               />
             </div>
           </div>
@@ -1658,6 +1498,7 @@ export default function Equipamentos() {
             <Button
               onClick={handleSaveTipo}
               disabled={createTipoMut.isPending || updateTipoMut.isPending || !tipoFormData.nome.trim()}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold"
             >
               {(createTipoMut.isPending || updateTipoMut.isPending) && (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1670,14 +1511,14 @@ export default function Equipamentos() {
 
       {/* Modal Subtipo */}
       <Dialog open={subtipoModalOpen} onOpenChange={setSubtipoModalOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Tag className="w-5 h-5 text-blue-600" />
               {selectedSubtipo ? 'Editar Subtipo de Equipamento' : 'Novo Subtipo de Equipamento'}
             </DialogTitle>
             <DialogDescription>
-              Cadastre um subtipo com imagem de referência e defina os campos de categorias que devem ser preenchidos (Booleano Sim/Não ou Número).
+              Cadastre um modelo/subtipo específico com imagem de referência, características dinâmicas e campos personalizados.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-4">
@@ -1687,6 +1528,7 @@ export default function Equipamentos() {
                 value={subtipoFormData.nome}
                 onChange={(e) => setSubtipoFormData({ ...subtipoFormData, nome: e.target.value })}
                 placeholder="Ex: Cadeira Higiênica, Muleta Axilar, Andador com Rodas"
+                className="mt-1"
               />
             </div>
 
@@ -1696,6 +1538,8 @@ export default function Equipamentos() {
                 value={subtipoFormData.descricao}
                 onChange={(e) => setSubtipoFormData({ ...subtipoFormData, descricao: e.target.value })}
                 placeholder="Descrição geral ou especificações deste subtipo..."
+                rows={2}
+                className="mt-1"
               />
             </div>
 
@@ -1756,83 +1600,76 @@ export default function Equipamentos() {
               )}
             </div>
 
-            {/* Configuração de Categorias Dinâmicas (Booleano / Número) */}
-            <div className="border border-blue-100 bg-blue-50/40 p-4 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Características e Especificações Dinâmicas (Key-Value) */}
+            <div className="border border-amber-200 bg-amber-50/40 p-4 rounded-2xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                    Categorias / Campos Personalizados
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    Características
                   </h5>
                   <p className="text-[11px] text-slate-500">
-                    Crie quantas categorias desejar (ex: Peso, Dobrável). Escolha se a resposta é Sim/Não (Booleano) ou Número.
+                    Defina propriedades específicas deste subtipo (ex: Peso: 60kg, Dobrável: Sim).
                   </p>
                 </div>
                 <Button
                   type="button"
                   size="sm"
-                  onClick={handleAddCategoryRow}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1 rounded-xl shrink-0"
+                  variant="outline"
+                  onClick={handleAddSubtipoCaracteristica}
+                  className="bg-white hover:bg-slate-100 text-slate-700 text-xs gap-1.5 rounded-xl border-slate-300 shrink-0 shadow-xs"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar Categoria
+                  <Plus className="w-3.5 h-3.5 text-amber-600" /> Adicionar Característica
                 </Button>
               </div>
 
-              {subtipoFormData.categorias.length === 0 ? (
-                <div className="p-4 bg-white/70 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">
-                  Nenhuma categoria personalizada criada. Clique em "+ Adicionar Categoria" para incluir campos como "Peso (kg)" ou "Dobrável (Sim/Não)".
+              {subtipoFormData.caracteristicas.length === 0 ? (
+                <div className="p-4 bg-white/80 rounded-xl border border-dashed border-amber-200 text-center text-xs text-slate-400">
+                  Nenhuma característica cadastrada. Clique em <strong className="text-slate-700">"+ Adicionar Característica"</strong> para definir atributos do modelo.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {subtipoFormData.categorias.map((cat, idx) => (
+                <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                  {subtipoFormData.caracteristicas.map((item, idx) => (
                     <div
-                      key={cat.id}
-                      className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
+                      key={item.id || idx}
+                      className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 transition-all hover:border-amber-300"
                     >
                       <div className="flex-1">
-                        <Label className="text-[10px] text-slate-500 mb-1 block">Nome da Categoria {idx + 1}</Label>
+                        <Label className="text-[10px] font-semibold text-slate-500 mb-1 block">
+                          Nome da Característica
+                        </Label>
                         <Input
-                          value={cat.nome}
-                          onChange={(e) => handleUpdateCategoryRow(cat.id, 'nome', e.target.value)}
-                          placeholder="Ex: Peso (kg), Dobrável, Largura"
-                          className="h-8 text-xs"
+                          value={item.chave}
+                          onChange={(e) => handleUpdateSubtipoCaracteristica(item.id, 'chave', e.target.value)}
+                          placeholder="Ex: Peso, Dobrável, Material"
+                          className="h-8 text-xs bg-white"
                         />
                       </div>
 
-                      <div className="w-full sm:w-44">
-                        <Label className="text-[10px] text-slate-500 mb-1 block">Tipo de Resposta</Label>
-                        <Select
-                          value={cat.tipo_dado}
-                          onValueChange={(v) => handleUpdateCategoryRow(cat.id, 'tipo_dado', v)}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="booleano">
-                              <span className="flex items-center gap-1 text-purple-700">
-                                <ToggleLeft className="w-3.5 h-3.5" /> Sim ou Não (Booleano)
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="numero">
-                              <span className="flex items-center gap-1 text-blue-700">
-                                <Hash className="w-3.5 h-3.5" /> Número (Numérico)
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <div className="flex-1">
+                        <Label className="text-[10px] font-semibold text-slate-500 mb-1 block">
+                          Valor
+                        </Label>
+                        <Input
+                          value={item.valor}
+                          onChange={(e) => handleUpdateSubtipoCaracteristica(item.id, 'valor', e.target.value)}
+                          placeholder="Ex: 60kg, Sim, Alumínio"
+                          className="h-8 text-xs bg-white"
+                        />
                       </div>
 
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveCategoryRow(cat.id)}
-                        className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 self-end sm:self-center"
-                        title="Remover Categoria"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center justify-end pt-1 sm:pt-4 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveSubtipoCaracteristica(item.id)}
+                          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Remover esta característica"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1844,6 +1681,7 @@ export default function Equipamentos() {
             <Button
               onClick={handleSaveSubtipo}
               disabled={addSubtipoMut.isPending || updateSubtipoMut.isPending || !subtipoFormData.nome.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
             >
               {(addSubtipoMut.isPending || updateSubtipoMut.isPending) && (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

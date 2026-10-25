@@ -200,11 +200,26 @@ export function useNotificacoesComBadges() {
       const itemId = `sol-update-${sol.id}-${sol.status}`;
 
       if (!items.some((i) => i.id === itemId || i.id === sol.id)) {
+        const equipNome = sol.tipo?.nome || (sol as any).tipo_equipamento?.nome || 'Equipamento';
+        const pessoaNome = sol.beneficiario?.nome_completo || sol.solicitante?.nome_completo || 'Solicitante';
+
+        let acaoTitulo = 'Solicitação Atualizada';
+        if (sol.status === 'triagem') acaoTitulo = 'Solicitação em Triagem';
+        else if (sol.status === 'aguardando_documentacao') acaoTitulo = 'Aguardando Documentos';
+        else if (sol.status === 'aguardando_retirada') acaoTitulo = 'Solicitação Aprovada';
+        else if (sol.status === 'equipamento_emprestado') acaoTitulo = 'Equipamento Retirado';
+        else if (sol.status === 'em_devolucao') acaoTitulo = 'Devolução em Andamento';
+        else if (sol.status === 'encerrada') acaoTitulo = 'Solicitação Concluída / Encerrada';
+        else if (sol.status === 'em_cobranca') acaoTitulo = 'Cobrança Pendente';
+
+        const tituloAmigavel = `${acaoTitulo}: ${equipNome} para ${pessoaNome}`;
+        const descAmigavel = `Protocolo: #${sol.protocolo || sol.id.slice(0, 8)} • Status atual: "${statusUi.label}".`;
+
         items.push({
           id: itemId,
           protocolo: sol.protocolo || 'Solicitação',
-          titulo: `Alteração na Solicitação ${sol.protocolo || ''}`,
-          descricao: `Status da triagem: "${statusUi.label}". Beneficiário: ${sol.beneficiario?.nome_completo || 'Não especificado'}.`,
+          titulo: tituloAmigavel,
+          descricao: descAmigavel,
           dataFormatted: new Date(ts).toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: '2-digit',

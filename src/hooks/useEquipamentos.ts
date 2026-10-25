@@ -173,6 +173,7 @@ export function useAddSubtipoEquipamento() {
         descricao?: string;
         imagem_url?: string;
         categorias?: CategoriaSubtipo[];
+        caracteristicas?: Record<string, any>;
       };
     }) => {
       if (role !== 'gerente' && role !== 'ceo') {
@@ -192,6 +193,7 @@ export function useAddSubtipoEquipamento() {
         descricao: subtipo.descricao?.trim() || undefined,
         imagem_url: subtipo.imagem_url?.trim() || undefined,
         categorias: subtipo.categorias || [],
+        caracteristicas: subtipo.caracteristicas || {},
         created_at: new Date().toISOString(),
       };
       const updatedSubtipos = [...currentSubtipos, newSubtipo];
@@ -226,6 +228,7 @@ export function useUpdateSubtipoEquipamento() {
         descricao?: string;
         imagem_url?: string;
         categorias?: CategoriaSubtipo[];
+        caracteristicas?: Record<string, any>;
       };
     }) => {
       if (role !== 'gerente' && role !== 'ceo') {
@@ -247,6 +250,7 @@ export function useUpdateSubtipoEquipamento() {
               descricao: patch.descricao?.trim() || undefined,
               imagem_url: patch.imagem_url?.trim() || undefined,
               categorias: patch.categorias || [],
+              caracteristicas: patch.caracteristicas ?? s.caracteristicas ?? {},
             }
           : s
       );

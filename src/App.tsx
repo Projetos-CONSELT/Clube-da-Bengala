@@ -59,6 +59,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
   Atendimento: BACK_OFFICE_ROLES,
   Configuracoes: ALL_ROLES,
   AdminPanel: ['ceo', 'gerente'],
+  TriagemNucleo: BACK_OFFICE_ROLES,
 };
 
 const AuthenticatedApp = () => {
@@ -134,6 +135,19 @@ const AuthenticatedApp = () => {
           </Route>
         );
       })}
+
+      <Route
+        element={<ProtectedRoute unauthenticatedElement={unauthenticated} allowedRoles={BACK_OFFICE_ROLES} />}
+      >
+        <Route
+          path="/triagem"
+          element={
+            <LayoutWrapper currentPageName="triagem">
+              <Pages.TriagemNucleo />
+            </LayoutWrapper>
+          }
+        />
+      </Route>
 
       <Route path="*" element={<PageNotFound />} />
       </Routes>

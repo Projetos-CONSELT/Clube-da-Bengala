@@ -15,6 +15,7 @@ import {
   Heart,
   Wrench,
   Headphones,
+  Inbox,
   ListOrdered,
   Send,
   Shield,
@@ -72,13 +73,13 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: 'Dashboard', icon: LayoutDashboard, group: null, backOfficeOnly: true },
+  { name: 'Triagem', href: 'triagem', icon: Inbox, group: 'Operacional', backOfficeOnly: true },
   { name: 'Atendimento', href: 'Atendimento', icon: Headphones, group: 'Operacional', backOfficeOnly: true },
   { name: 'Pessoas', href: 'Pessoas', icon: Users, group: 'Operacional', backOfficeOnly: true },
   { name: 'Solicitações', href: 'Solicitacoes', icon: ClipboardList, group: 'Operacional' },
   { name: 'Fila', href: 'Fila', icon: ListOrdered, group: 'Operacional', backOfficeOnly: true },
   { name: 'Equipamentos', href: 'Equipamentos', icon: Package, group: 'Estoque', backOfficeOnly: true },
   { name: 'Doações', href: 'Doacoes', icon: Heart, group: 'Estoque', backOfficeOnly: true },
-  { name: 'Manutenção', href: 'Manutencao', icon: Wrench, group: 'Estoque', backOfficeOnly: true },
   { name: 'Notificações', href: 'Notificacoes', icon: Send, group: 'Comunicação' },
   { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
   { name: 'Painel Admin', href: 'AdminPanel', icon: Shield, group: 'Gestão', backOfficeOnly: true, gerenteOnly: true },
@@ -298,10 +299,16 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   };
 
   const visibleNav = navigation.filter(
-    (item) =>
-      (!item.backOfficeOnly || isBackOfficeRole(role)) &&
-      (!item.managerOnly || role === 'gerente' || role === 'ceo') &&
-      (!item.gerenteOnly || role === 'gerente' || role === 'ceo')
+    (item) => {
+      if (role === 'atendente' && (item.name === 'Pessoas' || item.name === 'Doações')) {
+        return false;
+      }
+      return (
+        (!item.backOfficeOnly || isBackOfficeRole(role)) &&
+        (!item.managerOnly || role === 'gerente' || role === 'ceo') &&
+        (!item.gerenteOnly || role === 'gerente' || role === 'ceo')
+      );
+    }
   );
 
   const handleLogout = async () => {
@@ -359,7 +366,9 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   )}
                   <div className="space-y-0.5">
                     {items.map((item) => {
-                      const isActive = currentPageName === item.href;
+                      const isActive =
+                        currentPageName === item.href ||
+                        (item.href === 'triagem' && (currentPageName === 'TriagemNucleo' || currentPageName === 'triagem'));
                       const Icon = item.icon;
                       return (
                         <Link

@@ -5,6 +5,8 @@ import type { BeneficiarioInsert, BeneficiarioUpdate } from '@/types/database.ty
 import { isBackOfficeRole } from '@/types/domain';
 import { useCeoContext } from '@/lib/CeoContext';
 
+import { cleanCPF, formatCPF } from '@/utils/cpf';
+
 export const BENEFICIARIOS_KEY = ['beneficiarios'] as const;
 
 export function useBeneficiariosQuery() {
@@ -42,12 +44,32 @@ export function useCreateBeneficiario() {
         : payload.solicitante_id;
       if (!solicitante_id) throw new Error('Solicitante não identificado.');
 
+      let formattedCpf = payload.cpf;
+      if (payload.cpf && payload.cpf.trim()) {
+        const digits = cleanCPF(payload.cpf);
+        if (digits.length !== 11) {
+          throw new Error('CPF inválido. O CPF deve conter 11 dígitos.');
+        }
+        formattedCpf = formatCPF(digits);
+
+        // Bloqueia duplicidade (tanto no formato mascarado quanto numérico)
+        const { data: existing } = await supabase
+          .from('beneficiarios')
+          .select('id, nome_completo, cpf')
+          .or(`cpf.eq.${formattedCpf},cpf.eq.${digits}`)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          throw new Error(`Este CPF (${formattedCpf}) já está cadastrado para o beneficiário "${existing[0].nome_completo}".`);
+        }
+      }
+
       const nucleo_id = isSol ? user?.nucleo_id : selectedNucleusId;
-      const row: BeneficiarioInsert = { ...payload, solicitante_id, nucleo_id };
+      const row: BeneficiarioInsert = { ...payload, cpf: formattedCpf, solicitante_id, nucleo_id };
       
       const { data, error } = await supabase.from('beneficiarios').insert(row).select().single();
       if (error) {
-        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value')) {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.message.includes('já está cadastrado')) {
           throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
         } else {
           throw new Error(error.message);
@@ -63,14 +85,35 @@ export function useUpdateBeneficiario() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: BeneficiarioUpdate }) => {
+      const cleanPatch = { ...patch };
+      if (cleanPatch.cpf && cleanPatch.cpf.trim()) {
+        const digits = cleanCPF(cleanPatch.cpf);
+        if (digits.length !== 11) {
+          throw new Error('CPF inválido. O CPF deve conter 11 dígitos.');
+        }
+        const formattedCpf = formatCPF(digits);
+        cleanPatch.cpf = formattedCpf;
+
+        const { data: existing } = await supabase
+          .from('beneficiarios')
+          .select('id, nome_completo, cpf')
+          .or(`cpf.eq.${formattedCpf},cpf.eq.${digits}`)
+          .neq('id', id)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          throw new Error(`Este CPF (${formattedCpf}) já está cadastrado para o beneficiário "${existing[0].nome_completo}".`);
+        }
+      }
+
       const { data, error } = await supabase
         .from('beneficiarios')
-        .update(patch)
+        .update(cleanPatch)
         .eq('id', id)
         .select()
         .single();
       if (error) {
-        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.code === '23505') {
+        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.code === '23505' || error.message.includes('já está cadastrado')) {
           throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
         }
         throw error;
