@@ -20,6 +20,7 @@ declare module '@/components/ui/card' {
   export const CardHeader: ComponentType<Record<string, unknown>>;
   export const CardTitle: ComponentType<Record<string, unknown>>;
   export const CardDescription: ComponentType<Record<string, unknown>>;
+  export const CardFooter: ComponentType<Record<string, unknown>>;
 }
 
 declare module '@/components/ui/toaster' {
@@ -174,3 +175,8 @@ declare module '@/components/ui/alert-dialog' {
   export const AlertDialogTrigger: ComponentType<Record<string, unknown>>;
 }
 
+
+declare module '@/components/ui/checkbox' {
+  import type { ComponentType } from 'react';
+  export const Checkbox: ComponentType<Record<string, unknown>>;
+}

@@ -1136,7 +1136,15 @@ export default function Solicitacoes() {
           throw new Error('Falha ao criar o beneficiário.');
         }
       } catch (err: any) {
-        toast({ variant: 'destructive', title: 'Erro', description: err.message });
+        if (err?.code === '23505' || err?.message?.includes('23505') || err?.message?.includes('já está cadastrado')) {
+          toast({
+            variant: 'destructive',
+            title: 'CPF já cadastrado',
+            description: 'Este CPF já está cadastrado para outro beneficiário no sistema.',
+          });
+        } else {
+          toast({ variant: 'destructive', title: 'Erro', description: err.message });
+        }
         return;
       }
     }
@@ -2477,7 +2485,7 @@ export default function Solicitacoes() {
                   <Label className="text-xs">Data da Retirada</Label>
                   <Input
                     disabled
-                    value={`Hoje (${moment().format('DD/MM/YYYY')})`}
+                    value={retiradaDataRealizada ? `Hoje (${moment(retiradaDataRealizada).format('DD/MM/YYYY')})` : `Hoje (${moment().format('DD/MM/YYYY')})`}
                     className="mt-1 bg-slate-100 cursor-not-allowed font-medium text-slate-700"
                   />
                 </div>
@@ -2743,6 +2751,7 @@ export default function Solicitacoes() {
                       {
                         solicitacaoId: selected.id,
                         equipamentoId: eqId,
+                        dataRetirada: retiradaDataRealizada ? new Date(retiradaDataRealizada).toISOString() : new Date().toISOString(),
                         dataPrevistaDevolucao: new Date(retiradaEquipamento),
                         nomeResponsavel: retiradaResponsavel.trim(),
                         nomeRetirador: retiradaNomeRetirador.trim(),

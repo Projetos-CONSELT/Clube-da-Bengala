@@ -65,7 +65,7 @@ const PAGE_ROLES: Record<string, UserRole[]> = {
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authChecked, role } = useAuth();
 
-  const { isCeo, selectedNucleusId } = useCeoContext();
+  const { isCeo, selectedNucleusId, isNucleoModalOpen, setIsNucleoModalOpen } = useCeoContext();
 
   if (isLoadingPublicSettings || (isLoadingAuth && !authChecked)) {
     return (
@@ -81,9 +81,9 @@ const AuthenticatedApp = () => {
     <>
       {isCeo && (
         <NucleoSelectorModal 
-          open={!selectedNucleusId} 
-          onOpenChange={() => {}} 
-          forceBlocking={true} 
+          open={isNucleoModalOpen} 
+          onOpenChange={setIsNucleoModalOpen} 
+          forceBlocking={!selectedNucleusId} 
         />
       )}
       <Routes>

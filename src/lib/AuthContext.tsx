@@ -52,6 +52,9 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+const ACTIVE_NUCLEUS_STORAGE_KEY = '@clube-bengala:active-nucleus';
+const LEGACY_STORAGE_KEY = 'cb_selected_nucleus_id';
+
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Usuario | null>(null);
@@ -118,7 +121,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, currentSession) => {
       if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('cb_selected_nucleus_id');
+        localStorage.removeItem(ACTIVE_NUCLEUS_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
       }
       setSession(currentSession);
       void loadProfile(currentSession?.user?.id, currentSession?.user?.email);
@@ -132,7 +136,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const logout = useCallback(async () => {
-    localStorage.removeItem('cb_selected_nucleus_id');
+    localStorage.removeItem(ACTIVE_NUCLEUS_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     await supabase.auth.signOut();
     setProfile(null);
     setSession(null);

@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { Heart, Plus, MapPin, Phone, Navigation, Building2, ExternalLink, Check, X } from 'lucide-react';
+import { Heart, Plus, MapPin, Phone, Navigation, Building2, ExternalLink, Check, X, Gift } from 'lucide-react';
 import Map, { Marker, NavigationControl, Popup } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useAtivosColaboradoresQuery } from '@/hooks/useColaboradores';

@@ -9,8 +9,8 @@ import {
   generateCodigoPatrimonio,
   getSubtiposTipo,
   type SubtipoEquipamento,
-  type TipoEquipamento,
 } from '@/types/domain';
+import type { TipoEquipamento } from '@/types/database.types';
 import { formatCPF, formatPhone } from '@/utils/cpf';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';

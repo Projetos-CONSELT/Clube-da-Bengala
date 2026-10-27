@@ -72,7 +72,11 @@ export function useEquipamentosQuery() {
 
       const { data, error } = await q;
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).filter((e: any) =>
+        e.status !== 'manutencao' &&
+        !e.em_manutencao &&
+        !e.atributos_especificos?.em_manutencao
+      );
     },
   });
 }
@@ -88,6 +92,7 @@ export function useEquipamentosDisponiveisQuery(tipoId?: string, nucleoId?: stri
         .from('equipamentos')
         .select('id, codigo_patrimonio, estado_conservacao, valor_nominal, atributos_especificos, nucleo_id, tipo_id, status')
         .eq('tipo_id', tipoId)
+        .neq('status', 'manutencao')
         .eq('status', 'disponivel');
 
       if (nucleoId) {

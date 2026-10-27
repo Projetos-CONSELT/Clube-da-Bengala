@@ -54,7 +54,6 @@ import { supabase } from '@/lib/supabase';
 import { useNotificacoesComBadges } from '@/hooks/useNotificacoes';
 import { useCeoContext } from '@/lib/CeoContext';
 import { useNucleosQuery } from '@/hooks/useNucleos';
-import NucleoSelectorModal from '@/components/NucleoSelectorModal';
 
 interface LayoutProps {
   children: ReactNode;
@@ -80,6 +79,7 @@ const navigation: NavItem[] = [
   { name: 'Fila', href: 'Fila', icon: ListOrdered, group: 'Operacional', backOfficeOnly: true },
   { name: 'Equipamentos', href: 'Equipamentos', icon: Package, group: 'Estoque', backOfficeOnly: true },
   { name: 'Doações', href: 'Doacoes', icon: Heart, group: 'Estoque', backOfficeOnly: true },
+  { name: 'Manutenção', href: 'Manutencao', icon: Wrench, group: 'Estoque', backOfficeOnly: true },
   { name: 'Notificações', href: 'Notificacoes', icon: Send, group: 'Comunicação' },
   { name: 'Relatórios', href: 'Relatorios', icon: BarChart3, group: 'Gestão', backOfficeOnly: true, managerOnly: true },
   { name: 'Painel Admin', href: 'AdminPanel', icon: Shield, group: 'Gestão', backOfficeOnly: true, gerenteOnly: true },
@@ -111,7 +111,7 @@ const getRoleLabel = (r: string | undefined | null) => {
 export default function Layout({ children, currentPageName }: LayoutProps) {
   const { user, profile, isLoadingAuth, logout, role, refreshProfile } = useAuth();
   const { unreadCount, alteracoesList, marcarTodasLidas } = useNotificacoesComBadges();
-  const { isCeo, selectedNucleusId } = useCeoContext();
+  const { isCeo, selectedNucleusId, setIsNucleoModalOpen } = useCeoContext();
   const { data: nucleos = [] } = useNucleosQuery();
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -119,7 +119,6 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
   const [personalProfileModalOpen, setPersonalProfileModalOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isChangeNucleusOpen, setIsChangeNucleusOpen] = useState(false);
   const [requestedRole, setRequestedRole] = useState<string>('atendente');
   const [submittingRoleRequest, setSubmittingRoleRequest] = useState(false);
   const { toast } = useToast();
@@ -300,7 +299,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
 
   const visibleNav = navigation.filter(
     (item) => {
-      if (role === 'atendente' && (item.name === 'Pessoas' || item.name === 'Doações')) {
+      if (role === 'atendente' && (item.name === 'Pessoas' || item.name === 'Doações' || item.name === 'Manutenção')) {
         return false;
       }
       return (
@@ -528,7 +527,7 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
                   <DropdownMenuSeparator />
                   {isCeo && (
                     <>
-                      <DropdownMenuItem onClick={() => setIsChangeNucleusOpen(true)} className="cursor-pointer">
+                      <DropdownMenuItem onClick={() => setIsNucleoModalOpen(true)} className="cursor-pointer">
                         <Building2 className="w-4 h-4 mr-2 text-blue-600" />
                         Trocar Núcleo Ativo
                       </DropdownMenuItem>
@@ -926,13 +925,6 @@ export default function Layout({ children, currentPageName }: LayoutProps) {
         </DialogContent>
       </Dialog>
       
-      {isCeo && (
-        <NucleoSelectorModal
-          open={isChangeNucleusOpen}
-          onOpenChange={setIsChangeNucleusOpen}
-          forceBlocking={false}
-        />
-      )}
     </div>
   );
 }

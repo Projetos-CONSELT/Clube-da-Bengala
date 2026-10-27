@@ -13,6 +13,7 @@ import { useColaboradoresQuery, useUpdateColaborador, useVoluntariosQuery, useDe
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -469,7 +470,17 @@ export default function Pessoas() {
         toast({ title: 'Beneficiário salvo com sucesso' });
         setBenefModal(false);
       },
-      onError: (e: Error) => toast({ variant: 'destructive', title: 'Erro ao salvar', description: e.message }),
+      onError: (e: any) => {
+        if (e?.code === '23505' || e?.message?.includes('23505') || e?.message?.includes('já está cadastrado')) {
+          toast({
+            variant: 'destructive',
+            title: 'CPF já cadastrado',
+            description: 'Este CPF já está cadastrado para outro beneficiário.',
+          });
+        } else {
+          toast({ variant: 'destructive', title: 'Erro ao salvar', description: e.message });
+        }
+      },
     };
     if (data.id) updateBenef.mutate({ id: data.id, patch: payload }, cb);
     else createBenef.mutate(payload, cb);

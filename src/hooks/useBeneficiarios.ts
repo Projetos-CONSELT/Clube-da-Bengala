@@ -69,8 +69,17 @@ export function useCreateBeneficiario() {
       
       const { data, error } = await supabase.from('beneficiarios').insert(row).select().single();
       if (error) {
-        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.message.includes('já está cadastrado')) {
-          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        if (
+          error.code === '23505' ||
+          error.message.includes('23505') ||
+          error.message.includes('beneficiarios_cpf_key') ||
+          error.message.includes('beneficiarios_cpf_unique') ||
+          error.message.includes('duplicate key value') ||
+          error.message.includes('já está cadastrado')
+        ) {
+          const customErr: any = new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+          customErr.code = '23505';
+          throw customErr;
         } else {
           throw new Error(error.message);
         }
@@ -113,8 +122,17 @@ export function useUpdateBeneficiario() {
         .select()
         .single();
       if (error) {
-        if (error.message.includes('beneficiarios_cpf_key') || error.message.includes('duplicate key value') || error.code === '23505' || error.message.includes('já está cadastrado')) {
-          throw new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+        if (
+          error.code === '23505' ||
+          error.message.includes('23505') ||
+          error.message.includes('beneficiarios_cpf_key') ||
+          error.message.includes('beneficiarios_cpf_unique') ||
+          error.message.includes('duplicate key value') ||
+          error.message.includes('já está cadastrado')
+        ) {
+          const customErr: any = new Error('Este CPF já está cadastrado para outro beneficiário no sistema.');
+          customErr.code = '23505';
+          throw customErr;
         }
         throw error;
       }

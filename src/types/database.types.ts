@@ -142,7 +142,6 @@ export type Database = {
           gerente_id: string | null;
           is_ativo: boolean | null;
           created_at: string | null;
-          is_ativo: boolean | null;
         };
         Insert: {
           id?: string;
@@ -160,7 +159,6 @@ export type Database = {
           gerente_id?: string | null;
           is_ativo?: boolean | null;
           created_at?: string | null;
-          is_ativo?: boolean | null;
         };
         Update: {
           id?: string;
@@ -178,7 +176,6 @@ export type Database = {
           gerente_id?: string | null;
           is_ativo?: boolean | null;
           created_at?: string | null;
-          is_ativo?: boolean | null;
         };
         Relationships: [
           {
