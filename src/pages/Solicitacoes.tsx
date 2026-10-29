@@ -46,6 +46,7 @@ import {
   useTransferirSolicitacao,
 } from '@/hooks/useSolicitacoes';
 import { useBeneficiariosQuery, useCreateBeneficiario } from '@/hooks/useBeneficiarios';
+import { useCaracteristicasByTipoQuery } from '@/hooks/useEquipamentos';
 import { useAuditLogsQuery, useRejectionLogsQuery } from '@/hooks/useAuditLogs';
 import { useConfiguracoesSistema } from '@/hooks/useConfiguracoesSistema';
 import { useImagensRetiradaQuery, useUploadImagemRetirada, useDeleteImagemRetirada } from '@/hooks/useImagensRetirada';
@@ -63,7 +64,7 @@ import {
 import { DocumentosUsuarioTab } from '@/components/solicitacoes/DocumentosUsuarioTab';
 import {
   getStatusSolicitacaoUi,
-  getSubtiposTipo,
+  parseCaracteristicasSolicitadas,
   isBackOfficeRole,
   STATUS_SOLICITACAO_UI,
   type SolicitacaoComRelacoes,
@@ -403,6 +404,26 @@ function DadosSolicitacaoTab({
         <p className="text-sm text-slate-500">Tipo de Equipamento</p>
         <p className="font-medium">{tipoName(solicitacao)}</p>
       </div>
+      {(() => {
+        const caracts = parseCaracteristicasSolicitadas(solicitacao.caracteristicas_solicitadas);
+        const entries = Object.entries(caracts);
+        if (entries.length === 0) return null;
+        return (
+          <div className="col-span-2 p-3 bg-blue-50/50 border border-blue-100 rounded-xl space-y-1.5">
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" /> Características Solicitadas
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {entries.map(([k, v]) => (
+                <Badge key={k} variant="secondary" className="bg-white border border-blue-200 text-blue-900 text-xs py-1 px-2.5 shadow-2xs">
+                  <span className="text-slate-500 mr-1">{k}:</span>
+                  <span className="font-bold">{String(v)}</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       <div>
         <p className="text-sm text-slate-500">Data da Solicitação</p>
         <p className="font-medium">
@@ -917,7 +938,6 @@ export default function Solicitacoes() {
   const [formData, setFormData] = useState({
     beneficiario_id: '',
     tipo_equipamento_id: '',
-    subtipo_id: '',
     motivo_solicitacao: '',
     como_conheceu: '',
     tempo_estimado_meses: '',
@@ -1033,11 +1053,9 @@ export default function Solicitacoes() {
     }
   }, [role, solicitacoes.length, beneficiarios.length, solicitacoesQuery.isLoading, beneficiariosQuery.isLoading]);
 
-  const availableSubtipos = useMemo(() => {
-    if (!formData.tipo_equipamento_id) return [];
-    const tipoObj = tipos.find((t) => t.id === formData.tipo_equipamento_id);
-    return tipoObj ? getSubtiposTipo(tipoObj.schema_especificacoes) : [];
-  }, [tipos, formData.tipo_equipamento_id]);
+  const [caracteristicasRespostas, setCaracteristicasRespostas] = useState<Record<string, string>>({});
+  const caracteristicasQuery = useCaracteristicasByTipoQuery(formData.tipo_equipamento_id || null);
+  const caracteristicas = caracteristicasQuery.data ?? [];
 
   const filtered = useMemo(() => {
     let list = [...solicitacoes];
@@ -1093,7 +1111,8 @@ export default function Solicitacoes() {
   );
 
   const openNewModal = () => {
-    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', subtipo_id: '', motivo_solicitacao: '', como_conheceu: '', tempo_estimado_meses: '', aceitou_termos: false });
+    setFormData({ beneficiario_id: '', tipo_equipamento_id: '', motivo_solicitacao: '', como_conheceu: '', tempo_estimado_meses: '', aceitou_termos: false });
+    setCaracteristicasRespostas({});
     setNovoBeneficiario({ nome_completo: '', cpf: '', data_nascimento: '', altura_cm: '', peso_kg: '', tamanho_calcado: '' });
     setCepInput('');
     setSelectedNucleoId('');
@@ -1104,9 +1123,16 @@ export default function Solicitacoes() {
 
   const handleCreate = async () => {
     if (!formData.tipo_equipamento_id || !formData.beneficiario_id) return;
-    if (availableSubtipos.length > 0 && !formData.subtipo_id) {
-      toast({ variant: 'destructive', title: 'Selecione o subtipo de equipamento' });
-      return;
+    if (caracteristicas.length > 0) {
+      const faltando = caracteristicas.find((c) => !caracteristicasRespostas[c.nome]);
+      if (faltando) {
+        toast({
+          variant: 'destructive',
+          title: 'Especificação obrigatória',
+          description: `Por favor, selecione uma opção para "${faltando.nome}".`,
+        });
+        return;
+      }
     }
     if (!formData.aceitou_termos) {
       toast({ variant: 'destructive', title: 'Aceite os termos de empréstimo para continuar.' });
@@ -1149,16 +1175,12 @@ export default function Solicitacoes() {
       }
     }
 
-    const selectedSubtipoObj = availableSubtipos.find((s) => s.id === formData.subtipo_id);
-    const motivoFinal = selectedSubtipoObj
-      ? `[Subtipo: ${selectedSubtipoObj.nome}] ${formData.motivo_solicitacao.trim()}`.trim()
-      : formData.motivo_solicitacao.trim();
-
     createMutation.mutate(
       {
         beneficiario_id: finalBeneficiarioId,
         tipo_equipamento_id: formData.tipo_equipamento_id,
-        motivo_solicitacao: motivoFinal || undefined,
+        caracteristicas_solicitadas: caracteristicasRespostas,
+        motivo_solicitacao: formData.motivo_solicitacao.trim() || undefined,
         como_conheceu: formData.como_conheceu || undefined,
         tempo_estimado_meses: formData.tempo_estimado_meses ? Number(formData.tempo_estimado_meses) : undefined,
         nucleo_id: selectedNucleoId || undefined,
@@ -1299,6 +1321,24 @@ export default function Solicitacoes() {
               </p>
               <StatusBadge status={s.status} isRecusada={isRecusada} />
             </div>
+            {(() => {
+              const caracts = parseCaracteristicasSolicitadas(s.caracteristicas_solicitadas);
+              const entries = Object.entries(caracts);
+              if (entries.length === 0) return null;
+              return (
+                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                  {entries.map(([k, v]) => (
+                    <span
+                      key={k}
+                      className="inline-flex items-center text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200/80 rounded px-1.5 py-0.5"
+                    >
+                      <span className="font-semibold text-blue-900 mr-1">{k}:</span>
+                      {String(v)}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="flex items-center gap-4 mt-1 text-sm text-slate-500 flex-wrap">
               <span className="flex items-center gap-1 font-mono text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
                 #{s.protocolo || s.id.slice(0, 8)}
@@ -1778,13 +1818,13 @@ export default function Solicitacoes() {
               <Label>Tipo de Equipamento *</Label>
               <Select
                 value={formData.tipo_equipamento_id || 'none'}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
                   setFormData({
                     ...formData,
                     tipo_equipamento_id: v === 'none' ? '' : v,
-                    subtipo_id: '',
-                  })
-                }
+                  });
+                  setCaracteristicasRespostas({});
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o tipo" />
@@ -1796,38 +1836,97 @@ export default function Solicitacoes() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Subtipo de Equipamento {availableSubtipos.length > 0 ? '*' : ''}</Label>
-              {availableSubtipos.length > 0 ? (
-                <Select
-                  value={formData.subtipo_id || 'none'}
-                  onValueChange={(v) =>
-                    setFormData({ ...formData, subtipo_id: v === 'none' ? '' : v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o subtipo de equipamento" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSubtipos.map((st) => (
-                      <SelectItem key={st.id} value={st.id}>
-                        {st.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  disabled
-                  value={
-                    formData.tipo_equipamento_id
-                      ? 'Nenhum subtipo específico cadastrado'
-                      : 'Selecione primeiro o tipo de equipamento'
-                  }
-                  className="bg-slate-50 text-slate-500 text-xs cursor-not-allowed"
-                />
-              )}
-            </div>
+            {/* Características Dinâmicas do Equipamento */}
+            {formData.tipo_equipamento_id && (
+              <div className="space-y-3">
+                {caracteristicasQuery.isLoading ? (
+                  <div className="p-4 flex items-center justify-center gap-2 text-slate-500 text-xs bg-slate-50 rounded-xl border border-slate-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                    <span>Carregando especificações do equipamento...</span>
+                  </div>
+                ) : caracteristicas.length > 0 ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <div>
+                        <Label className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                          Especificações do Equipamento
+                        </Label>
+                        <p className="text-[11px] text-slate-500">
+                          Responda às características abaixo para personalizarmos o equipamento ideal para você.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      {caracteristicas.map((caract) => {
+                        const valores = (caract.valores_caracteristica || []).map((v) => v.valor);
+                        const currentVal = caracteristicasRespostas[caract.nome] || '';
+
+                        return (
+                          <div key={caract.id} className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200/80 shadow-2xs">
+                            <Label className="text-xs font-semibold text-slate-800 flex items-center justify-between">
+                              <span>{caract.nome} *</span>
+                              {currentVal && (
+                                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                                  {currentVal}
+                                </span>
+                              )}
+                            </Label>
+                            {valores.length <= 4 ? (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {valores.map((val) => (
+                                  <Button
+                                    key={val}
+                                    type="button"
+                                    size="sm"
+                                    variant={currentVal === val ? 'default' : 'outline'}
+                                    onClick={() =>
+                                      setCaracteristicasRespostas((prev) => ({
+                                        ...prev,
+                                        [caract.nome]: val,
+                                      }))
+                                    }
+                                    className={`h-8 text-xs font-semibold rounded-lg transition-all ${
+                                      currentVal === val
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white hover:bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {val}
+                                  </Button>
+                                ))}
+                              </div>
+                            ) : (
+                              <Select
+                                value={currentVal || 'none'}
+                                onValueChange={(v) =>
+                                  setCaracteristicasRespostas((prev) => ({
+                                    ...prev,
+                                    [caract.nome]: v === 'none' ? '' : v,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="bg-white h-9 text-xs">
+                                  <SelectValue placeholder={`Selecione ${caract.nome.toLowerCase()}...`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {valores.map((val) => (
+                                    <SelectItem key={val} value={val} className="text-xs">
+                                      {val}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Motivo da solicitação</Label>
@@ -2008,7 +2107,7 @@ export default function Solicitacoes() {
                 !formData.tipo_equipamento_id ||
                 !formData.beneficiario_id ||
                 (formData.beneficiario_id === 'novo' && (!novoBeneficiario.nome_completo || !novoBeneficiario.cpf || !novoBeneficiario.data_nascimento)) ||
-                (availableSubtipos.length > 0 && !formData.subtipo_id) ||
+                (caracteristicas.length > 0 && caracteristicas.some((c) => !caracteristicasRespostas[c.nome])) ||
                 !selectedNucleoId
               }
             >

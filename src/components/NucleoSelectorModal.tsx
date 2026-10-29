@@ -82,12 +82,17 @@ export default function NucleoSelectorModal({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <Input
               type="text"
+              role="searchbox"
+              aria-label="Buscar núcleo"
+              enterKeyHint="search"
               placeholder="Buscar núcleo..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 pr-9 h-10 text-sm bg-slate-50 border-slate-200 focus:bg-white transition-colors"
               autoFocus
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
               spellCheck={false}
             />
             {searchQuery && (

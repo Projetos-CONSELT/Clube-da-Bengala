@@ -307,6 +307,64 @@ export type Database = {
         };
         Relationships: [];
       };
+      caracteristicas_equipamento: {
+        Row: {
+          id: string;
+          tipo_equipamento_id: string;
+          nome: string;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          tipo_equipamento_id: string;
+          nome: string;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          tipo_equipamento_id?: string;
+          nome?: string;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'caracteristicas_equipamento_tipo_equipamento_id_fkey';
+            columns: ['tipo_equipamento_id'];
+            isOneToOne: false;
+            referencedRelation: 'tipos_equipamento';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      valores_caracteristica: {
+        Row: {
+          id: string;
+          caracteristica_id: string;
+          valor: string;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          caracteristica_id: string;
+          valor: string;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          caracteristica_id?: string;
+          valor?: string;
+          created_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'valores_caracteristica_caracteristica_id_fkey';
+            columns: ['caracteristica_id'];
+            isOneToOne: false;
+            referencedRelation: 'caracteristicas_equipamento';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
       equipamentos: {
         Row: {
           id: string;
@@ -392,6 +450,7 @@ export type Database = {
           created_at: string | null;
           nucleo_id: string | null;
           pode_criar_nucleos: boolean | null;
+          caracteristicas_solicitadas: Json | null;
         };
         Insert: {
           id?: string;
@@ -420,6 +479,7 @@ export type Database = {
           created_at?: string | null;
           nucleo_id?: string | null;
           pode_criar_nucleos?: boolean | null;
+          caracteristicas_solicitadas?: Json | null;
         };
         Update: {
           id?: string;
@@ -448,6 +508,7 @@ export type Database = {
           created_at?: string | null;
           nucleo_id?: string | null;
           pode_criar_nucleos?: boolean | null;
+          caracteristicas_solicitadas?: Json | null;
         };
         Relationships: [
           {
@@ -1058,3 +1119,11 @@ export type ColaboradorInsert = Database['public']['Tables']['colaboradores']['I
 export type ColaboradorUpdate = Database['public']['Tables']['colaboradores']['Update'];
 
 
+
+export type CaracteristicaEquipamentoRow = Database['public']['Tables']['caracteristicas_equipamento']['Row'];
+export type CaracteristicaEquipamentoInsert = Database['public']['Tables']['caracteristicas_equipamento']['Insert'];
+export type CaracteristicaEquipamentoUpdate = Database['public']['Tables']['caracteristicas_equipamento']['Update'];
+
+export type ValorCaracteristicaRow = Database['public']['Tables']['valores_caracteristica']['Row'];
+export type ValorCaracteristicaInsert = Database['public']['Tables']['valores_caracteristica']['Insert'];
+export type ValorCaracteristicaUpdate = Database['public']['Tables']['valores_caracteristica']['Update'];

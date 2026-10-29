@@ -6,6 +6,8 @@ import { buildAuditLogRequestKey, createAuditLog } from '@/lib/audit';
 import type { Json, SolicitacaoInsert, SolicitacaoUpdate, StatusSolicitacao } from '@/types/database.types';
 import { FILA_STATUSES, generateProtocolo, isBackOfficeRole, getStatusSolicitacaoUi, type SolicitacaoComRelacoes } from '@/types/domain';
 
+export { useCaracteristicasByTipoQuery } from '@/hooks/useEquipamentos';
+
 export const SOLICITACOES_KEY = ['solicitacoes'] as const;
 
 interface SolicitacoesQueryOptions {
@@ -296,6 +298,7 @@ export function useCreateSolicitacao() {
       como_conheceu,
       tempo_estimado_meses,
       nucleo_id,
+      caracteristicas_solicitadas,
     }: {
       beneficiario_id: string;
       tipo_equipamento_id: string;
@@ -303,6 +306,7 @@ export function useCreateSolicitacao() {
       como_conheceu?: string;
       tempo_estimado_meses?: number;
       nucleo_id?: string;
+      caracteristicas_solicitadas?: Record<string, string> | null;
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado.');
 
@@ -315,6 +319,7 @@ export function useCreateSolicitacao() {
         como_conheceu: como_conheceu || null,
         tempo_estimado_meses: tempo_estimado_meses || null,
         status: 'triagem',
+        caracteristicas_solicitadas: (caracteristicas_solicitadas ?? null) as unknown as Json,
       };
 
       if (nucleo_id) {
@@ -339,6 +344,7 @@ export function useCreateSolicitacao() {
           beneficiario_id,
           tipo_equipamento_id,
           motivo_solicitacao: motivo_solicitacao || null,
+          caracteristicas_solicitadas: (caracteristicas_solicitadas ?? null) as unknown as Json,
           status: data.status,
         },
       });

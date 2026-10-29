@@ -7,8 +7,6 @@ import { useNucleosQuery } from '@/hooks/useNucleos';
 import { useTiposEquipamentoQuery } from '@/hooks/useSolicitacoes';
 import {
   generateCodigoPatrimonio,
-  getSubtiposTipo,
-  type SubtipoEquipamento,
 } from '@/types/domain';
 import type { TipoEquipamento } from '@/types/database.types';
 import { formatCPF, formatPhone } from '@/utils/cpf';
@@ -121,7 +119,6 @@ export default function TriagemNucleo() {
   const [selectedDoacao, setSelectedDoacao] = useState<DoacaoPendente | null>(null);
   const [avaliacaoModalOpen, setAvaliacaoModalOpen] = useState(false);
   const [selectedTipoId, setSelectedTipoId] = useState<string>('');
-  const [selectedSubtipoId, setSelectedSubtipoId] = useState<string>('');
   const [codigoPatrimonio, setCodigoPatrimonio] = useState<string>('');
   const [estadoConservacao, setEstadoConservacao] = useState<string>('Bom');
   const [observacoesDoacao, setObservacoesDoacao] = useState<string>('');
@@ -194,17 +191,6 @@ export default function TriagemNucleo() {
     },
   });
 
-  // Lista de subtipos disponíveis do Tipo selecionado
-  const subtiposDisponiveis = useMemo(() => {
-    if (!selectedTipoId) return [];
-    const tipo = tiposEquipamento.find((t) => t.id === selectedTipoId);
-    if (!tipo) return [];
-    return getSubtiposTipo(tipo.schema_especificacoes);
-  }, [selectedTipoId, tiposEquipamento]);
-
-  const subtipoSelecionadoObj = useMemo(() => {
-    return subtiposDisponiveis.find((s) => s.id === selectedSubtipoId) || null;
-  }, [subtiposDisponiveis, selectedSubtipoId]);
 
   // Abertura do Modal de Avaliação de Doação
   const handleAbrirAvaliacao = (doacao: DoacaoPendente) => {
@@ -215,15 +201,10 @@ export default function TriagemNucleo() {
       `Doação recebida pelo portal.\nItem declarado: ${doacao.item_doado}\nDoador: ${doacao.nome_doador}\nCPF: ${formatCPF(doacao.cpf)}`
     );
 
-    // Pré-selecionar o primeiro tipo se disponível
     if (tiposEquipamento.length > 0) {
-      const primeiroTipo = tiposEquipamento[0];
-      setSelectedTipoId(primeiroTipo.id);
-      const sub = getSubtiposTipo(primeiroTipo.schema_especificacoes);
-      setSelectedSubtipoId(sub.length > 0 ? sub[0].id : '');
+      setSelectedTipoId(tiposEquipamento[0].id);
     } else {
       setSelectedTipoId('');
-      setSelectedSubtipoId('');
     }
 
     setAvaliacaoModalOpen(true);
@@ -232,9 +213,6 @@ export default function TriagemNucleo() {
   // Troca de Tipo no Modal de Avaliação
   const handleTipoChange = (tipoId: string) => {
     setSelectedTipoId(tipoId);
-    const tipo = tiposEquipamento.find((t) => t.id === tipoId);
-    const subs = tipo ? getSubtiposTipo(tipo.schema_especificacoes) : [];
-    setSelectedSubtipoId(subs.length > 0 ? subs[0].id : '');
   };
 
   // Aprovação de Doação e Cadastro no Estoque
@@ -251,17 +229,12 @@ export default function TriagemNucleo() {
 
     setIsSubmittingDoacao(true);
     try {
-      const tipo = tiposEquipamento.find((t) => t.id === selectedTipoId);
-      const subtipo = subtiposDisponiveis.find((s) => s.id === selectedSubtipoId);
-
       const novoEquipamento = {
         codigo_patrimonio: codigoPatrimonio.trim() || generateCodigoPatrimonio(),
         tipo_id: selectedTipoId,
         status: 'disponivel' as const,
         estado_conservacao: estadoConservacao || 'Bom',
         atributos_especificos: {
-          subtipo_id: selectedSubtipoId || undefined,
-          subtipo_nome: subtipo?.nome || undefined,
           origem: 'doacao',
           doacao_id: selectedDoacao.id,
           nome_doador: selectedDoacao.nome_doador,
@@ -901,53 +874,6 @@ export default function TriagemNucleo() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Select: Subtipo de Equipamento */}
-                <div className="space-y-1.5">
-                  <Label htmlFor="select-subtipo" className="text-xs font-semibold text-slate-700">
-                    Subtipo do Equipamento
-                  </Label>
-                  {subtiposDisponiveis.length > 0 ? (
-                    <Select value={selectedSubtipoId} onValueChange={setSelectedSubtipoId}>
-                      <SelectTrigger id="select-subtipo" className="h-10">
-                        <SelectValue placeholder="Selecione o subtipo..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {subtiposDisponiveis.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
-                      <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>Este tipo não possui subtipos cadastrados. O item será vinculado à pasta principal.</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Mini Preview do Subtipo selecionado */}
-                {subtipoSelecionadoObj && (
-                  <div className="p-3 rounded-lg bg-blue-50/50 border border-blue-100 flex items-center gap-3">
-                    {subtipoSelecionadoObj.imagem_url ? (
-                      <img
-                        src={subtipoSelecionadoObj.imagem_url}
-                        alt={subtipoSelecionadoObj.nome}
-                        className="w-12 h-12 object-cover rounded-md border border-blue-200"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 bg-blue-100 rounded-md flex items-center justify-center text-blue-600 font-bold text-xs">
-                        CB
-                      </div>
-                    )}
-                    <div className="text-xs min-w-0">
-                      <p className="font-semibold text-blue-950 truncate">{subtipoSelecionadoObj.nome}</p>
-                      <p className="text-slate-500 line-clamp-1">{subtipoSelecionadoObj.descricao || 'Sem descrição'}</p>
-                    </div>
-                  </div>
-                )}
 
                 {/* Código de Patrimônio Gerado */}
                 <div className="space-y-1.5">

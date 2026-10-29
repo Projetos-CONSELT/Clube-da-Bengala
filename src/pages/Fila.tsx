@@ -23,7 +23,7 @@ import {
   useUpdateSolicitacao,
   FILA_STATUSES,
 } from '@/hooks/useSolicitacoes';
-import { getStatusSolicitacaoUi, isBackOfficeRole, type SolicitacaoComRelacoes } from '@/types/domain';
+import { getStatusSolicitacaoUi, isBackOfficeRole, parseCaracteristicasSolicitadas, type SolicitacaoComRelacoes } from '@/types/domain';
 import type { TipoEquipamento } from '@/types/database.types';
 import moment from 'moment';
 import 'moment/locale/pt-br';
@@ -296,6 +296,23 @@ export default function Fila() {
                               <Calendar className="inline w-3 h-3" />{' '}
                               {moment(item.created_at).fromNow()}
                             </p>
+                            {(() => {
+                              const caracts = parseCaracteristicasSolicitadas(item.caracteristicas_solicitadas);
+                              const entries = Object.entries(caracts);
+                              if (entries.length === 0) return null;
+                              return (
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  {entries.map(([k, v]) => (
+                                    <span
+                                      key={k}
+                                      className="inline-flex items-center text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200/70 rounded px-1.5 py-0.5"
+                                    >
+                                      <span className="font-semibold mr-1">{k}:</span> {String(v)}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                           {isBackOffice && (
                             <div className="flex items-center gap-1">
